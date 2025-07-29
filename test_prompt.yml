@@ -1,0 +1,11 @@
+reply_node: 
+ name: reply_node
+ prompt: "Write a poem about a Unicorn"
+
+question_node: 
+ name: sql_node
+ prompt: "Output a sql query to answer the following natural language query
+ 	        <nl_query>
+ 	 
+	      take extra caution to generate only select queries and not to generate any SQL that would have a side effect
+ 	      "

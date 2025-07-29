@@ -1,0 +1,18 @@
+{
+  "name": "agentlib",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "type":"module",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Manik Fernando",
+  "license": "ISC",
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "openai": "^5.0.0",
+    "dotenv": "^16.0.0"
+  }
+}
