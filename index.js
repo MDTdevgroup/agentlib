@@ -1,13 +1,13 @@
 import OpenAI from "openai";
 import dotenv from 'dotenv';
-import loadYaml  from "./prompts.js";
+import { PromptHandler, FilePath}  from "./prompts.js";
 
 dotenv.config();
 
 
+const promptHandler = new PromptHandler(new FilePath('test_prompt.yml'));
 
-let prompts = loadYaml('test_prompt.yml');
-console.log(prompts.reply_node.prompt)
+console.log(promptHandler.getAllPrompts())
 
 
 try {
