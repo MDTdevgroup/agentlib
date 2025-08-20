@@ -20,11 +20,11 @@ class LLMService {
         }
     }
 
-    async chat(systemPrompt, prompt, responseFormat = null, options = {}) {
+    async chat(input, responseFormat = null, options = {}) {
         const provider = this.provider || 'openai';
 
         if (provider === 'openai') {
-            return this._openAIChat(systemPrompt, prompt, responseFormat, options);
+            return this._openAIChat(input, responseFormat, options);
         } else if (provider === 'gemini') {
             return this._geminiChat(prompt, responseFormat, options);
         } else {
@@ -32,34 +32,24 @@ class LLMService {
         }
     }
 
-    async _openAIChat(systemPrompt, prompt, responseFormat, options) {
+    async _openAIChat(input, responseFormat, options) {
         const defaultOptions = {
             model: 'gpt-4o-mini',
-            response_format: null,
         };
 
-        if (responseFormat === 'json_object') {
-            defaultOptions.response_format = { type: 'json_object' };
-        } else {
-            delete defaultOptions.response_format;
-        }
+        if (responseFormat !== null) {
+            defaultOptions.text = { format: { type: responseFormat } };
+        } 
 
         const finalOptions = { ...defaultOptions, ...options };
 
         try {
-            const response = await this.openAIClient.chat.completions.create({
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: prompt },
-                ],
+            const response = await this.openAIClient.responses.create({
+                input: input,
                 ...finalOptions,
             });
-            
-            if (response.choices[0].message.tool_calls) {
-              return response.choices[0].message;
-            }
-            
-            return response.choices[0].message.content;
+            console.log("response: ", response);
+            return JSON.stringify(response);
         } catch (error) {
             console.error(`Error during OpenAI chat completion:`, error);
             throw error;
