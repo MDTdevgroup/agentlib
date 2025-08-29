@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.resolve(__dirname, '../.env');
+const envPath = path.resolve(__dirname, './.env');
 config({ path: envPath });
 
 class LLMService {
@@ -36,20 +36,28 @@ class LLMService {
         const defaultOptions = {
             model: 'gpt-4o-mini',
         };
-
-        if (responseFormat !== null) {
-            defaultOptions.text = { format: { type: responseFormat } };
-        } 
-
         const finalOptions = { ...defaultOptions, ...options };
 
         try {
-            const response = await this.openAIClient.responses.create({
-                input: input,
-                ...finalOptions,
-            });
-            console.log("response: ", response);
-            return JSON.stringify(response);
+            let response;
+            if (responseFormat === 'json_schema') {
+                response = await this.openAIClient.responses.create({
+                    input: input,
+                    ...finalOptions,
+                });
+            } else if (responseFormat === 'json_object') {
+                response = await this.openAIClient.responses.create({
+                    input: input,
+                    text: { format: { type: 'json_object' } },
+                    ...finalOptions,
+                });
+            } else {
+                response = await this.openAIClient.responses.create({
+                    input: input,
+                    ...finalOptions,
+                });
+            }
+            return response;
         } catch (error) {
             console.error(`Error during OpenAI chat completion:`, error);
             throw error;

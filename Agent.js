@@ -19,24 +19,16 @@ export class Agent {
     
     const response = await this.llmService.chat(this.input, null, {
       tools: this.tools, 
-      model: this.model
+      model: this.model,
+      parallel_tool_calls: false
     });
-
-    // Parse the response output array
-    let responseOutput;
-    try {
-      responseOutput = JSON.parse(response);
-    } catch (e) {
-      // If not JSON, treat as text response
-      return { type: "text", content: response };
-    }
 
     // Save function call outputs for subsequent requests
     let functionCall = null;
     let functionCallArguments = null;
-    this.input = this.input.concat(responseOutput.output);
+    this.input = this.input.concat(response.output);
 
-    responseOutput.output.forEach((item) => {
+    response.output.forEach((item) => {
       console.log("Processing output item:", item.type, item.name);
       if (item.type === "function_call") {
         functionCall = item;
@@ -70,6 +62,6 @@ export class Agent {
     }
 
     // No function called, return the response
-    return { type: "response", content: responseOutput };
+    return { type: "response", content: response };
   }
 }
