@@ -11,7 +11,7 @@ async function main() {
   agent.addInput("user", "Which genre on average has the longest tracks?");
 
   let step;
-  for (let i = 0; i < 5; i++) {  // loop a few steps max
+  for (let i = 0; i < 5; i++) {  
     step = await agent.run();
     console.log("Step result:", step);
 
