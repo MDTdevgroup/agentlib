@@ -1,8 +1,7 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 
-// Initialize sqlite connection (async)
-export async function initDB(dbPath = "./Chinook.db") {
+export async function initDB(dbPath = "./chinook.db") {
   const db = await open({
     filename: dbPath,
     driver: sqlite3.Database,
@@ -10,7 +9,7 @@ export async function initDB(dbPath = "./Chinook.db") {
   return db;
 }
 
-export function makeSQLTools(db) {
+export function generatorTools(db) {
   return [
     {
       type: "function",
@@ -41,32 +40,39 @@ export function makeSQLTools(db) {
         required: ["table"],
       },
       func: async ({ table }) => {
-        const schema = await db.all(`PRAGMA table_info(${table});`);
+        const safe = String(table).replace(/'/g, "''");
+        const schema = await db.all(`PRAGMA table_info('${safe}');`);
         return schema;
       },
     },
-    {
-      type: "function",
-      name: "run_query",
-      description: "Run a SQL SELECT query and return results",
-      parameters: {
-        type: "object",
-        properties: {
-          query: {
-            type: "string",
-            description: "The SQL SELECT query to execute",
-          },
-        },
-        required: ["query"],
-      },
-      func: async ({ query }) => {
-        try {
-          const rows = await db.all(query);
-          return rows;
-        } catch (err) {
-          return { error: err.message };
-        }
-      },
-    },
   ];
+}
+
+export function executorTools(db) {
+  const tools = [...generatorTools(db)];
+  tools.push({
+    type: "function",
+    name: "run_query",
+    description: "Run a SQL SELECT query and return results",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "The SQL SELECT query to execute",
+        },
+      },
+      required: ["query"],
+    },
+    func: async ({ query }) => {
+      try {
+        console.log(query);
+        const rows = await db.all(query);
+        return rows;
+      } catch (err) {
+        return { error: err.message };
+      }
+    },
+  });
+  return tools;
 }

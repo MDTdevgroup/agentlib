@@ -1,4 +1,4 @@
-import { Agent } from '../Agent.js';
+import { Agent } from '../../Agent.js';
 
 // Calculator tool functions
 const calculatorTools = [
