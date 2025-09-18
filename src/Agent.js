@@ -1,67 +1,68 @@
 import LLMService from "./llmService.js";
+import { zodTextFormat } from "openai/helpers/zod";
+import { z } from "zod";
 
 export class Agent {
-  constructor(model = 'gpt-4o-mini', tools = []) {
+  constructor(model = 'gpt-4o-mini', tools = [], inputSchema = null, outputSchema = null) {
     this.llmService = new LLMService('openai');
     this.model = model;
     this.tools = tools;
     this.input = []; 
+    this.inputSchema = inputSchema;
+    this.outputSchema = outputSchema;
   }
 
-  addInput(role, message) {   
-    this.input.push({ role: role, content: message });
+  addInput(role, message) {
+    const entry = { role, content: message };
+    if (this.inputSchema) {
+      this.inputSchema.parse(entry);
+    }
+    this.input.push(entry);
   }
 
-  /**
-   * Run the agent for a single step
-   */
   async run() {
-    
-    const response = await this.llmService.chat(this.input, null, {
-      tools: this.tools, 
-      model: this.model,
-      parallel_tool_calls: false
-    });
+    const response = await this.llmService.chat(
+      this.input,
+      this.outputSchema ? 'json_schema' : null,
+      {
+        tools: this.tools,
+        model: this.model,
+        parallel_tool_calls: false,
+        text: {
+          format: zodTextFormat(this.outputSchema, "output"),
+        },
+      }
+    );
 
-    // Save function call outputs for subsequent requests
     let functionCall = null;
     let functionCallArguments = null;
     this.input = this.input.concat(response.output);
 
     response.output.forEach((item) => {
-      console.log("Processing output item:", item.type, item.name);
       if (item.type === "function_call") {
         functionCall = item;
         functionCallArguments = JSON.parse(item.arguments);
       }
     });
-
-    console.log("Function call detected:", functionCall ? functionCall.name : "none");
     
     if (functionCall) {
       const toolName = functionCall.name;
       const tool = this.tools.find((t) => t.name === toolName);
-      
       if (!tool || !tool.func) {
         throw new Error(`Tool ${toolName} not found or missing implementation.`);
       }
-
-      // Execute the function
-      const result = await tool.func(functionCallArguments);
-
-      // Add function call output to input
+      const parsedArgs = tool.schema ? tool.schema.parse(functionCallArguments) : functionCallArguments;
+      const result = await tool.func(parsedArgs);
       this.input.push({
-        // role: "assistant",
-        // content: `Called ${toolName}(${JSON.stringify(functionCallArguments)}) -> Result: ${JSON.stringify(result)}`
         type: "function_call_output",
         call_id: functionCall.call_id,
         output: JSON.stringify(result),
       });
-
-      return { type: "function_call", tool: toolName, args: functionCallArguments, result: result };
+      const output = { type: "function_call", tool: toolName, args: parsedArgs, result };
+      return this.outputSchema ? this.outputSchema.parse(output) : output;
     }
 
-    // No function called, return the response
-    return { type: "response", content: response };
+    const output = { type: "response", content: response };
+    return this.outputSchema ? this.outputSchema.parse(output) : output;
   }
 }

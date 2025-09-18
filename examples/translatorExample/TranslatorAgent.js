@@ -1,4 +1,4 @@
-import { Agent } from '../Agent.js';
+import { Agent } from '../../src/Agent.js';
 import { TranslationSubAgent } from './TranslationSubAgent.js';
 import { QASubAgent } from './QASubAgent.js';
 

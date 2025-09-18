@@ -1,4 +1,4 @@
-import { Agent } from '../../Agent.js';
+import { Agent } from '../../src/Agent.js';
 
 export class TranslationSubAgent {
   constructor(model = 'gpt-4o-mini') {
