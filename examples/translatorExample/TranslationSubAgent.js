@@ -1,9 +1,8 @@
 import { Agent } from '../../src/Agent.js';
 
 export class TranslationSubAgent {
-  constructor(model = 'gpt-4o-mini') {
-    this.model = model;
-    this.agent = new Agent(model, this.getTranslationTools());
+  constructor() {
+    this.agent = new Agent({tools: this.getTranslationTools()});
   }
 
   getTranslationTools() {
@@ -67,7 +66,7 @@ export class TranslationSubAgent {
       sourceLanguage = await this.detectLanguage(text);
     }
 
-    this.agent.addInput("user", `Please translate the following text to ${targetLanguage}: "${text}"`);
+    this.agent.addInput({"role": "user", "content": `Please translate the following text to ${targetLanguage}: "${text}"`});
     
     const result = await this.agent.run();
     
@@ -80,7 +79,7 @@ export class TranslationSubAgent {
   }
 
   async detectLanguage(text) {
-    this.agent.addInput("user", `What language is this text written in: "${text}"`);
+    this.agent.addInput({"role": "user", "content": `What language is this text written in: "${text}"`});
     
     const result = await this.agent.run();
     
@@ -183,9 +182,5 @@ export class TranslationSubAgent {
 
   async run() {
     return await this.agent.run();
-  }
-
-  addInput(role, message) {
-    this.agent.addInput(role, message);
   }
 } 

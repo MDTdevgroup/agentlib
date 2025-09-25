@@ -1,4 +1,4 @@
-import { Agent } from "../../Agent.js";
+import { Agent } from "../../src/Agent.js";
 import { initDB, generatorTools, executorTools } from "./sqlTools.js";
 
 async function main() {
@@ -6,18 +6,17 @@ async function main() {
   const genTools = generatorTools(db);
   const execTools = executorTools(db);
 
-  const generatorAgent = new Agent("gpt-4o-mini", genTools);
-  generatorAgent.addInput(
-    "system",
+  const generatorAgent = new Agent({tools: genTools});
+  generatorAgent.addInput({role: "system", content: 
     `You are a helpful SQL generator.
      - Only propose a single SELECT query as your final answer.
      - Use the provided tools (list_tables, get_schema) to explore the schema as needed.
      - Do NOT execute queries.
      - When you are done, reply with ONLY the SQL query, no explanations.`
-  );
-  generatorAgent.addInput("user", "Which genre on average has the longest tracks?");
+  });
+  generatorAgent.addInput({role: "user", content: "Which genre on average has the longest tracks?"});
 
-  const executorAgent = new Agent("gpt-4o-mini", execTools);
+  const executorAgent = new Agent({tools: execTools});
   const systemPrompt = `You are a SQL expert with a strong attention to detail.
     Double check the SQL query for common mistakes, including:
     - Using NOT IN with NULL values
@@ -35,7 +34,7 @@ async function main() {
 
     You may use schema tools (list_tables, get_schema) to validate if needed.
     When ready, call the run_query tool to execute the final validated query.`;
-  executorAgent.addInput("system", systemPrompt);
+  executorAgent.addInput({role: "system", content: systemPrompt});
 
   let step;
   let generatedQuery = null;
@@ -56,7 +55,7 @@ async function main() {
 
   async function validateAndExecute(query) {
     console.log("\n=== EXECUTOR AGENT ===");
-    executorAgent.addInput("user", `Validate and then execute this SQL query: ${query}`);
+    executorAgent.addInput({role: "user", content: `Validate and then execute this SQL query: ${query}`});
     
     for (let i = 0; i < 12; i++) {
       step = await executorAgent.run();

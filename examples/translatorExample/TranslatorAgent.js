@@ -3,11 +3,10 @@ import { TranslationSubAgent } from './TranslationSubAgent.js';
 import { QASubAgent } from './QASubAgent.js';
 
 export class TranslatorAgent {
-  constructor(model = 'gpt-4o-mini') {
-    this.model = model;
-    this.translationAgent = new TranslationSubAgent(model);
-    this.qaAgent = new QASubAgent(model);
-    this.mainAgent = new Agent(model, this.getMainTools());
+  constructor() {
+    this.translationAgent = new TranslationSubAgent();
+    this.qaAgent = new QASubAgent();
+    this.mainAgent = new Agent({tools: this.getMainTools()});
   }
 
   getMainTools() {
@@ -94,7 +93,7 @@ export class TranslatorAgent {
     return await this.mainAgent.run();
   }
 
-  addInput(role, message) {
-    this.mainAgent.addInput(role, message);
+  addInput(input) {
+    this.mainAgent.addInput(input);
   }
 } 

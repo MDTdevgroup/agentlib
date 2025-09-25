@@ -10,6 +10,7 @@ config({ path: envPath });
 const geminiClient = new GoogleGenAI(process.env.GEMINI_API_KEY);
 
 export async function chat(input, responseFormat, options) {
+    // TODO: Add translation of input to provide 
     const defaultOptions = {
         model: 'gemini-2.5-flash-lite',
         config: {'response_mime_type' : responseFormat}
@@ -32,5 +33,4 @@ export async function chat(input, responseFormat, options) {
         console.error(`Error during Gemini chat completion:`, error);
         throw error;
     }
-}
 }

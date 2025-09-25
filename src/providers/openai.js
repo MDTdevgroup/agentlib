@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
+import { defaultModel } from "../config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.resolve(__dirname, '../../.env');
@@ -11,12 +12,12 @@ config({ path: envPath });
 
 const openAIClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-export async function chat(input, { inputSchema, outputSchema, options }) {
-    const defaultOptions = {model: 'gpt-4o-mini'};
+export async function chat(input, { inputSchema, outputSchema, ...options }) {
+    const defaultOptions = {model: defaultModel};
     const finalOptions = { ...defaultOptions, ...options };
 
-     // Validate input with Zod
-     if (inputSchema) {
+    // Validate input with Zod
+    if (inputSchema) {
         input = inputSchema.parse(input);
     }
 

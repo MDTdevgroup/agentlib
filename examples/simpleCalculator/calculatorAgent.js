@@ -1,4 +1,4 @@
-import { Agent } from '../../Agent.js';
+import { Agent } from '../../src/Agent.js';
 
 // Calculator tool functions
 const calculatorTools = [
@@ -110,7 +110,7 @@ const calculatorTools = [
 ];
 
 // Create calculator agent
-const calculatorAgent = new Agent('gpt-4o-mini', calculatorTools);
+const calculatorAgent = new Agent({tools: calculatorTools});
 
 // Example usage function
 export async function runCalculatorExample() {
@@ -119,7 +119,7 @@ export async function runCalculatorExample() {
 
   // Example 1: Simple calculation
   console.log("Example 1: Simple Addition");
-  calculatorAgent.addInput("user", "Please add 15 and 27 together");
+  calculatorAgent.addInput({role: "user", content: "Please add 15 and 27 together"});
   
   const result1 = await calculatorAgent.run();
   console.log("Agent response:", result1);
@@ -127,7 +127,7 @@ export async function runCalculatorExample() {
 
   // Example 2: Multiple operations with sleep
   console.log("Example 2: Multiple Operations with Sleep");
-  calculatorAgent.addInput("user", "Calculate 10 * 5, then sleep for 2 seconds, then subtract 20 from the result");
+  calculatorAgent.addInput({role: "user", content: "Calculate 10 * 5, then sleep for 2 seconds, then subtract 20 from the result"});
   
   const result2 = await calculatorAgent.run();
   console.log("Agent response:", result2);
@@ -135,7 +135,7 @@ export async function runCalculatorExample() {
 
   // Example 3: Complex calculation chain
   console.log("Example 3: Complex Calculation Chain");
-  calculatorAgent.addInput("user", "Calculate (100 + 50) * 2, sleep for 1 second, then divide by 10");
+  calculatorAgent.addInput({role: "user", content: "Calculate (100 + 50) * 2, sleep for 1 second, then divide by 10"});
   
   const result3 = await calculatorAgent.run();
   console.log("Agent response:", result3);
@@ -143,7 +143,7 @@ export async function runCalculatorExample() {
 
   // Example 4: Demonstrate concurrency with parallel operations
   console.log("Example 4: Demonstrating Concurrency");
-  calculatorAgent.addInput("user", "Add 5 and 3, multiply 4 and 6, and sleep for 1 second. Do these operations and tell me all results.");
+  calculatorAgent.addInput({role: "user", content: "Add 5 and 3, multiply 4 and 6, and sleep for 1 second. Do these operations and tell me all results."});
   
   const result4 = await calculatorAgent.run();
   console.log("Agent response:", result4);
@@ -158,9 +158,9 @@ export async function runConcurrentCalculators() {
   console.log("==================================================\n");
 
   const agents = [
-    new Agent('gpt-4o-mini', calculatorTools),
-    new Agent('gpt-4o-mini', calculatorTools),
-    new Agent('gpt-4o-mini', calculatorTools)
+    new Agent({tools: calculatorTools}),
+    new Agent({tools: calculatorTools}),
+    new Agent({tools: calculatorTools})
   ];
 
   // Set up different tasks for each agent
@@ -173,7 +173,7 @@ export async function runConcurrentCalculators() {
   // Start all agents concurrently
   const startTime = Date.now();
   const promises = agents.map((agent, index) => {
-    agent.addInput("user", tasks[index]);
+    agent.addInput({role: "user", content: tasks[index]});
     return agent.run();
   });
 

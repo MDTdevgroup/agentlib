@@ -1,9 +1,8 @@
 import { Agent } from '../../src/Agent.js';
 
 export class QASubAgent {
-  constructor(model = 'gpt-4o-mini') {
-    this.model = model;
-    this.agent = new Agent(model, this.getQATools());
+  constructor() {
+    this.agent = new Agent({tools: this.getQATools()});
   }
 
   getQATools() {
@@ -87,7 +86,7 @@ export class QASubAgent {
   }
 
   async answerQuestion(question) {
-    this.agent.addInput("user", `Please answer this question: ${question}`);
+    this.agent.addInput({role: "user", content: `Please answer this question: ${question}`});
     
     const result = await this.agent.run();
     
@@ -247,7 +246,7 @@ export class QASubAgent {
     return await this.agent.run();
   }
 
-  addInput(role, message) {
-    this.agent.addInput(role, message);
+  addInput(input) {
+    this.agent.addInput(input);
   }
 } 
