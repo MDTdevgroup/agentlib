@@ -93,19 +93,6 @@ const text = result.output_text;    // Raw text response
 - **Type Safety**: Automatic validation and TypeScript support
 - **Model Support**: Works with `gpt-4o-mini` and `gpt-4o` models
 
-## MCP Servers
-
-AgentLib includes ready-to-use MCP servers:
-
-| Server | Tools | Use Case |
-|--------|-------|----------|
-| **Filesystem** | 14 tools | File operations, directory management |
-| **Playwright** | 21 tools | Browser automation, screenshots, form filling |
-| **Brave Search** | 2 tools | Web search, current information |
-| **Memory** | 9 tools | Persistent knowledge graphs |
-
-All servers auto-install via `npx` - no manual setup required.
-
 ## Examples
 
 - **`examples/simpleAgent/`** - Basic agent usage
@@ -199,7 +186,7 @@ When calling an LLM, the result object has the following structure:
 ```
 
 **Key Fields:**
-- `output[0].content[0].text` - The actual response text
+- `output_text` - The actual response text
 - `usage` - Token consumption details
 - `model` - The model used for the response
 - `status` - Response status ("completed", "failed", etc.)
