@@ -5,6 +5,10 @@ async function main() {
   const db = await initDB("./chinook.db");
   const genTools = generatorTools(db);
   const execTools = executorTools(db);
+  const tables = await db.all(
+    "SELECT name FROM sqlite_master WHERE type='table';"
+  );
+  console.log("### Tables:", tables.map(t => t.name));
 
   const generatorAgent = new Agent({tools: genTools});
   generatorAgent.addInput({role: "system", content: 
@@ -37,40 +41,38 @@ async function main() {
   executorAgent.addInput({role: "system", content: systemPrompt});
 
   let step;
-  let generatedQuery = null;
   
   // First, let the generator agent explore and generate a query
   console.log("=== GENERATOR AGENT ===");
   for (let i = 0; i < 10; i++) {  
     step = await generatorAgent.run();
-    console.log(`Generator Step ${i + 1}:`, step.type, step.tool || 'none');
-
-    if (step.type === "response") {
-      generatedQuery = (step.content?.output_text || "").trim();
-      console.log("Generated Query:", generatedQuery);
-      await validateAndExecute(generatedQuery);
+    console.log("### Generator Step:", step);
+    step.output.forEach(item => {
+      console.log(`Output Type:`, item.type);
+    });
+    const hasFunctionCall = step.output.some(item => item.type === "function_call");
+    if (!hasFunctionCall) {
+      console.log("Generated Query:", step.output_text);
+      await validateAndExecute(step.output_text);
       break;
     }
   }
 
-  async function validateAndExecute(query) {
+  async function validateAndExecute(query) { 
+    console.log("Validating and executing query:", query);
     console.log("\n=== EXECUTOR AGENT ===");
     executorAgent.addInput({role: "user", content: `Validate and then execute this SQL query: ${query}`});
     
     for (let i = 0; i < 12; i++) {
       step = await executorAgent.run();
-      console.log(`Executor Step ${i + 1}:`, step.type, step.tool || 'none');
-
-      if (step.type === "function_call") {
-        if (step.tool === "run_query") {
-          console.log("Query Results:", step.result);
-        } else {
-          console.log(`${step.tool} Result:`, step.result);
-        }
-      }
+      console.log("### Executor Step:", step);
+      step.output.forEach(item => {
+        console.log(`Output Type:`, item.type);
+      });
       
-      if (step.type === "response") {
-        console.log("Final Answer:", step.content.output_text);
+      const hasFunctionCall = step.output.some(item => item.type === "function_call");
+      if (!hasFunctionCall) {
+        console.log("Final Answer:", step.output_text || step.output.map(o => o.content).join("\n"));
         break;
       }
     }

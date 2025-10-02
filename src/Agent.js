@@ -112,8 +112,17 @@ export class Agent {
       });
     }
 
-    const output = { type: "response", content: response };
-    return this.outputSchema ? this.outputSchema.parse(output) : output;
+    if (this.outputSchema) {
+      try {
+        this.outputSchema.parse(response.output_text);
+      } catch (error) {
+        if(error instanceof z.ZodError){
+          console.error("Invalid output schema:", error.issues);
+        }
+      }
+    }
+
+    return response;
   }
 
   async cleanup() {
