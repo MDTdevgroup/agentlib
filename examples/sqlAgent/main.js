@@ -61,13 +61,13 @@ async function main() {
       step = await executorAgent.run();
       console.log(`Executor Step ${i + 1}:`, step.type, step.tool || 'none');
 
-      // if (step.type === "function_call") {
-      //   if (step.tool === "run_query") {
-      //     console.log("Query Results:", step.result);
-      //   } else {
-      //     console.log(`${step.tool} Result:`, step.result);
-      //   }
-      // }
+      if (step.type === "function_call") {
+        if (step.tool === "run_query") {
+          console.log("Query Results:", step.result);
+        } else {
+          console.log(`${step.tool} Result:`, step.result);
+        }
+      }
       
       if (step.type === "response") {
         console.log("Final Answer:", step.content.output_text);

@@ -3,13 +3,12 @@ class LLMService {
         this.provider = provider;
     }
 
-    async chat(input, {responseFormat = null, inputSchema = null, outputSchema = null, options = {}} = {}) {
+    async chat(input, {inputSchema = null, outputSchema = null, ...options} = {}) {
         const provider = await import(`./providers/${this.provider}.js`);
         return provider.chat(input, {
-            responseFormat: responseFormat, 
-            inputSchema: inputSchema, 
-            outputSchema: outputSchema, 
-            options: options
+            inputSchema, 
+            outputSchema, 
+            ...options
         });
     }
 }

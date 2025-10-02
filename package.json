@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "@google/genai": "^1.16.0",
+    "@modelcontextprotocol/sdk": "^1.18.2",
     "dotenv": "^16.0.0",
     "js-yaml": "^4.1.0",
     "openai": "^5.16.0",

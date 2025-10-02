@@ -26,7 +26,9 @@ export async function chat(input, { inputSchema, outputSchema, ...options }) {
         if (outputSchema) {
             response = await openAIClient.responses.create({
                 input: input,
-                format: zodTextFormat(outputSchema, "output"),
+                text: { 
+                    format: zodTextFormat(outputSchema, "output") 
+                },
                 ...finalOptions,
             });
         } else {
