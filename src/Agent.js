@@ -1,7 +1,7 @@
-import LLMService from "./llmService.js";
-import { zodTextFormat } from "openai/helpers/zod";
+import { LLMService } from "./llmService.js";
 import { defaultModel } from "./config.js";
 import { MCPManager } from "./mcp/MCPManager.js";
+import { z } from 'zod';
 
 export class Agent {
   constructor({model = defaultModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false} = {}) {

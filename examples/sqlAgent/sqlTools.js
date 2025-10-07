@@ -1,5 +1,6 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import { LLMService } from "../../src/llmService.js";
 
 export async function initDB(dbPath = "./chinook.db") {
   const db = await open({
@@ -65,13 +66,8 @@ export function executorTools(db) {
       required: ["query"],
     },
     func: async ({ query }) => {
-      try {
-        console.log(query);
-        const rows = await db.all(query);
-        return rows;
-      } catch (err) {
-        return { error: err.message };
-      }
+      const rows = await db.all(query);
+      return rows;
     },
   });
   return tools;

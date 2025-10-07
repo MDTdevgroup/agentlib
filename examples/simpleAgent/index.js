@@ -21,25 +21,25 @@ const tools = [
         properties: { query: { type: 'string' } },
         required: ['query']
       },
-       func: async (args) => {
-         const browser = await chromium.launch({ headless: false });
-         const page = await browser.newPage();
-         await page.goto("https://yandex.com");
-         
-         // Wait for the search box to be ready and fill it
-         await page.waitForSelector('input[name="text"]');
-         await page.fill('input[name="text"]', args.query);
-         await page.keyboard.press("Enter");
-         
-         // Wait for results to load
-         await page.waitForSelector(".OrganicTitle-Link", { timeout: 10000 });
-   
-         const results = await page.$$eval(".OrganicTitle-Link", nodes => 
-           nodes.slice(0, 5).map(n => n.innerText)
-         );
-         await browser.close();
-         return { query: args.query, results };
-       }
+      func: async (args) => {
+        const browser = await chromium.launch({ headless: false });
+        const page = await browser.newPage();
+        await page.goto("https://yandex.com");
+        
+        // Wait for the search box to be ready and fill it
+        await page.waitForSelector('input[name="text"]');
+        await page.fill('input[name="text"]', args.query);
+        await page.keyboard.press("Enter");
+        
+        // Wait for results to load
+        await page.waitForSelector(".OrganicTitle-Link", { timeout: 10000 });
+  
+        const results = await page.$$eval(".OrganicTitle-Link", nodes => 
+          nodes.slice(0, 5).map(n => n.innerText)
+        );
+        await browser.close();
+        return { query: args.query, results };
+      }
     },
     {
       type: 'function',

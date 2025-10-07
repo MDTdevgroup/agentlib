@@ -1,4 +1,4 @@
-class LLMService {
+export class LLMService {
     constructor(provider) {
         this.provider = provider;
     }
@@ -12,5 +12,3 @@ class LLMService {
         });
     }
 }
-
-export default LLMService; 
