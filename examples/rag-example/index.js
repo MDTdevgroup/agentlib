@@ -1,5 +1,5 @@
 import { MongoClient } from 'mongodb';
-import { MONGODB_URI, DATABASE_NAME, COLLECTION_NAME, EMBEDDING_MODEL } from './config.js';
+import { MONGODB_URI, DATABASE_NAME, COLLECTION_NAME, EMBEDDING_MODEL, NUM_CANDIDATES, LIMIT } from './config.js';
 import { Agent } from '../../src/Agent.js';
 import readline from "readline";
 import OpenAI from 'openai';
@@ -22,30 +22,19 @@ const tools = [
         },
         func: async (args) => {
             console.log(`Retrieving documents for query: ${args.query}`);
-            const results = await semanticSearch(args.query);
+            const results = await queryResults(args.query);
             console.log(`\nResults: ${results}\n`);
             return results;
         }
     }
 ];
 
-function cosineSimilarity(a, b) {
-    let dot = 0.0;
-    let normA = 0.0;
-    let normB = 0.0;
-    for (let i = 0; i < a.length; i++) {
-      dot += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-    return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-async function semanticSearch(userQuery) {
+async function queryResults(userQuery) {
     const client = new MongoClient(MONGODB_URI);
     await client.connect();
     const db = await client.db(DATABASE_NAME);
     const collection = db.collection(COLLECTION_NAME);
+    console.log("connection to database successful");
   
     // Step 1: Embed the user query
     const queryEmbedding = await openai.embeddings.create({
@@ -55,32 +44,56 @@ async function semanticSearch(userQuery) {
   
     const queryVector = queryEmbedding.data[0].embedding;
   
-    // Step 2: Fetch all chunks and compute cosine similarity manually
-    const docs = await collection.find().toArray();
-  
-    let results = [];
-  
-    for (const doc of docs) {
-      for (const chunk of doc.chunks) {
-        const similarity = cosineSimilarity(queryVector, chunk.embedding);
-        results.push({
-          title: doc.title,
-          text: chunk.text,
-          similarity
-        });
-      }
-    }
-  
-    // Step 3: Sort by similarity descending
-    results.sort((a, b) => b.similarity - a.similarity);
-  
-    // Step 4: Return the top 3 most relevant chunks
+    // Step 2: Use Atlas Vector Search to find most similar chunks
+    const pipeline = [
+        {
+            $vectorSearch: {
+                index: "vector_index",   // Name of the MongoDB Vector Search index to use.
+                path: "chunks.embedding",   // Path to the vector field in the collection.          
+                queryVector: queryVector,   // The vector to search for.
+                numCandidates: NUM_CANDIDATES,  // This controls how many vectors MongoDB initially considers before returning the top results.          
+                limit: LIMIT // This returns the top n results from the set of candidates chosen.                   
+            }
+        },
+        {
+            // 1. Project the required fields and capture the vector search score (only 1 score per document, for the best-matched chunk)
+            $project: {
+                title: 1,
+                chunks: 1,
+                score: { $meta: "vectorSearchScore" }
+            }
+        },
+        {
+            // 2. Break down the document into individual results, one for each chunk
+            $unwind: "$chunks" 
+        },
+        {
+            // 3. Project the final, clean fields for RAG context
+            $project: {
+                _id: 0,
+                title: "$title",
+                text: "$chunks.text",
+                score: "$score"
+            }
+        },
+        {
+            // 4. Limit the final results to the top N chunks overall (e.g., top 3 chunks)
+            $limit: 3
+        }
+    ];
+
+    const results = await collection.aggregate(pipeline).toArray();
+
+    // Step 3: Format results into a single string for the RAG agent
     console.log("Top results:");
-    for (const r of results.slice(0, 3)) {
-      console.log(`\n[${r.title}] (${r.similarity.toFixed(3)})\n${r.text}`);
-    }
-  
-    return results;
+    const context = results.map(r => {
+        console.log(`\n[${r.title}] (score: ${r.score.toFixed(3)})`);
+        console.log(r.text);
+        return `Document: ${r.title}\nChunk: ${r.text}`;
+    }).join('\n---\n');
+
+    await client.close();
+    return context; // Return the formatted context string
 }
 
 async function runRAGExample() {

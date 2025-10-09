@@ -1,7 +1,9 @@
-export const MONGODB_URI = 'mongodb://127.0.0.1:27018/?directConnection=true';
-export const DATABASE_NAME = 'test';
+export const MONGODB_URI = 'mongodb://localhost:27015/?directConnection=true';
+export const DATABASE_NAME = 'agentlib';
 export const COLLECTION_NAME = 'documents';
-export const EMBEDDING_MODEL = 'text-embedding-3-small';
+export const EMBEDDING_MODEL = 'text-embedding-3-small'; // 1536 vector dimensions
+export const NUM_CANDIDATES = 50;
+export const LIMIT = 5;
 export const docs = [
     {
       title: "Overview of AgentLib",
@@ -84,5 +86,4 @@ export const docs = [
       content: "Developers can extend AgentLib with new tool definitions, custom schemas, or integration layers for external systems like databases or APIs."
     }
 ];
-
                 
