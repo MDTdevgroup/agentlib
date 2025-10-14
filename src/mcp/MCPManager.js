@@ -94,7 +94,6 @@ export class MCPManager {
         connected: isConnected,
         toolCount: tools.length,
         tools: tools,
-        config: this.serverConfigs.get(serverName)
       };
     }
 
