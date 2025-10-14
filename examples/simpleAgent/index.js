@@ -1,6 +1,8 @@
 import { Agent } from '../../src/Agent.js';
 import { chromium } from "playwright";
 import readline from "readline";
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -50,7 +52,7 @@ const tools = [
     }
   ];
 
-const agent = new Agent({tools: tools});
+const agent = new Agent('openai', process.env.OPENAI_API_KEY, {tools: tools});
 
 while (true) {
     const userInput = await ask("Agent: What would you like to do?\n");

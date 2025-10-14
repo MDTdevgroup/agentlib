@@ -1,8 +1,10 @@
 import { Agent } from '../../src/Agent.js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 
 export class QASubAgent {
   constructor() {
-    this.agent = new Agent({tools: this.getQATools()});
+    this.agent = new Agent('openai', process.env.OPENAI_API_KEY, {tools: this.getQATools()});
   }
 
   getQATools() {

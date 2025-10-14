@@ -24,7 +24,7 @@ const UIGenerationInput = z.object({
 async function runUIGenerationExample() {
   console.log('UI Generation with Structured Outputs Example\n');
 
-  const agent = new Agent({
+  const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
     inputSchema: UIGenerationInput,
     outputSchema: UIComponent
@@ -159,7 +159,7 @@ function renderUIToHTML(component, depth = 0) {
 async function demonstrateComplexUI() {
   console.log('Complex UI Generation Example\n');
 
-  const agent = new Agent({
+  const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
     inputSchema: UIGenerationInput,
     outputSchema: UIComponent

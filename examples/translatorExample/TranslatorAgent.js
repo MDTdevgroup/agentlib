@@ -1,12 +1,14 @@
 import { Agent } from '../../src/Agent.js';
 import { TranslationSubAgent } from './TranslationSubAgent.js';
 import { QASubAgent } from './QASubAgent.js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 
 export class TranslatorAgent {
   constructor() {
     this.translationAgent = new TranslationSubAgent();
     this.qaAgent = new QASubAgent();
-    this.mainAgent = new Agent({tools: this.getMainTools()});
+    this.mainAgent = new Agent('openai', process.env.OPENAI_API_KEY, {tools: this.getMainTools()});
   }
 
   getMainTools() {

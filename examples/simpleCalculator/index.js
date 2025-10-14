@@ -1,4 +1,6 @@
 import { Agent } from '../../src/Agent.js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 
 // Calculator tool functions
 const calculatorTools = [
@@ -110,7 +112,7 @@ const calculatorTools = [
 ];
 
 // Create calculator agent
-const calculatorAgent = new Agent({tools: calculatorTools});
+const calculatorAgent = new Agent('openai', process.env.OPENAI_API_KEY, {tools: calculatorTools});
 
 // Example usage function
 export async function runCalculatorExample() {
@@ -158,9 +160,9 @@ export async function run() {
   console.log("==================================================\n");
 
   const agents = [
-    new Agent({tools: calculatorTools}),
-    new Agent({tools: calculatorTools}),
-    new Agent({tools: calculatorTools})
+    new Agent('openai', process.env.OPENAI_API_KEY, {tools: calculatorTools}),
+    new Agent('openai', process.env.OPENAI_API_KEY, {tools: calculatorTools}),
+    new Agent('openai', process.env.OPENAI_API_KEY, {tools: calculatorTools})
   ];
 
   // Set up different tasks for each agent

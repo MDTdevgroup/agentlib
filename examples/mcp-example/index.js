@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 (async function run() {
   try {
     // Set up an agent with multiple MCP servers
-    const agent = new Agent({ 
+    const agent = new Agent('openai', process.env.OPENAI_API_KEY, { 
       model: 'gpt-4o-mini',
       enableMCP: true 
     });

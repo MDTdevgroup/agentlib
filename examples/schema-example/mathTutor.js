@@ -1,4 +1,6 @@
 import { Agent } from '../../src/Agent.js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 import { z } from 'zod';
 
 // Define the step schema for math problem solving
@@ -23,7 +25,7 @@ async function runMathTutorExample() {
   console.log('Math Tutor with Structured Input/Output Example\n');
 
   // Create agent with both input and output schemas
-  const agent = new Agent({
+  const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
     inputSchema: MathProblemInput,
     outputSchema: MathReasoning
@@ -105,7 +107,7 @@ async function runMathTutorExample() {
 async function demonstrateErrorHandling() {
   console.log('Error Handling Examples\n');
 
-  const agent = new Agent({
+  const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
     inputSchema: MathProblemInput,
     outputSchema: MathReasoning

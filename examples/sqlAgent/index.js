@@ -2,6 +2,8 @@ import { Agent } from "../../src/Agent.js";
 import { initDB, generatorTools, executorTools } from "./sqlTools.js";
 import readline from "readline";
 import { z } from 'zod';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 
 // Define the output schema for the executor agent
 const executorOutputSchema = z.object({
@@ -27,7 +29,7 @@ async function main() {
   console.log("### Tables:", tables.map(t => t.name));
   console.log("--------------------------------");
 
-  const generatorAgent = new Agent({model: "gpt-5-mini", tools: genTools });
+  const generatorAgent = new Agent('openai', process.env.OPENAI_API_KEY, {model: "gpt-5-mini", tools: genTools });
   generatorAgent.addInput({
     role: "system",
     content: `You are a helpful SQL generator.
@@ -37,7 +39,7 @@ async function main() {
     - When you are done, reply with ONLY the SQL query, no explanations.`
   });
 
-  const executorAgent = new Agent({ 
+  const executorAgent = new Agent('openai', process.env.OPENAI_API_KEY, { 
     model: "gpt-5-mini", 
     tools: execTools, 
     outputSchema: executorOutputSchema 

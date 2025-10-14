@@ -1,4 +1,4 @@
-import { runCalculatorExample, runConcurrentCalculators } from './calculatorAgent.js';
+import { runCalculatorExample, runConcurrentCalculators } from './index.js';
 
 async function main() {
   try {

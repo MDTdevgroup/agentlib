@@ -1,22 +1,17 @@
 import OpenAI from 'openai';
-import { config } from 'dotenv';
-import path from "path";
-import { fileURLToPath } from "url";
 import { zodTextFormat } from "openai/helpers/zod";
-import { z } from "zod";
 import { defaultModel } from "../config.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const envPath = path.resolve(__dirname, '../../.env');
-config({ path: envPath });
+// Factory function to create client
+export function createClient(apiKey) {
+    return new OpenAI({ apiKey });
+}
 
-const openAIClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-export async function chat(input, { inputSchema, outputSchema, ...options }) {
-    const defaultOptions = {model: defaultModel};
+// Now accepts the client as first parameter
+export async function chat(client, input, { inputSchema, outputSchema, ...options }) {
+    const defaultOptions = { model: defaultModel };
     const finalOptions = { ...defaultOptions, ...options };
 
-    // Validate input with Zod
     if (inputSchema) {
         input = inputSchema.parse(input);
     }
@@ -24,7 +19,7 @@ export async function chat(input, { inputSchema, outputSchema, ...options }) {
     try {
         let response;
         if (outputSchema) {
-            response = await openAIClient.responses.parse({
+            response = await client.responses.parse({
                 input: input,
                 text: { 
                     format: zodTextFormat(outputSchema, "output") 
@@ -32,7 +27,7 @@ export async function chat(input, { inputSchema, outputSchema, ...options }) {
                 ...finalOptions,
             });
         } else {
-            response = await openAIClient.responses.create({
+            response = await client.responses.create({
                 input: input,
                 ...finalOptions,
             });

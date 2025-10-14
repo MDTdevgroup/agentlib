@@ -1,4 +1,6 @@
 import { Agent } from '../../src/Agent.js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 
 const server = {
     command: 'npx',
@@ -10,7 +12,7 @@ const server = {
 async function run() {
   try {
     // Set up an agent with multiple MCP servers
-    const agent = new Agent({ 
+    const agent = new Agent('openai', process.env.OPENAI_API_KEY, { 
       model: 'gpt-4o-mini',
       enableMCP: true 
     });

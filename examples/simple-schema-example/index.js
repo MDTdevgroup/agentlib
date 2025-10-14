@@ -1,4 +1,6 @@
 import { Agent } from '../../src/Agent.js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 import { z } from 'zod';
 
 const server = {
@@ -20,7 +22,7 @@ async function runSimpleSchemaExample() {
   console.log('This demonstrates how to get structured JSON responses from an LLM.\n');
 
   // Create agent with output schema - this ensures responses follow the defined structure
-  const agent = new Agent({
+  const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
     outputSchema: PersonalityAnalysis,  // The LLM will be forced to respond in this format
     enableMCP: true

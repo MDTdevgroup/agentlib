@@ -1,6 +1,5 @@
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
-import { LLMService } from "../../src/llmService.js";
 
 export async function initDB(dbPath = "./chinook.db") {
   const db = await open({

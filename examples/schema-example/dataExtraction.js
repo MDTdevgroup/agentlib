@@ -1,4 +1,6 @@
 import { Agent } from '../../src/Agent.js';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 import { z } from 'zod';
 
 // Define input schema for research paper text
@@ -35,7 +37,7 @@ const ModerationInput = z.object({
 async function runDataExtractionExample() {
   console.log('Research Paper Data Extraction Example\n');
 
-  const agent = new Agent({
+  const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
     inputSchema: ResearchPaperInput,
     outputSchema: ResearchPaperExtraction
@@ -119,7 +121,7 @@ async function runDataExtractionExample() {
 async function runModerationExample() {
   console.log('Content Moderation Example\n');
 
-  const agent = new Agent({
+  const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
     inputSchema: ModerationInput,
     outputSchema: ContentCompliance
@@ -189,7 +191,7 @@ async function runModerationExample() {
 async function demonstrateInputValidation() {
   console.log('Input Validation Examples\n');
 
-  const agent = new Agent({
+  const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
     inputSchema: ResearchPaperInput,
     outputSchema: ResearchPaperExtraction
