@@ -17,13 +17,12 @@ const UIComponent = z.lazy(() => z.object({
 
 // Input schema for UI generation requests
 const UIGenerationInput = z.object({
-  description: z.string().describe("Description of the UI to generate"),
-  style: z.enum(['modern', 'classic', 'minimal', 'bootstrap']).optional().describe("UI style preference"),
-  components: z.array(z.string()).optional().describe("Specific components to include")
+  role: z.string(),
+  content: z.string(),
 });
 
 async function runUIGenerationExample() {
-  console.log('🎨 UI Generation with Structured Outputs Example\n');
+  console.log('UI Generation with Structured Outputs Example\n');
 
   const agent = new Agent({
     model: 'gpt-4o-mini',
@@ -49,10 +48,10 @@ async function runUIGenerationExample() {
   ];
 
   for (const request of uiRequests) {
-    console.log(`🎯 Request: ${request.description}`);
-    console.log(`🎨 Style: ${request.style || 'default'}`);
+    console.log(`Request: ${request.description}`);
+    console.log(`Style: ${request.style || 'default'}`);
     if (request.components) {
-      console.log(`🧩 Components: ${request.components.join(', ')}`);
+      console.log(`Components: ${request.components.join(', ')}`);
     }
     console.log();
 
@@ -69,45 +68,45 @@ async function runUIGenerationExample() {
     try {
       const result = await agent.run();
       
-      console.log('📊 Generation Results:');
+      console.log('Generation Results:');
       console.log('Status:', result.status);
       console.log('Model:', result.model);
       console.log('Tokens:', result.usage.total_tokens);
       console.log();
 
-      const responseText = result.output_text;
-      console.log('🏗️ Generated UI Structure:');
+      const responseText = result.output_parsed;
+      console.log('Generated UI Structure:');
       console.log(responseText);
       console.log();
 
       // Parse and render the UI structure
       try {
-        const uiStructure = JSON.parse(responseText);
+        const uiStructure = responseText;
         
-        console.log('🔍 UI Component Analysis:');
+        console.log('UI Component Analysis:');
         analyzeUIComponent(uiStructure, 0);
         
-        console.log('\n📝 HTML Preview:');
+        console.log('\nHTML Preview:');
         const htmlPreview = renderUIToHTML(uiStructure);
         console.log(htmlPreview);
         
       } catch (parseError) {
-        console.log('⚠️  Could not parse UI structure:', parseError.message);
+        console.log('Could not parse UI structure:', parseError.message);
       }
 
     } catch (error) {
-      console.error('❌ UI Generation Error:', error.message);
+      console.error('UI Generation Error:', error.message);
     }
 
     console.log('\n' + '='.repeat(60) + '\n');
-    agent.clearInputs();
+    agent.cleanup();
   }
 }
 
 // Helper function to analyze UI component structure
 function analyzeUIComponent(component, depth = 0) {
   const indent = '  '.repeat(depth);
-  console.log(`${indent}📦 ${component.type}: "${component.label}"`);
+  console.log(`${indent}${component.type}: "${component.label}"`);
   
   if (component.attributes && component.attributes.length > 0) {
     console.log(`${indent}   Attributes: ${component.attributes.map(attr => `${attr.name}="${attr.value}"`).join(', ')}`);
@@ -158,7 +157,7 @@ function renderUIToHTML(component, depth = 0) {
 }
 
 async function demonstrateComplexUI() {
-  console.log('🏗️ Complex UI Generation Example\n');
+  console.log('Complex UI Generation Example\n');
 
   const agent = new Agent({
     model: 'gpt-4o-mini',
@@ -172,7 +171,7 @@ async function demonstrateComplexUI() {
     components: ["header", "div", "section", "button"]
   };
 
-  console.log(`🎯 Complex Request: ${complexRequest.description}`);
+  console.log(`Complex Request: ${complexRequest.description}`);
   console.log();
 
   agent.addInput({
@@ -188,20 +187,20 @@ async function demonstrateComplexUI() {
   try {
     const result = await agent.run();
     
-    console.log('📊 Complex UI Results:');
+    console.log('Complex UI Results:');
     console.log('Status:', result.status);
     console.log('Tokens used:', result.usage.total_tokens);
     console.log();
 
-    const responseText = result.output_text;
+    const responseText = result.output_parsed;
     
     try {
-      const uiStructure = JSON.parse(responseText);
+      const uiStructure = responseText;
       
-      console.log('🏗️ Dashboard Structure Analysis:');
+      console.log('Dashboard Structure Analysis:');
       analyzeUIComponent(uiStructure, 0);
       
-      console.log('\n📊 Component Statistics:');
+      console.log('\nComponent Statistics:');
       const stats = getUIStats(uiStructure);
       console.log(`Total components: ${stats.totalComponents}`);
       console.log(`Component types: ${Object.entries(stats.componentTypes).map(([type, count]) => `${type}(${count})`).join(', ')}`);
@@ -209,12 +208,12 @@ async function demonstrateComplexUI() {
       console.log(`Total attributes: ${stats.totalAttributes}`);
       
     } catch (parseError) {
-      console.log('⚠️  Could not parse complex UI structure:', parseError.message);
+      console.log('Could not parse complex UI structure:', parseError.message);
       console.log('Raw response:', responseText.substring(0, 200) + '...');
     }
 
   } catch (error) {
-    console.error('❌ Complex UI Generation Error:', error.message);
+    console.error('Complex UI Generation Error:', error.message);
   }
 }
 

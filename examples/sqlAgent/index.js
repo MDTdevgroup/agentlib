@@ -114,14 +114,14 @@ async function main() {
       } else {
         // No more function calls, process the structured output
         try {
-          const parsedOutput = JSON.parse(step.output_text);
+          const parsedOutput = step.output_parsed;
           console.log("\n=== SQL Query Results ===");
           console.log("Raw Output:", JSON.stringify(parsedOutput.sql_output, null, 2));
           console.log("\n=== Analysis & Summary ===");
           console.log(parsedOutput.explanation_summary);
           console.log("--------------------------------\n");
         } catch (error) {
-          console.log("Final Answer:", step.output_text);
+          console.log("Final Answer:", step.output_parsed);
           console.log("--------------------------------\n");
         }
         break;

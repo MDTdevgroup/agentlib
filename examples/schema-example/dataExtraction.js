@@ -33,7 +33,7 @@ const ModerationInput = z.object({
 });
 
 async function runDataExtractionExample() {
-  console.log('📄 Research Paper Data Extraction Example\n');
+  console.log('Research Paper Data Extraction Example\n');
 
   const agent = new Agent({
     model: 'gpt-4o-mini',
@@ -75,51 +75,49 @@ async function runDataExtractionExample() {
   try {
     const result = await agent.run();
     
-    console.log('📊 Extraction Results:');
+    console.log('Extraction Results:');
     console.log('Status:', result.status);
     console.log('Model:', result.model);
     console.log('Tokens used:', result.usage.total_tokens);
     console.log();
 
-    const responseText = result.output_text;
-    console.log('📝 Structured Extraction:');
+    const responseText = result.output_parsed;
+    console.log('Structured Extraction:');
     console.log(responseText);
     console.log();
 
-    // Parse and display structured data
-    try {
-      const extractedData = JSON.parse(responseText);
+    // Display structured data
+    try {    
+      console.log('Parsed Research Data:');
+      console.log(`Title: ${responseText.title}`);
+      console.log(`Authors: ${responseText.authors.join(', ')}`);
+      console.log(`Keywords (${responseText.keywords.length}): ${responseText.keywords.join(', ')}`);
+      console.log(`Abstract: ${responseText.abstract.substring(0, 100)}...`);
       
-      console.log('🔍 Parsed Research Data:');
-      console.log(`Title: ${extractedData.title}`);
-      console.log(`Authors: ${extractedData.authors.join(', ')}`);
-      console.log(`Keywords (${extractedData.keywords.length}): ${extractedData.keywords.join(', ')}`);
-      console.log(`Abstract: ${extractedData.abstract.substring(0, 100)}...`);
-      
-      if (extractedData.methodology) {
-        console.log(`Methodology: ${extractedData.methodology}`);
+      if (responseText.methodology) {
+        console.log(`Methodology: ${responseText.methodology}`);
       }
       
-      if (extractedData.conclusions) {
+      if (responseText.conclusions) {
         console.log('Conclusions:');
-        extractedData.conclusions.forEach((conclusion, index) => {
+        responseText.conclusions.forEach((conclusion, index) => {
           console.log(`  ${index + 1}. ${conclusion}`);
         });
       }
       
     } catch (parseError) {
-      console.log('⚠️  Could not parse response as JSON:', parseError.message);
+      console.log('Could not parse response as JSON:', parseError.message);
     }
 
   } catch (error) {
-    console.error('❌ Extraction Error:', error.message);
+    console.error('Extraction Error:', error.message);
   }
 
   console.log('\n' + '='.repeat(60) + '\n');
 }
 
 async function runModerationExample() {
-  console.log('🛡️ Content Moderation Example\n');
+  console.log('Content Moderation Example\n');
 
   const agent = new Agent({
     model: 'gpt-4o-mini',
@@ -143,8 +141,8 @@ async function runModerationExample() {
   ];
 
   for (const testContent of testContents) {
-    console.log(`📝 Moderating: "${testContent.content}"`);
-    console.log(`🔍 Context: ${testContent.context}\n`);
+    console.log(`Moderating: "${testContent.content}"`);
+    console.log(`Context: ${testContent.context}\n`);
 
     agent.addInput({
       role: 'system',
@@ -158,31 +156,29 @@ async function runModerationExample() {
 
     try {
       const result = await agent.run();
-      const responseText = result.output_text;
+      const responseText = result.output_parsed;
       
-      console.log('🛡️ Moderation Result:');
+      console.log('Moderation Result:');
       console.log(responseText);
       console.log();
 
       // Parse moderation results
       try {
-        const moderation = JSON.parse(responseText);
+        console.log('Moderation Analysis:');
+        console.log(`Violating: ${responseText.is_violating ? 'YES' : 'NO'}`);
+        console.log(`Category: ${responseText.category}`);
+        console.log(`Confidence: ${(responseText.confidence_score * 100).toFixed(1)}%`);
         
-        console.log('📊 Moderation Analysis:');
-        console.log(`Violating: ${moderation.is_violating ? '❌ YES' : '✅ NO'}`);
-        console.log(`Category: ${moderation.category}`);
-        console.log(`Confidence: ${(moderation.confidence_score * 100).toFixed(1)}%`);
-        
-        if (moderation.explanation_if_violating) {
-          console.log(`Explanation: ${moderation.explanation_if_violating}`);
+        if (responseText.explanation_if_violating) {
+          console.log(`Explanation: ${responseText.explanation_if_violating}`);
         }
         
       } catch (parseError) {
-        console.log('⚠️  Could not parse moderation response:', parseError.message);
+        console.log('Could not parse moderation response:', parseError.message);
       }
 
     } catch (error) {
-      console.error('❌ Moderation Error:', error.message);
+      console.error('Moderation Error:', error.message);
     }
 
     console.log('\n' + '-'.repeat(40) + '\n');
@@ -191,7 +187,7 @@ async function runModerationExample() {
 }
 
 async function demonstrateInputValidation() {
-  console.log('✅ Input Validation Examples\n');
+  console.log('Input Validation Examples\n');
 
   const agent = new Agent({
     model: 'gpt-4o-mini',
@@ -225,7 +221,7 @@ async function demonstrateInputValidation() {
   ];
 
   for (const testCase of testInputs) {
-    console.log(`🧪 Testing: ${testCase.name}`);
+    console.log(`Testing: ${testCase.name}`);
     
     try {
       // The input validation happens in the LLM service
@@ -240,11 +236,11 @@ async function demonstrateInputValidation() {
       });
 
       const result = await agent.run();
-      console.log(`✅ ${testCase.name}: Passed validation`);
+      console.log(`${testCase.name}: Passed validation`);
       console.log(`Response status: ${result.status}`);
       
     } catch (error) {
-      console.log(`❌ ${testCase.name}: ${error.message}`);
+      console.log(`${testCase.name}: ${error.message}`);
     }
 
     console.log();

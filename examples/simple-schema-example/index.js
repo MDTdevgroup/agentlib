@@ -16,7 +16,7 @@ const PersonalityAnalysis = z.object({
 });
 
 async function runSimpleSchemaExample() {
-  console.log('🎯 Simple Output Schema Example\n');
+  console.log('Simple Output Schema Example\n');
   console.log('This demonstrates how to get structured JSON responses from an LLM.\n');
 
   // Create agent with output schema - this ensures responses follow the defined structure
@@ -43,30 +43,30 @@ async function runSimpleSchemaExample() {
   });
 
   try {
-    console.log('🔄 Sending request to LLM...\n');
+    console.log('Sending request to LLM...\n');
     
     const result = await agent.run();
     
     // The output_text will be structured JSON matching our schema
-    console.log('📝 Raw Response:');
+    console.log('Raw Response:');
     console.log(result.output_parsed);
     console.log();
 
     // Parse and display the structured data
     const analysis = JSON.parse(result.output_text);
     
-    console.log('✨ Structured Analysis:');
-    console.log(`📊 Confidence: ${analysis.confidence}%`);
-    console.log('🏷️  Traits:');
+    console.log('Structured Analysis:');
+    console.log(`Confidence: ${analysis.confidence}%`);
+    console.log('Traits:');
     analysis.traits.forEach((trait, index) => {
       console.log(`   ${index + 1}. ${trait}`);
     });
-    console.log(`📄 Summary: ${analysis.summary}`);
+    console.log(`Summary: ${analysis.summary}`);
     
-    console.log('\n✅ Schema validation passed - response matches expected structure!');
+    console.log('\nSchema validation passed - response matches expected structure!');
 
   } catch (error) {
-    console.error('❌ Error:', error.message);
+    console.error('Error:', error.message);
   }
 }
 

@@ -21,9 +21,6 @@ export async function chat(input, { inputSchema, outputSchema, ...options }) {
         input = inputSchema.parse(input);
     }
 
-    console.log("output schema: ", outputSchema);
-    console.log("schema text formatted: ", zodTextFormat(outputSchema, "output"));
-
     try {
         let response;
         if (outputSchema) {

@@ -61,6 +61,6 @@ while (true) {
     if (response.type === "function_call") {
       console.log("Tool result:", response.result);
     } else {
-      console.log("Agent:", response.content.output_text);
+      console.log("Agent:", response.output_text);
     }
   }

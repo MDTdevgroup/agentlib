@@ -153,7 +153,7 @@ export async function runCalculatorExample() {
 }
 
 // Example of running multiple agents concurrently
-export async function runConcurrentCalculators() {
+export async function run() {
   console.log("Running Multiple Calculator Agents Concurrently");
   console.log("==================================================\n");
 
@@ -205,5 +205,5 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   console.log("\n" + "=".repeat(50) + "\n");
   
   // Run concurrent examples
-  await runConcurrentCalculators();
+  await run();
 }

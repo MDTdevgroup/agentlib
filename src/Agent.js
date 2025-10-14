@@ -17,8 +17,8 @@ export class Agent {
   async addMCPServer(serverName, config) {
     if (!this.mcpManager) {
       throw new Error("MCP is not enabled for this agent");
-    }
-    
+    } 
+
     const result = await this.mcpManager.addServer(serverName, config);
     this.updateSystemPrompt();
     return result;
@@ -26,7 +26,7 @@ export class Agent {
 
   async removeMCPServer(serverName) {
     if (!this.mcpManager) return false;
-    
+
     const result = await this.mcpManager.removeServer(serverName);
     if (result) this.updateSystemPrompt();
     return result;
@@ -47,8 +47,8 @@ export class Agent {
     this.input = [{
       role: 'system',
       content: 'You are a tool-calling agent. You have access to the following tools: ' +
-        allTools.map(tool => `${tool.name}: ${tool.description}`).join('; ') +
-        '. Use these tools to answer the user\'s questions.'
+      allTools.map(tool => `${tool.name}: ${tool.description}`).join('; ') +
+      '. Use these tools to answer the user\'s questions.'
     }];
   }
 
@@ -59,7 +59,7 @@ export class Agent {
     this.input.push(input);
   }
 
-   /**
+  /**
    * Run the agent for a single step
    */
   async run() {
@@ -72,14 +72,23 @@ export class Agent {
       tools: allTools,
     });
 
-     // Step 2: Add the response (including function calls) to input history
-     this.input = this.input.concat(response.output);
+    // Step 2: Clean and add the response to input history
+    // Remove parsed_arguments (if it exists) from function calls before adding to history
+    const cleanedOutput = response.output.map(item => {
+      if (item.type === "function_call" && item.parsed_arguments) {
+        const { parsed_arguments, ...cleanItem } = item;
+        return cleanItem;
+      }
+      return item;
+    });
+      
+    this.input = this.input.concat(cleanedOutput);
 
-     // Step 3: collect all function calls
-     const functionCalls = response.output.filter(item => item.type === "function_call");
+    // Step 3: collect all function calls
+    const functionCalls = response.output.filter(item => item.type === "function_call");
 
-     if (functionCalls.length > 0) {
-       for (const call of functionCalls) {
+    if (functionCalls.length > 0) {
+      for (const call of functionCalls) {
         let args;
         try {
           args = JSON.parse(call.arguments);
@@ -111,17 +120,6 @@ export class Agent {
         outputSchema: this.outputSchema,
       });
     }
-
-    if (this.outputSchema) {
-      try {
-        this.outputSchema.parse(response.output_text);
-      } catch (error) {
-        if(error instanceof z.ZodError){
-          console.error("Invalid output schema:", error.issues);
-        }
-      }
-    }
-
     return response;
   }
 

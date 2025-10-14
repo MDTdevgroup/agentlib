@@ -44,33 +44,33 @@ function runExample(exampleFile) {
 }
 
 async function runAllExamples() {
-  console.log('🚀 AgentLib Schema Examples\n');
+  console.log('AgentLib Schema Examples\n');
   console.log('This demonstrates input and output schemas with structured LLM responses.\n');
   
   for (let i = 0; i < examples.length; i++) {
     const example = examples[i];
     
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`📋 Example ${i + 1}/${examples.length}: ${example.name}`);
-    console.log(`📝 ${example.description}`);
-    console.log(`📁 File: ${example.file}`);
+    console.log(`Example ${i + 1}/${examples.length}: ${example.name}`);
+    console.log(`${example.description}`);
+    console.log(`File: ${example.file}`);
     console.log('='.repeat(60));
     
     try {
       await runExample(example.file);
-      console.log(`\n✅ ${example.name} completed successfully!`);
+      console.log(`\n${example.name} completed successfully!`);
     } catch (error) {
-      console.error(`\n❌ ${example.name} failed:`, error.message);
+      console.error(`\n${example.name} failed:`, error.message);
     }
     
     if (i < examples.length - 1) {
-      console.log('\n⏳ Continuing to next example in 2 seconds...');
+      console.log('\nContinuing to next example in 2 seconds...');
       await new Promise(resolve => setTimeout(resolve, 2000));
     }
   }
   
-  console.log('\n🎉 All schema examples completed!');
-  console.log('\n📚 Learn more:');
+  console.log('\nAll schema examples completed!');
+  console.log('\nLearn more:');
   console.log('- Read the README.md in this directory');
   console.log('- Check out the OpenAI Structured Outputs documentation');
   console.log('- Explore other AgentLib examples in the examples/ directory');
@@ -80,7 +80,7 @@ async function runSingleExample() {
   const exampleName = process.argv[2];
   
   if (!exampleName) {
-    console.log('🔍 Available examples:');
+    console.log('Available examples:');
     examples.forEach((example, index) => {
       console.log(`  ${index + 1}. ${example.name.toLowerCase().replace(' ', '-')} - ${example.description}`);
     });
@@ -99,22 +99,22 @@ async function runSingleExample() {
   );
   
   if (!example) {
-    console.error(`❌ Example '${exampleName}' not found.`);
-    console.log('\n🔍 Available examples:');
+    console.error(`Example '${exampleName}' not found.`);
+    console.log('\nAvailable examples:');
     examples.forEach(ex => {
       console.log(`  - ${ex.name.toLowerCase().replace(' ', '-')}`);
     });
     process.exit(1);
   }
   
-  console.log(`🚀 Running ${example.name} Example\n`);
-  console.log(`📝 ${example.description}\n`);
+  console.log(`Running ${example.name} Example\n`);
+  console.log(`${example.description}\n`);
   
   try {
     await runExample(example.file);
-    console.log(`\n✅ ${example.name} completed successfully!`);
+    console.log(`\n${example.name} completed successfully!`);
   } catch (error) {
-    console.error(`\n❌ ${example.name} failed:`, error.message);
+    console.error(`\n${example.name} failed:`, error.message);
     process.exit(1);
   }
 }

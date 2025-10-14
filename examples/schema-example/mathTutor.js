@@ -15,12 +15,12 @@ const MathReasoning = z.object({
 
 // Define input schema for math problems
 const MathProblemInput = z.object({
-  problem: z.string().describe("The math problem to solve"),
-  difficulty: z.enum(['easy', 'medium', 'hard']).optional().describe("Difficulty level of the problem")
+  role: z.string(),
+  content: z.string()
 });
 
 async function runMathTutorExample() {
-  console.log('🧮 Math Tutor with Structured Input/Output Example\n');
+  console.log('Math Tutor with Structured Input/Output Example\n');
 
   // Create agent with both input and output schemas
   const agent = new Agent({
@@ -46,8 +46,8 @@ async function runMathTutorExample() {
   ];
 
   for (const problemData of mathProblems) {
-    console.log(`📝 Problem: ${problemData.problem}`);
-    console.log(`🎯 Difficulty: ${problemData.difficulty}\n`);
+    console.log(`Problem: ${problemData.problem}`);
+    console.log(`Difficulty: ${problemData.difficulty}\n`);
 
     // Add system message for math tutoring
     agent.addInput({
@@ -64,48 +64,46 @@ async function runMathTutorExample() {
     try {
       const result = await agent.run();
       
-      console.log('📊 Raw LLM Response Structure:');
+      console.log('Raw LLM Response Structure:');
       console.log('- Status:', result.status);
       console.log('- Model:', result.model);
       console.log('- Usage:', result.usage);
       console.log();
 
       // Access the structured response text
-      const responseText = result.output_text;
-      console.log('📝 Structured Response:');
+      const responseText = result.output_parsed;
+      console.log('Structured Response:');
       console.log(responseText);
       console.log();
 
       // Parse the JSON response to work with structured data
       try {
-        const parsedResponse = JSON.parse(responseText);
-        
-        console.log('🔍 Parsed Structured Data:');
-        console.log('Steps taken:', parsedResponse.steps.length);
-        parsedResponse.steps.forEach((step, index) => {
+        console.log('Parsed Structured Data:');
+        console.log('Steps taken:', responseText.steps.length);
+        responseText.steps.forEach((step, index) => {
           console.log(`  Step ${index + 1}: ${step.explanation}`);
           console.log(`    Result: ${step.output}`);
         });
-        console.log(`Final Answer: ${parsedResponse.final_answer}`);
+        console.log(`Final Answer: ${responseText.final_answer}`);
         
       } catch (parseError) {
-        console.log('⚠️  Could not parse response as JSON:', parseError.message);
+        console.log('Could not parse response as JSON:', parseError.message);
       }
 
     } catch (error) {
-      console.error('❌ Error:', error.message);
+      console.error('Error:', error.message);
     }
 
     console.log('\n' + '='.repeat(60) + '\n');
     
     // Clear inputs for next problem
-    agent.clearInputs();
+    agent.cleanup();
   }
 }
 
 // Handle edge cases and errors
 async function demonstrateErrorHandling() {
-  console.log('🚨 Error Handling Examples\n');
+  console.log('Error Handling Examples\n');
 
   const agent = new Agent({
     model: 'gpt-4o-mini',
@@ -129,10 +127,10 @@ async function demonstrateErrorHandling() {
     });
 
     const result = await agent.run();
-    console.log('✅ Handled gracefully:', result.status);
+    console.log('Handled gracefully:', result.status);
     
   } catch (error) {
-    console.log('⚠️  Input validation or processing error:', error.message);
+    console.log('Input validation or processing error:', error.message);
   }
 
   console.log('\n' + '='.repeat(60) + '\n');
