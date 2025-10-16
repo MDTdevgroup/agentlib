@@ -1,4 +1,4 @@
-import { LLMService } from 'agentlib';
+import { LLMService } from 'peebles-agentlib';  
 import dotenv from 'dotenv';
 dotenv.config({ path: '../.env' });
 

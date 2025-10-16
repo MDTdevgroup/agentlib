@@ -1,5 +1,5 @@
 {
-  "name": "agentlib",
+  "name": "peebles-agentlib",
   "version": "1.0.0",
   "description": "A lightweight Node.js library for building AI agents with LLM providers and MCP (Model Context Protocol) server integration.",
   "main": "index.js",
@@ -17,6 +17,7 @@
     "js-yaml": "^4.1.0",
     "mongodb": "^6.20.0",
     "openai": "^5.16.0",
+    "peebles-agentlib": "^1.0.0",
     "playwright": "^1.55.0",
     "prompt-sync": "^4.2.0",
     "sqlite": "^5.1.1",
