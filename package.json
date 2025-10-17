@@ -13,6 +13,9 @@
   "dependencies": {
     "@google/genai": "^1.16.0",
     "@modelcontextprotocol/sdk": "^1.18.2",
+    "openai": "^6.0.0"
+  },
+  "devDependencies": {
     "dotenv": "^16.6.1",
     "js-yaml": "^4.1.0",
     "mongodb": "^6.20.0",
@@ -23,5 +26,11 @@
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
     "zod": "^3.25.76"
-  }
+  },
+  "files": [
+    "index.js",
+    "src/",
+    "README.md",
+    "LICENSE"
+  ]
 }
