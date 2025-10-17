@@ -43,53 +43,68 @@ async function queryResults(userQuery) {
     });
   
     const queryVector = queryEmbedding.data[0].embedding;
-  
-    // Step 2: Use Atlas Vector Search to find most similar chunks
+
     const pipeline = [
         {
-            $vectorSearch: {
-                index: "vector_index",   // Name of the MongoDB Vector Search index to use.
-                path: "chunks.embedding",   // Path to the vector field in the collection.          
-                queryVector: queryVector,   // The vector to search for.
-                numCandidates: NUM_CANDIDATES,  // This controls how many vectors MongoDB initially considers before returning the top results.          
-                limit: LIMIT // This returns the top n results from the set of candidates chosen.                   
-            }
+           $scoreFusion: {
+              input: {
+                 pipelines: {
+                    searchOne: [
+                       {
+                          "$vectorSearch": {
+                             "index": "hybrid-vector-search",
+                             "path": "chunks.embedding",
+                             "queryVector": queryVector,
+                             "numCandidates": NUM_CANDIDATES,
+                             "limit": LIMIT
+                          }
+                       }
+                    ],
+                    searchTwo: [
+                       {
+                          "$search": {
+                             "index": "hybrid-full-text-search",
+                             "text": {
+                                "query": userQuery,   
+                                "path": ["title", "content"]
+                             }
+                          }
+                       },
+                    ]
+                 },
+                 normalization: "sigmoid"
+              },
+              combination: {
+                 method: "expression",
+                 expression: {
+                    $sum: [
+                      {$multiply: [ "$$searchOne", 10]}, "$$searchTwo"
+                    ]
+                 }
+              },
+              "scoreDetails": true
+           }
         },
         {
-            // 1. Project the required fields and capture the vector search score (only 1 score per document, for the best-matched chunk)
-            $project: {
-                title: 1,
-                chunks: 1,
-                score: { $meta: "vectorSearchScore" }
-            }
+           "$project": {
+              _id: 1,
+              title: 1,
+              content: 1,
+              chunks: 1,
+              scoreDetails: {"$meta": "scoreDetails"}
+           }
         },
-        {
-            // 2. Break down the document into individual results, one for each chunk
-            $unwind: "$chunks" 
-        },
-        {
-            // 3. Project the final, clean fields for RAG context
-            $project: {
-                _id: 0,
-                title: "$title",
-                text: "$chunks.text",
-                score: "$score"
-            }
-        },
-        {
-            // 4. Limit the final results to the top N chunks overall (e.g., top 3 chunks)
-            $limit: 3
-        }
-    ];
+        { $limit: 10 }
+     ]
 
     const results = await collection.aggregate(pipeline).toArray();
 
     // Step 3: Format results into a single string for the RAG agent
     console.log("Top results:");
     const context = results.map(r => {
-        console.log(`\n[${r.title}] (score: ${r.score.toFixed(3)})`);
-        console.log(r.text);
-        return `Document: ${r.title}\nChunk: ${r.text}`;
+        console.log(`\n[${r.title}]`);
+        console.log(r.content);  
+        return `Document: ${r.title}\nContent: ${r.content}`;
     }).join('\n---\n');
 
     await client.close();

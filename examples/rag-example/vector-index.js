@@ -1,36 +1,49 @@
 import { MONGODB_URI } from './config.js'; 
 import { MongoClient } from "mongodb";
 
-// connect to your Atlas deployment
+// connect to Atlas deployment
 
 const client = new MongoClient(MONGODB_URI);
 
 async function run() {
-   try {
-     const database = client.db("agentlib");
-     const collection = database.collection("documents");
+  try {
+    const database = client.db("agentlib");
+    const collection = database.collection("documents");
 
     
-     // define your MongoDB Vector Search index
-     const index = {
-         name: "vector_index",
-         type: "vectorSearch",
-         definition: {
-           "fields": [
-             {
-               "type": "vector",
-               "numDimensions": 1536,
-               "path": "chunks.embedding",
-               "similarity": "dotProduct",
-               "quantization": "scalar"
-             }
-           ]
-         }
-     }
+    // define MongoDB Hybrid Search index
+    const vectorSearchIndex = {
+      name: "hybrid_vector_index",
+      type: "vectorSearch",
+      definition: {
+        "fields": [
+          {
+            "type": "vector",
+            "numDimensions": 1536,
+            "path": "chunks.embedding",
+            "similarity": "dotProduct",
+            "quantization": "scalar"
+          }
+        ]
+      }
+    }
+
+    const searchIndex = {
+      name: "hybrid-full-text-search",
+      type: "search",
+      definition: {
+        "mappings": {
+          "dynamic": true
+        }
+      }
+    }
 
      // run the helper method
-     const result = await collection.createSearchIndex(index);
+     const result = await collection.createSearchIndex(vectorSearchIndex);
      console.log(`New search index named ${result} is building.`);
+
+     const result2 = await collection.createSearchIndex(searchIndex);
+     console.log(`New search index named ${result2} is building.`);
 
      // wait for the index to be ready to query
      console.log("Polling to check if the index is ready. This may take up to a minute.")

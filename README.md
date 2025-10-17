@@ -2,27 +2,27 @@
 
 A lightweight Node.js library for building AI agents with LLM providers and MCP (Model Context Protocol) server integration.
 
+## Installation
+
+```bash
+npm install peebles-agentlib
+```
+
 ## Quick Start
 
-1. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-2. **Add API keys**
+1. **Set up API keys**
    ```bash
    # Create .env file
    OPENAI_API_KEY=your_openai_key
    GEMINI_API_KEY=your_gemini_key
    ```
 
-3. **Run examples**
+2. **Create a new project**
    ```bash
-   # Simple agent
-   node examples/simpleAgent/index.js
-   
-   # MCP integration (browser automation, file ops, search)
-   node examples/mcp-example/main.js
+   mkdir my-agent-project
+   cd my-agent-project
+   npm init -y
+   npm install peebles-agentlib dotenv
    ```
 
 ## Features
@@ -36,23 +36,22 @@ A lightweight Node.js library for building AI agents with LLM providers and MCP 
 ## Basic Usage
 
 ```javascript
-import { Agent } from './src/Agent.js';
+import { Agent } from 'peebles-agentlib';
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Simple agent
-const agent = new Agent({ model: 'gpt-4o-mini' });
+const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
+  model: 'gpt-4o-mini'
+});
 agent.addInput({ role: 'user', content: 'Hello!' });
 const response = await agent.run();
+console.log(response.output_text);
 
 // Agent with MCP servers (auto-installs packages)
-const mcpAgent = new Agent({ 
+const mcpAgent = new Agent('openai', process.env.OPENAI_API_KEY, { 
   model: 'gpt-4o-mini', 
   enableMCP: true 
-});
-
-await mcpAgent.addMCPServer('filesystem', {
-  type: 'stdio',
-  command: 'npx',
-  args: ['-y', '@modelcontextprotocol/server-filesystem', process.cwd()]
 });
 
 await mcpAgent.addMCPServer('browser', {
@@ -67,7 +66,10 @@ await mcpAgent.addMCPServer('browser', {
 AgentLib supports type-safe structured outputs using Zod schemas for reliable JSON responses.
 
 ```javascript
+import { Agent } from 'peebles-agentlib';
 import { z } from 'zod';
+import dotenv from 'dotenv';
+dotenv.config();
 
 // Define schema with Zod
 const ResponseSchema = z.object({
@@ -76,15 +78,17 @@ const ResponseSchema = z.object({
   sources: z.array(z.string())
 });
 
-const agent = new Agent({
+const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
   model: 'gpt-4o-mini',
   outputSchema: ResponseSchema  // Pass Zod object directly
 });
 
+agent.addInput({ role: 'user', content: 'What is the capital of France?' });
 const result = await agent.run();
 
 // Access structured data from the result
-const text = result.output_text;    // Raw text response
+const parsedData = result.output_parsed;  // Structured data when schema is used
+const text = result.output_text;          // Raw text response
 ```
 
 **Key Points:**
@@ -95,21 +99,52 @@ const text = result.output_text;    // Raw text response
 
 ## Examples
 
-- **`examples/simpleAgent/`** - Basic agent usage
+The repository includes several development examples that demonstrate different features:
+
+- **`examples/simpleAgent/`** - Basic agent usage with tools
 - **`examples/mcp-example/`** - Full MCP integration demo  
 - **`examples/translatorExample/`** - Multi-agent orchestration
 - **`examples/sqlAgent/`** - Database operations
+- **`examples/schema-example/`** - Structured input/output with Zod schemas
+- **`examples/rag-example/`** - Agentic RAG example with mongodb hybrid search
+
+**Note:** These examples use relative imports for development. In your projects, use the npm package:
+
+```javascript
+// In your project
+import { Agent } from 'peebles-agentlib';
+
+// Instead of (development only)
+import { Agent } from './src/Agent.js';
+```
 
 ## API Reference
 
-### Agent
+### Agent Constructor
 ```javascript
-const agent = new Agent({
-  model: 'gpt-4o-mini',        // LLM model
-  tools: [],                   // Native function tools
-  enableMCP: true,             // Enable MCP servers
-  inputSchema: zodSchema,      // Input validation (Zod object)
-  outputSchema: zodSchema      // Output validation (Zod object)
+const agent = new Agent(provider, apiKey, options);
+```
+
+**Parameters:**
+- `provider` (string): LLM provider name ('openai', 'gemini')
+- `apiKey` (string): API key for the provider
+- `options` (object): Configuration options
+  - `model` (string): LLM model name (default: 'gpt-4o-mini')
+  - `tools` (array): Native function tools
+  - `enableMCP` (boolean): Enable MCP servers
+  - `inputSchema` (Zod object): Input validation schema
+  - `outputSchema` (Zod object): Output validation schema
+
+**Example:**
+```javascript
+import { Agent } from 'peebles-agentlib';
+
+const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
+  model: 'gpt-4o-mini',
+  tools: [],
+  enableMCP: true,
+  inputSchema: zodSchema,
+  outputSchema: zodSchema
 });
 ```
 
@@ -187,6 +222,7 @@ When calling an LLM, the result object has the following structure:
 
 **Key Fields:**
 - `output_text` - The actual response text
+- `output_parsed` - Response ONLY WHEN OUTPUT SCHEMA IS PRESENT
 - `usage` - Token consumption details
 - `model` - The model used for the response
 - `status` - Response status ("completed", "failed", etc.)
