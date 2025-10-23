@@ -1,6 +1,6 @@
 {
   "name": "@peebles-group/agentlib-js",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "A minimal JavaScript library implementing concurrent async agents for illustrating multi-agent systems and other agentic design patterns including recursive ones purely through function calling loops.",
   "main": "index.js",
   "type": "module",

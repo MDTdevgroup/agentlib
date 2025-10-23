@@ -17,12 +17,6 @@ const UIComponent = z.object({
   attributes: z.array(UIAttribute).describe("HTML attributes for the component")
 });
 
-// Input schema for UI generation requests
-const UIGenerationInput = z.object({
-  role: z.string(),
-  content: z.string(),
-});
-
 async function runUIGenerationExample() {
   console.log('UI Generation with Structured Outputs Example\n');
 

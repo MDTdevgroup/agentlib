@@ -5,7 +5,7 @@ A lightweight Node.js library for building AI agents with LLM providers and MCP 
 ## Installation
 
 ```bash
-npm install peebles-agentlib
+npm install @peebles-group/agentlib-js
 ```
 
 ## Quick Start
@@ -22,7 +22,7 @@ npm install peebles-agentlib
    mkdir my-agent-project
    cd my-agent-project
    npm init -y
-   npm install peebles-agentlib dotenv
+   npm install @peebles-group/agentlib-js dotenv
    ```
 
 ## Features
@@ -36,9 +36,12 @@ npm install peebles-agentlib
 ## Basic Usage
 
 ```javascript
-import { Agent } from 'peebles-agentlib';
+import { Agent, LLMService } from '@peebles-group/agentlib-js';
 import dotenv from 'dotenv';
 dotenv.config();
+
+// Initialize LLM service for direct tasks
+const llm = new LLMService('openai', process.env.OPENAI_API_KEY);
 
 // Simple agent
 const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
@@ -66,7 +69,7 @@ await mcpAgent.addMCPServer('browser', {
 AgentLib supports type-safe structured outputs using Zod schemas for reliable JSON responses.
 
 ```javascript
-import { Agent } from 'peebles-agentlib';
+import { Agent } from '@peebles-group/agentlib-js';
 import { z } from 'zod';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -112,7 +115,7 @@ The repository includes several development examples that demonstrate different 
 
 ```javascript
 // In your project
-import { Agent } from 'peebles-agentlib';
+import { Agent } from '@peebles-group/agentlib-js';
 
 // Instead of (development only)
 import { Agent } from './src/Agent.js';
@@ -137,7 +140,7 @@ const agent = new Agent(provider, apiKey, options);
 
 **Example:**
 ```javascript
-import { Agent } from 'peebles-agentlib';
+import { Agent } from '@peebles-group/agentlib-js';
 
 const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
   model: 'gpt-4o-mini',
@@ -187,12 +190,13 @@ When calling an LLM, the result object has the following structure:
       ]
     },
     {
-        type: 'function',
-        description: 'Search the web for information',
-        name: 'web_search',
-        parameters: [Object],
-        strict: true
-      }
+      id: 'fc_0c7a9f052c2a6aec0068fa6e20bca0819abbc24ec38aad74dc',
+      type: 'function_call',
+      status: 'completed',
+      arguments: '{"element":"Our Menu","ref":"e222","doubleClick":false,"button":"left","modifiers":[]}',
+      call_id: 'call_iBNFPVHDsSH1UUGUIUM5uvCE',
+      name: 'browser_click'
+    }
   ],
   "parallel_tool_calls": true,
   "previous_response_id": null,

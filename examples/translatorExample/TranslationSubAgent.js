@@ -27,7 +27,7 @@ export class TranslationSubAgent {
     this.agent.addInput({"role": "user", "content": `What language is this text written in: "${text}"`});
     
     const result = await this.agent.run();
-    return result.output_text;
+    return result.output;
   }
 
 
