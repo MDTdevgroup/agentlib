@@ -17,7 +17,7 @@ export async function chat(client, input, { inputSchema, outputSchema, ...option
     }
 
     try {
-        let response;
+        let response, output;
         if (outputSchema) {
             response = await client.responses.parse({
                 input: input,
@@ -26,13 +26,15 @@ export async function chat(client, input, { inputSchema, outputSchema, ...option
                 },
                 ...finalOptions,
             });
+            output = response.output_parsed;
         } else {
             response = await client.responses.create({
                 input: input,
                 ...finalOptions,
             });
+            output = response.output_text;
         }
-        return response;
+        return {output: output, rawResponse: response};
     } catch (error) {
         console.error(`Error during OpenAI chat completion:`, error);
         throw error;

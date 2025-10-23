@@ -1,5 +1,7 @@
 import { Agent } from '../../src/Agent.js';
 import { z } from 'zod';
+import dotenv from 'dotenv';
+dotenv.config({ path: '../../.env' });
 
 // Define UI component schema (recursive)
 const UIAttribute = z.object({
@@ -8,12 +10,12 @@ const UIAttribute = z.object({
 });
 
 // Recursive UI schema using z.lazy for self-reference
-const UIComponent = z.lazy(() => z.object({
+const UIComponent = z.object({
   type: z.enum(['div', 'button', 'header', 'section', 'field', 'form', 'input', 'label']).describe("HTML element type"),
   label: z.string().describe("Display text or label for the component"),
-  children: z.array(UIComponent).describe("Nested child components"),
+  children: z.array(z.lazy(() => UIComponent)).describe("Nested child components"),
   attributes: z.array(UIAttribute).describe("HTML attributes for the component")
-}));
+});
 
 // Input schema for UI generation requests
 const UIGenerationInput = z.object({
@@ -26,7 +28,6 @@ async function runUIGenerationExample() {
 
   const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
-    inputSchema: UIGenerationInput,
     outputSchema: UIComponent
   });
 
@@ -67,14 +68,15 @@ async function runUIGenerationExample() {
 
     try {
       const result = await agent.run();
+      const { rawResponse, output } = result;
       
       console.log('Generation Results:');
-      console.log('Status:', result.status);
-      console.log('Model:', result.model);
-      console.log('Tokens:', result.usage.total_tokens);
+      console.log('Status:', rawResponse.status);
+      console.log('Model:', rawResponse.model);
+      console.log('Tokens:', rawResponse.usage.total_tokens);
       console.log();
 
-      const responseText = result.output_parsed;
+      const responseText = output;
       console.log('Generated UI Structure:');
       console.log(responseText);
       console.log();
@@ -161,7 +163,6 @@ async function demonstrateComplexUI() {
 
   const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
-    inputSchema: UIGenerationInput,
     outputSchema: UIComponent
   });
 

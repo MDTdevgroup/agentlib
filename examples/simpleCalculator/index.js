@@ -124,7 +124,7 @@ export async function runCalculatorExample() {
   calculatorAgent.addInput({role: "user", content: "Please add 15 and 27 together"});
   
   const result1 = await calculatorAgent.run();
-  console.log("Agent response:", result1.output_text);
+  console.log("Agent response:", result1.output);
   console.log("");
 
   // Example 2: Multiple operations with sleep
@@ -132,7 +132,7 @@ export async function runCalculatorExample() {
   calculatorAgent.addInput({role: "user", content: "Calculate 10 * 5, then sleep for 2 seconds, then subtract 20 from the result"});
   
   const result2 = await calculatorAgent.run();
-  console.log("Agent response:", result2.output_text);
+  console.log("Agent response:", result2.output);
   console.log("");
 
   // Example 3: Complex calculation chain
@@ -140,7 +140,7 @@ export async function runCalculatorExample() {
   calculatorAgent.addInput({role: "user", content: "Calculate (100 + 50) * 2, sleep for 1 second, then divide by 10"});
   
   const result3 = await calculatorAgent.run();
-  console.log("Agent response:", result3.output_text);
+  console.log("Agent response:", result3.output);
   console.log("");
 
   // Example 4: Demonstrate concurrency with parallel operations
@@ -148,7 +148,7 @@ export async function runCalculatorExample() {
   calculatorAgent.addInput({role: "user", content: "Add 5 and 3, multiply 4 and 6, and sleep for 1 second. Do these operations and tell me all results."});
   
   const result4 = await calculatorAgent.run();
-  console.log("Agent response:", result4.output_text);
+  console.log("Agent response:", result4.output);
   console.log("");
 
   console.log("Calculator Agent Example Complete!");
@@ -185,7 +185,7 @@ export async function run() {
     
     console.log("Concurrent Execution Results:");
     results.forEach((result, index) => {
-      console.log(`Agent ${index + 1}: ${JSON.stringify(result.output_text)}`);
+      console.log(`Agent ${index + 1}: ${JSON.stringify(result.output)}`);
     });
   
     console.log("\nNote: Without parallel tool calls, operations run sequentially");

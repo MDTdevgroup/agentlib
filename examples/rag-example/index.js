@@ -11,7 +11,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const tools = [
     {
         type: "function",
-        name: "retreiver",
+        name: "retriever",
         description: "Use query to retrieve the most relevant documents from the database",
         parameters: {
             type: "object",
@@ -119,7 +119,7 @@ async function runRAGExample() {
 
     agent.addInput({
         role: "system", 
-        content: "You are a helpful assistant that can answer questions about the documents in the database. The user will ask you a question and you will generate a query and use the retreiver tool to retrieve the most relevant documents from the database."
+        content: "You are a helpful assistant that can answer questions about the documents in the database. The user will ask you a question and you will generate a query and use the retriever tool to retrieve the most relevant documents from the database."
     });
 
     const rl = readline.createInterface({
@@ -134,7 +134,7 @@ async function runRAGExample() {
               });              
             agent.addInput({ role: "user", content: userInput });
             const response = await agent.run();
-            console.log("Agent:", response.output_text);
+            console.log("Agent:", response.output);
         }
     } finally {
         rl.close();

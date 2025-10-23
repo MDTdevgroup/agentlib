@@ -15,7 +15,7 @@ export class QASubAgent {
     this.agent.addInput({role: "user", content: `Please answer this question: ${question}`});
     
     const result = await this.agent.run();
-    return result.output_text;
+    return result.output;
   }
 
 

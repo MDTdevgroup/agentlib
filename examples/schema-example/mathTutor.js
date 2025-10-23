@@ -15,19 +15,12 @@ const MathReasoning = z.object({
   final_answer: z.string().describe("The final answer to the math problem")
 });
 
-// Define input schema for math problems
-const MathProblemInput = z.object({
-  role: z.string(),
-  content: z.string()
-});
-
 async function runMathTutorExample() {
   console.log('Math Tutor with Structured Input/Output Example\n');
 
   // Create agent with both input and output schemas
   const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
-    inputSchema: MathProblemInput,
     outputSchema: MathReasoning
   });
 
@@ -64,19 +57,13 @@ async function runMathTutorExample() {
     });
 
     try {
-      const result = await agent.run();
+      const response = await agent.run();
       
       console.log('Raw LLM Response Structure:');
-      console.log('- Status:', result.status);
-      console.log('- Model:', result.model);
-      console.log('- Usage:', result.usage);
-      console.log();
-
-      // Access the structured response text
-      const responseText = result.output_parsed;
-      console.log('Structured Response:');
-      console.log(responseText);
-      console.log();
+      console.log('- Status:', response.rawResponse.status);
+      console.log('- Model:', response.rawResponse.model);
+      console.log('- Usage:', response.rawResponse.usage.total_tokens);
+      const responseText = response.output; 
 
       // Parse the JSON response to work with structured data
       try {
@@ -109,7 +96,6 @@ async function demonstrateErrorHandling() {
 
   const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
-    inputSchema: MathProblemInput,
     outputSchema: MathReasoning
   });
 
@@ -129,7 +115,7 @@ async function demonstrateErrorHandling() {
     });
 
     const result = await agent.run();
-    console.log('Handled gracefully:', result.status);
+    console.log('Handled gracefully:', result.rawResponse.status);
     
   } catch (error) {
     console.log('Input validation or processing error:', error.message);

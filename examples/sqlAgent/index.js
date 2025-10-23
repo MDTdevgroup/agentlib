@@ -75,15 +75,15 @@ async function main() {
       // Run generator agent
       for (let i = 0; i < 10; i++) {
         const step = await generatorAgent.run();
-        const hasFunctionCall = step.output.some(item => item.type === "function_call");
+        const hasFunctionCall = step.rawResponse.output.some(item => item.type === "function_call");
         if (!hasFunctionCall) {
           console.log("\n===Generated Query===");
-          const query = step.output_text;
+          const query = step.output;
           console.log(query + "\n");
           await validateAndExecute(query);
           break;
         } else {
-          step.output.forEach(item => {
+          step.rawResponse.output.forEach(item => {
             if (item.type === "function_call") {
               console.log(`Tool Executed:`, item.name);
             }
@@ -106,9 +106,9 @@ async function main() {
 
     for (let i = 0; i < 12; i++) {
       const step = await executorAgent.run();
-      const hasFunctionCall = step.output.some(item => item.type === "function_call");
+      const hasFunctionCall = step.rawResponse.output.some(item => item.type === "function_call");
       if (hasFunctionCall) {
-        step.output.forEach(item => {
+        step.rawResponse.output.forEach(item => {
           if (item.type === "function_call") {
             console.log(`Tool Executed:`, item.name);
           }
@@ -116,14 +116,14 @@ async function main() {
       } else {
         // No more function calls, process the structured output
         try {
-          const parsedOutput = step.output_parsed;
+          const parsedOutput = step.output;
           console.log("\n=== SQL Query Results ===");
           console.log("Raw Output:", JSON.stringify(parsedOutput.sql_output, null, 2));
           console.log("\n=== Analysis & Summary ===");
           console.log(parsedOutput.explanation_summary);
           console.log("--------------------------------\n");
         } catch (error) {
-          console.log("Final Answer:", step.output_parsed);
+          console.log("Final Answer:", step.output);
           console.log("--------------------------------\n");
         }
         break;

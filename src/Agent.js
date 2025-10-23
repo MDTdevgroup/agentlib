@@ -71,9 +71,11 @@ export class Agent {
       tools: allTools,
     });
 
+    const { output, rawResponse } = response;
+
     // Step 2: Clean and add the response to input history
     // Remove parsed_arguments (if it exists) from function calls before adding to history
-    const cleanedOutput = response.output.map(item => {
+    const cleanedOutput = rawResponse.output.map(item => {
       if (item.type === "function_call" && item.parsed_arguments) {
         const { parsed_arguments, ...cleanItem } = item;
         return cleanItem;
@@ -84,7 +86,7 @@ export class Agent {
     this.input = this.input.concat(cleanedOutput);
 
     // Step 3: collect all function calls
-    const functionCalls = response.output.filter(item => item.type === "function_call");
+    const functionCalls = rawResponse.output.filter(item => item.type === "function_call");
 
     if (functionCalls.length > 0) {
       for (const call of functionCalls) {

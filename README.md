@@ -185,7 +185,14 @@ When calling an LLM, the result object has the following structure:
           "annotations": []
         }
       ]
-    }
+    },
+    {
+        type: 'function',
+        description: 'Search the web for information',
+        name: 'web_search',
+        parameters: [Object],
+        strict: true
+      }
   ],
   "parallel_tool_calls": true,
   "previous_response_id": null,

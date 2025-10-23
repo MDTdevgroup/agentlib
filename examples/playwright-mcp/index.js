@@ -51,15 +51,15 @@ async function run() {
       });
       while (true) {
         const result = await agent.run();
-        for (const output of result.output) {
-            if (output.type === 'function_call') {
-            console.log(`Function call: ${output.name}`);
-            console.log(`Arguments: ${output.arguments}`);
+        for (const out of result.rawResponse.output) {
+            if (out.type === 'function_call') {
+            console.log(`Function call: ${out.name}`);
+            console.log(`Arguments: ${out.arguments}`);
             }
         }
         console.log('\n=== Agent Response ===');
-        console.log(result.output_text);  
-        console.log("result type: ", typeof result.output_text);
+        console.log(result.output);  
+        console.log("result type: ", typeof result.output);
         }
     } else {
       console.log('\nNo MCP servers connected successfully. Please check the installation instructions in setup-mcp-servers.md');

@@ -20,7 +20,7 @@ export class TranslationSubAgent {
     this.agent.addInput({"role": "user", "content": `Please translate the following text from ${sourceLanguage} to ${targetLanguage}: "${text} ONLY RESPOND WITH THE TRANSLATED TEXT"`});
     
     const result = await this.agent.run();
-    return result.output_text;
+    return result.output;
   }
 
   async detectLanguage(text) {

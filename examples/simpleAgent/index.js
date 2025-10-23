@@ -58,11 +58,7 @@ while (true) {
     const userInput = await ask("Agent: What would you like to do?\n");
     agent.addInput({ role: 'user', content: userInput });
     const response = await agent.run();
-  
-    // If a tool was called, print the tool result
-    if (response.type === "function_call") {
-      console.log("Tool result:", response.result);
-    } else {
-      console.log("Agent:", response.output_text);
+    if (response.output) {
+      console.log("Agent:", response.output);
     }
   }

@@ -3,13 +3,6 @@ import dotenv from 'dotenv';
 dotenv.config({ path: '../../.env' });
 import { z } from 'zod';
 
-// Define input schema for research paper text
-const ResearchPaperInput = z.object({
-  text: z.string().min(50).describe("The research paper text to extract data from"),
-  extractionType: z.enum(['basic', 'detailed', 'metadata']).describe("Type of extraction to perform"),
-  language: z.string().optional().describe("Language of the paper (defaults to English)")
-});
-
 // Define output schema for extracted research paper data
 const ResearchPaperExtraction = z.object({
   title: z.string().describe("The title of the research paper"),
@@ -28,18 +21,11 @@ const ContentCompliance = z.object({
   confidence_score: z.number().min(0).max(1).describe("Confidence in the assessment (0-1)")
 });
 
-// Input schema for moderation
-const ModerationInput = z.object({
-  content: z.string().describe("Content to moderate"),
-  context: z.string().optional().describe("Additional context for moderation")
-});
-
 async function runDataExtractionExample() {
   console.log('Research Paper Data Extraction Example\n');
 
   const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
-    inputSchema: ResearchPaperInput,
     outputSchema: ResearchPaperExtraction
   });
 
@@ -83,10 +69,7 @@ async function runDataExtractionExample() {
     console.log('Tokens used:', result.usage.total_tokens);
     console.log();
 
-    const responseText = result.output_parsed;
-    console.log('Structured Extraction:');
-    console.log(responseText);
-    console.log();
+    const responseText = result.output;
 
     // Display structured data
     try {    
@@ -123,7 +106,6 @@ async function runModerationExample() {
 
   const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
-    inputSchema: ModerationInput,
     outputSchema: ContentCompliance
   });
 
@@ -158,7 +140,7 @@ async function runModerationExample() {
 
     try {
       const result = await agent.run();
-      const responseText = result.output_parsed;
+      const responseText = result.output;
       
       console.log('Moderation Result:');
       console.log(responseText);
@@ -193,7 +175,6 @@ async function demonstrateInputValidation() {
 
   const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
     model: 'gpt-4o-mini',
-    inputSchema: ResearchPaperInput,
     outputSchema: ResearchPaperExtraction
   });
 
