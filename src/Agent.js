@@ -31,6 +31,38 @@ export class Agent {
     return result;
   }
 
+  /**
+   * Add a native tool at runtime
+   * Expected shape: { name: string, description?: string, func: (args) => Promise<any> | any }
+   */
+  addTool(tool) {
+    if (!tool || typeof tool !== 'object') {
+      throw new Error("Invalid tool: expected an object");
+    }
+    const { name, func } = tool;
+    if (typeof name !== 'string' || name.trim() === '') {
+      throw new Error("Invalid tool: missing valid 'name' (string)");
+    }
+    if (typeof func !== 'function') {
+      throw new Error("Invalid tool: missing 'func' (function)");
+    }
+
+    // Prevent name collisions across native and MCP tools
+    const nameExistsInNative = this.nativeTools.some(t => t && t.name === name);
+    const nameExistsInMCP = this.mcpManager ? this.mcpManager.getAllTools().some(t => t && t.name === name) : false;
+    if (nameExistsInNative || nameExistsInMCP) {
+      throw new Error(`Tool with name '${name}' already exists`);
+    }
+
+    if (typeof tool.description !== 'string') {
+      tool.description = '';
+    }
+
+    this.nativeTools.push(tool);
+    this.updateSystemPrompt();
+    return tool;
+  }
+
   getAllTools() {
     const mcpTools = this.mcpManager ? this.mcpManager.getAllTools() : [];
     return [...this.nativeTools, ...mcpTools];
