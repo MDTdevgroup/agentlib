@@ -1,1 +1,1 @@
-export const defaultModel = 'gpt-4o-mini';
+export const defaultModel = 'gpt-5';
