@@ -1,16 +1,16 @@
 import { LLMService } from "./llmService.js";
-import { defaultModel } from "./config.js";
+import { defaultLLMService, defaultModel } from "./config.js";
 import { MCPManager } from "./mcp/MCPManager.js";
 
 export class Agent {
-  constructor(provider, apiKey, {model = defaultModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false} = {}) {
-    this.llmService = new LLMService(provider, apiKey);
+  constructor(llmService, {model = defaultModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options} = {}) {
+    this.llmService = llmService;
     this.model = model;
     this.nativeTools = tools;
     this.inputSchema = inputSchema;
     this.outputSchema = outputSchema;
     this.mcpManager = enableMCP ? new MCPManager() : null;
-    this.updateSystemPrompt();
+    if (redundantToolInfo) this.updateSystemPrompt();
   }
 
   async addMCPServer(serverName, config) {
@@ -72,7 +72,7 @@ export class Agent {
     return this.mcpManager ? this.mcpManager.getServerInfo() : { enabled: false };
   }
 
-  // Mentioning the tools in the system prompt for maximum reliability
+  // Mentioning the tools in the system prompt for maximum reliability; set redundantToolInfo to false to conserve these tokens
   updateSystemPrompt() {
     const allTools = this.getAllTools();
     this.input = [{
@@ -101,6 +101,7 @@ export class Agent {
       model: this.model,
       outputSchema: this.outputSchema,
       tools: allTools,
+      ...options
     });
 
     const { output, rawResponse } = response;
