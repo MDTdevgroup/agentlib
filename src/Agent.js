@@ -19,7 +19,7 @@ export class Agent {
     } 
 
     const result = await this.mcpManager.addServer(serverName, config);
-    this.updateSystemPrompt();
+    if (redundantToolInfo)this.updateSystemPrompt();
     return result;
   }
 
@@ -27,7 +27,7 @@ export class Agent {
     if (!this.mcpManager) return false;
 
     const result = await this.mcpManager.removeServer(serverName);
-    if (result) this.updateSystemPrompt();
+    if (result && redundantToolInfo) this.updateSystemPrompt();
     return result;
   }
 
@@ -59,7 +59,7 @@ export class Agent {
     }
 
     this.nativeTools.push(tool);
-    this.updateSystemPrompt();
+    if (redundantToolInfo)this.updateSystemPrompt();
     return tool;
   }
 
