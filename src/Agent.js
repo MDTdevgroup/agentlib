@@ -1,5 +1,5 @@
-import { LLMService } from "./llmService.js";
-import { defaultLLMService, defaultModel } from "./config.js";
+//import { LLMService } from "./llmService.js";
+import { defaultModel } from "./config.js";
 import { MCPManager } from "./mcp/MCPManager.js";
 
 export class Agent {
@@ -10,7 +10,13 @@ export class Agent {
     this.inputSchema = inputSchema;
     this.outputSchema = outputSchema;
     this.mcpManager = enableMCP ? new MCPManager() : null;
-    if (redundantToolInfo) this.updateSystemPrompt();
+    this.redundantToolInfo = redundantToolInfo;
+    this.additionalOptions = options;
+    this.input = [];
+
+    if (this.redundantToolInfo) {
+      this.updateSystemPrompt();
+    }
   }
 
   async addMCPServer(serverName, config) {
@@ -19,7 +25,9 @@ export class Agent {
     } 
 
     const result = await this.mcpManager.addServer(serverName, config);
-    if (redundantToolInfo)this.updateSystemPrompt();
+    if (this.redundantToolInfo) {
+      this.updateSystemPrompt();
+    }
     return result;
   }
 
@@ -27,7 +35,9 @@ export class Agent {
     if (!this.mcpManager) return false;
 
     const result = await this.mcpManager.removeServer(serverName);
-    if (result && redundantToolInfo) this.updateSystemPrompt();
+    if (result && redundantToolInfo) {
+      this.updateSystemPrompt();
+    }
     return result;
   }
 
@@ -37,8 +47,9 @@ export class Agent {
    */
   addTool(tool) {
     if (!tool || typeof tool !== 'object') {
-      throw new Error("Invalid tool: expected an object");
+      throw new Error('Invalid tool: expected an object');
     }
+
     const { name, func } = tool;
     if (typeof name !== 'string' || name.trim() === '') {
       throw new Error("Invalid tool: missing valid 'name' (string)");
@@ -59,7 +70,9 @@ export class Agent {
     }
 
     this.nativeTools.push(tool);
-    if (redundantToolInfo)this.updateSystemPrompt();
+    if (redundantToolInfo) {
+      this.updateSystemPrompt();
+    }
     return tool;
   }
 
@@ -75,11 +88,10 @@ export class Agent {
   // Mentioning the tools in the system prompt for maximum reliability; set redundantToolInfo to false to conserve these tokens
   updateSystemPrompt() {
     const allTools = this.getAllTools();
+    const toolDescriptions = allTools.map(tool => `${tool.name}: ${tool.description}`).join('; ');
     this.input = [{
       role: 'system',
-      content: 'You are a tool-calling agent. You have access to the following tools: ' +
-      allTools.map(tool => `${tool.name}: ${tool.description}`).join('; ') +
-      '. Use these tools to answer the user\'s questions.'
+      content: `You are a tool-calling agent. You have access to the following tools: ${toolDescriptions}. Use these tools to answer the user's questions.`
     }];
   }
 
@@ -101,7 +113,7 @@ export class Agent {
       model: this.model,
       outputSchema: this.outputSchema,
       tools: allTools,
-      ...options
+      ...this.additionalOptions
     });
 
     const { output, rawResponse } = response;
@@ -152,6 +164,7 @@ export class Agent {
         tools: allTools,
         model: this.model,
         outputSchema: this.outputSchema,
+        ...this.additionalOptions
       });
     }
     return response;

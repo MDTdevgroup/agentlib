@@ -1,9 +1,9 @@
-import * as registry from './providers/registry.js';
+import { getAllowedProviders, validateProviderName } from './providers/registry.js';
 
 export class LLMService {
     constructor(provider, apiKey) {
         this.provider = validateProviderName(provider);
-        this.providerNamespace = registry.getAllowedProviders()[this.provider].namespace;
+        this.providerNamespace = getAllowedProviders()[this.provider]?.namespace;
         this.apiKey = apiKey;
         this.client = _getProviderClient();
 
