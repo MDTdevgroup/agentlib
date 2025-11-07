@@ -3,6 +3,7 @@ import * as registry from './providers/registry.js';
 export class LLMService {
     constructor(provider, apiKey) {
         this.provider = validateProviderName(provider);
+        this.providerNamespace = registry.getAllowedProviders()[this.provider].namespace;
         this.apiKey = apiKey;
         this.client = _getProviderClient();
 
@@ -11,15 +12,14 @@ export class LLMService {
         }
     }
 
-    // TODO: Clean up dynamic import here since registry now imports each provider with own namespace
+    // Instead of using a dynamic import here, we use the imported registry namespace
     async _getProviderClient() {
-        const provider = await import(`./providers/${this.provider}.js`);
-        this.client = provider.createClient(this.apiKey);
-        return this.client;
+        // Returns the client instance for the specified provider
+        return this.providerNamespace.createClient(this.apiKey);
     }
 
     async chat(input, {inputSchema = null, outputSchema = null, ...options} = {}) {        
-        return provider.chat(this.client, input, {
+        return this.providerNamespace.chat(this.client, input, {
             inputSchema, 
             outputSchema, 
             ...options
