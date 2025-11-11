@@ -5,7 +5,7 @@ export class LLMService {
         this.provider = validateProviderName(provider);
         this.providerNamespace = getAllowedProviders()[this.provider]?.namespace;
         this.apiKey = apiKey;
-        this.client = _getProviderClient();
+        this.client = this._getProviderClient();
 
         if (!apiKey) {
             throw new Error(`API key is required for provider: ${provider}`);
@@ -13,7 +13,7 @@ export class LLMService {
     }
 
     // Instead of using a dynamic import here, we use the imported registry namespace
-    async _getProviderClient() {
+    _getProviderClient() {
         // Returns the client instance for the specified provider
         return this.providerNamespace.createClient(this.apiKey);
     }

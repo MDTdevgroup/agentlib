@@ -2,7 +2,7 @@ import * as OpenAIProvider from './openai.js';
 import * as GeminiProvider from './gemini.js';
 // Need to import namespaces when adding new providers here
 
-const ALOWED_PROVIDERS = {
+const ALLOWED_PROVIDERS = {
     openai: {name: 'OpenAI', namespace: OpenAIProvider},
     gemini: {name: 'Gemini', namespace: GeminiProvider},
 };
@@ -21,11 +21,11 @@ export function validateProviderName(providerName) {
 
     const normalize = text => text.trim().toLowerCase();
 
-    const allowedProviders = getAllowedProviders;
-    const normalizedName = normalize(providerName);
+    const allowedProviders = Object.values(getAllowedProviders()).map(provider => normalize(provider.name));
+    const normalizedName = normalize(providerName); // this part is ok
 
-    if (!normalize(allowedProviders).includes(normalizedName)) {
-        throw new Error(`Unsupported provider. Allowed providers: ${allowedProvidersNames.join(', ')}`);
+    if (!allowedProviders.includes(normalizedName)) {
+        throw new Error(`Unsupported provider. Allowed providers: ${allowedProviders.join(', ')}`);
     }
 
     return normalizedName;
