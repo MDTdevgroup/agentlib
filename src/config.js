@@ -1,2 +1,2 @@
-export const defaulProvider = 'openai';
+export const defaultProvider = 'openai';
 export const defaultModel = 'gpt-5';

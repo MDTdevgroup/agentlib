@@ -41,10 +41,6 @@ export class Agent {
     return result;
   }
 
-  /**
-   * Add a native tool at runtime
-   * Expected shape: { name: string, description?: string, func: (args) => Promise<any> | any }
-   */
   addTool(tool) {
     if (!tool || typeof tool !== 'object') {
       throw new Error('Invalid tool: expected an object');
@@ -107,6 +103,7 @@ export class Agent {
    */
   async run() {
     const allTools = this.getAllTools();
+    const executed = []
 
     // Step 1: send input to model
     let response = await this.llmService.chat(this.input, {
@@ -119,16 +116,16 @@ export class Agent {
     const { output, rawResponse } = response;
 
     // Step 2: Clean and add the response to input history
-    // Remove parsed_arguments (if it exists) from function calls before adding to history
-    const cleanedOutput = rawResponse.output.map(item => {
-      if (item.type === "function_call" && item.parsed_arguments) {
-        const { parsed_arguments, ...cleanItem } = item;
-        return cleanItem;
+    rawResponse.output.forEach(item => {
+      if (item.type === "function_call") {
+        // Remove parsed_arguments if it exists
+        const { parsed_arguments, ...rest } = item;
+        const cleanedItem = { ...rest, arguments: JSON.stringify(item.arguments) };
+        this.addInput(cleanedItem);
+      } else {
+        this.addInput(item);
       }
-      return item;
     });
-      
-    this.input = this.input.concat(cleanedOutput);
 
     // Step 3: collect all function calls
     const functionCalls = rawResponse.output.filter(item => item.type === "function_call");
@@ -136,12 +133,9 @@ export class Agent {
     if (functionCalls.length > 0) {
       for (const call of functionCalls) {
         let args;
-        try {
-          args = JSON.parse(call.arguments);
-        } catch (err) {
-          console.error("Failed to parse function call arguments:", call.arguments);
-          continue;
-        }
+        args = JSON.parse(call.arguments);
+        call.arguments = args
+        executed.push(call)
 
         const tool = allTools.find(t => t.name === call.name);
         if (!tool || !tool.func) {
@@ -159,6 +153,7 @@ export class Agent {
         });
       }
 
+      console.log("INPUT: ", this.input)
       // Step 6: send updated input back to model for final response
       response = await this.llmService.chat(this.input, {
         tools: allTools,
@@ -167,6 +162,7 @@ export class Agent {
         ...this.additionalOptions
       });
     }
+    response.executed = executed;
     return response;
   }
 
