@@ -8,6 +8,10 @@ A lightweight Node.js library for building AI agents with LLM providers and MCP 
 npm install @peebles-group/agentlib-js
 ```
 
+## Testing
+
+Run `npm test` to run the test script under `tests/test.js`.
+
 ## Quick Start
 
 1. **Set up API keys**
