@@ -141,8 +141,7 @@ export class Agent {
           output: JSON.stringify(result),
         });
       }
-
-      console.log("INPUT: ", this.input)
+      
       // Step 6: send updated input back to model for final response
       response = await this.llmService.chat(this.input, {
         tools: allTools,
