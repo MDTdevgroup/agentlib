@@ -1,6 +1,7 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
 import { readFileSync } from 'fs';
+import { format } from 'path';
 
 class ResourcePath {
     constructor(type) {
@@ -37,6 +38,8 @@ function parseTextFile(Data) {
 
 }
 
+//TODO: Have strategies to load like here alongside strategies to parse formats.
+// TODO: The functions can be named functions outside of the object for clarity and then brought into the object. Possibly have a subdirectory called 'promptLoaders' with each strategy in its own file and then imported here.
 const loadStrategies = {
 
     file: (path) => {
@@ -105,6 +108,8 @@ const loadStrategies = {
 
 };
 
+//TODO: The class can just be 'Prompt' and it can have a constructor like here but needs to take in a delimiter as well and store vars within delimiters in a list.
+//TODO: Make this Prompt more atomic and have methods to get the prompt or get the vars within the prompt in a list.
 class PromptHandler {
     constructor(resource) {
         this.data = loadStrategies[resource.type](resource.path)
@@ -129,7 +134,7 @@ class PromptHandler {
 }
 
 
-
+//TODO: Unnecessary duplication with file loading in loadStrategies above. Refactor.
 function loadYaml(filePath) {
     try {
         const fileContents = fs.readFileSync(filePath, 'utf8');
