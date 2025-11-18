@@ -1,5 +1,0 @@
-
-greeting:
-  prompt: "Hello from YAML, {name}!"
-  output: "..."
-farewell: "Goodbye from YAML, {name}."
