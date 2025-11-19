@@ -18,11 +18,11 @@ class Prompt {
         this.delimiterStart = startDel;
         this.delimiterEnd = endDel;
 
-        // Escape characters for RegExp use
+        // Escape special chars so user delimiters like '?' don't break regex logic.
         const escapedStart = this.delimiterStart.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const escapedEnd = this.delimiterEnd.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 
-        // Regex now looks for valid variable names (including dots, but we only use the full string)
+        // Matches start delimiter, captures variable name (alphanumeric + dots), matches end.
         this.varRegex = new RegExp(`${escapedStart}\\s*([a-zA-Z0-9_.]+)\\s*${escapedEnd}`, 'g');
 
         this.variables = this._discoverVariables();
@@ -49,11 +49,8 @@ class Prompt {
      * @returns {string} The formatted prompt string.
      */
     format(variables = {}) {
-        // NATIVE REPLACEMENT LOGIC - ONLY LOOKS UP FLAT KEYS
         return this.template.replace(this.varRegex, (match, varPath) => {
             const cleanPath = varPath.trim();
-
-            // Direct Lookup - Assuming flat variables (e.g., variables['user_name'])
             const value = variables[cleanPath];
 
             // If value is undefined, leave the variable intact
@@ -110,32 +107,35 @@ class PromptLoader {
         }
     }
 
+    static _determineLoader(resourcePathOrUrl, parserName) {
+        // SQLite requires a specific loader (db connection), regardless of path
+        if (parserName === 'sqlite') return 'sqlite';
+
+        // Otherwise, check protocol
+        const isUrl = resourcePathOrUrl.startsWith('http://') || resourcePathOrUrl.startsWith('https://');
+        return isUrl ? 'url' : 'file';
+    }
+
     /**
      * Determines the parser name based on the resource path.
      * @param {string} resourcePath - The path or URL of the resource.
      * @returns {string} The name of the parser strategy ('yaml', 'json', 'sqlite', or 'customText').
      */
     static _determineParser(resourcePath) {
-        // Remove query parameters for cleaner path analysis
         const cleanPath = resourcePath.split('?')[0];
         const extension = path.extname(cleanPath).toLowerCase();
 
-        switch (extension) {
-            case '.yaml':
-            case '.yml':
-                return 'yaml';
-            case '.json':
-                return 'json';
-            case '.db':
-            case '.sqlite':
-                return 'sqlite';
-            case '.txt':
-            case '.md':
-                return 'customText';
-            default:
-                // For local files without a known extension, default to customText.
-                return 'customText';
-        }
+        const map = {
+            '.yaml': 'yaml',
+            '.yml': 'yaml',
+            '.json': 'json',
+            '.db': 'sqlite',
+            '.sqlite': 'sqlite',
+            '.txt': 'customText',
+            '.md': 'customText'
+        };
+
+        return map[extension] || 'customText';
     }
 
     /**
@@ -147,53 +147,33 @@ class PromptLoader {
      * @returns {Promise<PromptLoader>} A new, initialized PromptLoader instance.
      */
     static async create(resourcePathOrUrl, options = {}) {
-        let rawData;
-        let promptData;
-        let parserName;
+        // 1. Determine Strategies
+        const parserName = options.parser || PromptLoader._determineParser(resourcePathOrUrl);
+        const loaderName = PromptLoader._determineLoader(resourcePathOrUrl, parserName);
 
-        // Determine the resource type (file vs. url)
-        const isUrl = resourcePathOrUrl.startsWith('http://') || resourcePathOrUrl.startsWith('https://');
-        const resourceType = isUrl ? 'url' : 'file';
+        // 2. Validate
+        if (!loadStrategies[loaderName]) throw new Error(`Unknown loader: ${loaderName}`);
+        if (!parseStrategies[parserName]) throw new Error(`Unknown parser: ${parserName}`);
 
-        // 1. Load the raw data based on resource type
-        if (resourceType === 'file') {
-            rawData = await loadStrategies.file(resourcePathOrUrl);
-        } else if (resourceType === 'url') {
-            rawData = await loadStrategies.url(resourcePathOrUrl);
-        }
+        // 3. Universal Execution Flow
+        // 'rawResource' adapts: it's a String for files, or a DbConnection for sqlite
+        const rawResource = await loadStrategies[loaderName](resourcePathOrUrl);
 
-        // 2. Determine the parser to use
-        parserName = options.parser // Priority 1: Explicit parser from options
-            || PromptLoader._determineParser(resourcePathOrUrl); // Priority 2: Based on path extension
+        // The parser strategy handles its specific input type (String or DbConnection)
+        const promptData = await parseStrategies[parserName](rawResource);
 
-        // 3. Parse the raw data
-        if (!parseStrategies[parserName]) {
-            throw new Error(`Unknown parser: ${parserName}`);
-        }
-
-        // Handle sqlite's async parser separately
-        if (parserName === 'sqlite') {
-            // SQLite requires the DB connection object, which is returned by loadStrategies.sqlite
-            const dbConnection = await loadStrategies.sqlite(resourcePathOrUrl);
-            promptData = await parseStrategies.sqlite(dbConnection);
-        } else {
-            // All other parsers expect rawData (a string)
-            promptData = parseStrategies[parserName](rawData);
-        }
-
-        // 4. Pass the options object, including delimiters, to the constructor
         return new PromptLoader(promptData, options);
     }
 
     /**
      * Retrieves an initialized Prompt object by its ID.
-     * @param {string} signatureID - The key of the prompt.
+     * @param {string} id - The key of the prompt.
      * @returns {Prompt | undefined} The Prompt object, or undefined if not found.
      */
-    getPrompt(signatureID) {
-        const prompt = this.prompts.get(signatureID);
+    getPrompt(id) {
+        const prompt = this.prompts.get(id);
         if (!prompt) {
-            console.error(`Prompt signature "${signatureID}" does not exist.`);
+            console.error(`Prompt ID "${id}" does not exist.`);
             return undefined;
         }
         return prompt;
