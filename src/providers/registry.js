@@ -1,18 +1,31 @@
-const ALLOWED_PROVIDERS = Object.freeze(['openai', 'gemini']);
+import * as OpenAIProvider from './openai.js';
+import * as GeminiProvider from './gemini.js';
+// Need to import namespaces when adding new providers here
+
+const ALLOWED_PROVIDERS = {
+    openai: {name: 'OpenAI', namespace: OpenAIProvider},
+    gemini: {name: 'Gemini', namespace: GeminiProvider},
+};
+// Need to add new providers to this object in this format
 
 export function getAllowedProviders() {
-    return [...ALLOWED_PROVIDERS];
+    // Procedure that returns the object
+    return ALLOWED_PROVIDERS;
 }
 
 export function validateProviderName(providerName) {
+    // Checks if a valid provider name has been passed and returns normalized name
     if (typeof providerName !== 'string') {
         throw new TypeError('Provider name must be a string.');
     }
 
-    const normalizedName = providerName.trim().toLowerCase();
+    const normalize = text => text.trim().toLowerCase();
 
-    if (!ALLOWED_PROVIDERS.includes(normalizedName)) {
-        throw new Error(`Unsupported provider. Allowed providers: ${ALLOWED_PROVIDERS.join(', ')}`);
+    const allowedProviders = Object.values(getAllowedProviders()).map(provider => normalize(provider.name));
+    const normalizedName = normalize(providerName); // this part is ok
+
+    if (!allowedProviders.includes(normalizedName)) {
+        throw new Error(`Unsupported provider. Allowed providers: ${allowedProviders.join(', ')}`);
     }
 
     return normalizedName;

@@ -36,7 +36,7 @@ export async function chat(client, input, { inputSchema, outputSchema, ...option
         }
         return {output: output, rawResponse: response};
     } catch (error) {
-        console.error(`Error during OpenAI chat completion:`, error);
+        console.error(`Error during OpenAI chat response creation:`, error);
         throw error;
     }
 }
