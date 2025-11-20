@@ -203,7 +203,8 @@ export class Agent {
           output: JSON.stringify(result),
         });
       }
-
+      
+      // Step 6: send updated input back to model for final response
       response = await this.llmService.chat(this.input, {
         tools: allTools,
         model: this.model,
