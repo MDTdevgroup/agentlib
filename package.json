@@ -1,6 +1,6 @@
 {
   "name": "@peebles-group/agentlib-js",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "A minimal JavaScript library implementing concurrent async agents for illustrating multi-agent systems and other agentic design patterns including recursive ones purely through function calling loops.",
   "main": "index.js",
   "type": "module",
@@ -16,7 +16,7 @@
     "openai": "^6.0.0"
   },
   "devDependencies": {
-    "@peebles-group/agentlib-js": "^1.0.4",
+    "@peebles-group/agentlib-js": "^1.0.5",
     "dotenv": "^16.6.1",
     "js-yaml": "^4.1.0",
     "mongodb": "^6.20.0",
