@@ -7,11 +7,11 @@ dotenv.config({ path: '../../../.env' });
 
 const llm = new LLMService('openai', process.env.OPENAI_API_KEY);
 
-const DB_FILE = 'test-prompts.db';
-const YAML_FILE = 'test-prompts.yaml';
-const JSON_FILE = 'test-prompts.json';
-const TXT_FILE = 'test-prompts.txt';
-const MD_FILE = 'test-prompts.md';
+const DB_FILE = './test-prompts.db';
+const YAML_FILE = './test-prompts.yaml';
+const JSON_FILE = './test-prompts.json';
+const TXT_FILE = './test-prompts.txt';
+const MD_FILE = './test-prompts.md';
 
 const COMMON_VARIABLES = {
     user_name: 'Arsen',
@@ -63,6 +63,7 @@ const TEST_MAP = [
 async function runTest(testName, resourcePath, promptSignature, variables, expectedOutput) {
     let loader;
     console.log(`\n--- Running Test: ${testName} ---`);
+    console.log(`   Resource Path: ${resourcePath}`);
     try {
         loader = await PromptLoader.create(resourcePath);
         const prompt = loader.getPrompt(promptSignature);
@@ -119,7 +120,7 @@ async function main() {
     // --- LLM Service Test ---
     console.log("\n--- Starting LLM Service Test ---");
 
-    const LLM_TEST_SIGNATURE = 'greeting_simple';
+    const LLM_TEST_SIGNATURE = 'analyzer_complex';
     const LLM_TEST_PATH = YAML_FILE;
 
     try {

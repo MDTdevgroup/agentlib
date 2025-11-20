@@ -1,11 +1,6 @@
 import { loadStrategies } from './loadStrategies.js';
 import { parseStrategies } from './parseStrategies.js';
-import path from 'path'; // Import 'path' module to handle file extensions
-
-// --- Resource Path Descriptors (Removed for simplicity) ---
-// Note: FilePath, URLPath, and ResourcePath classes have been removed.
-
-// --- Atomic Prompt Class (Custom Implementation - Flat Variables Only) ---
+import path from 'path';
 
 class Prompt {
     /**
@@ -77,7 +72,7 @@ class Prompt {
 class PromptLoader {
     /**
      * Private constructor. Use `PromptLoader.create()` to instantiate.
-     * @param {object} promptData - The raw, parsed object (e.g., { "greeting": { "prompt": "..." } })
+     * @param {object} promptData - The raw, parsed object (e.g., { "greeting": "..." })
      * @param {object} [options] - Options passed from create, including delimiter settings.
      */
     constructor(promptData, options = {}) {
@@ -186,9 +181,6 @@ class PromptLoader {
         return this.prompts;
     }
 }
-
-
-// --- Exports ---
 
 export {
     PromptLoader,

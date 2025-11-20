@@ -2,7 +2,6 @@ import { promises as fs } from 'fs';
 import http from 'http';
 import https from 'https';
 import sqlite3 from 'sqlite3';
-import { parseStrategies } from './parseStrategies.js';
 
 export const loadStrategies = {
     /**

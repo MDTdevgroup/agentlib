@@ -44,11 +44,11 @@ import { Agent, LLMService } from '@peebles-group/agentlib-js';
 import dotenv from 'dotenv';
 dotenv.config();
 
-// Initialize LLM service for direct tasks
+// Initialize LLM service
 const llm = new LLMService('openai', process.env.OPENAI_API_KEY);
 
 // Simple agent
-const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
+const agent = new Agent(llm, {
   model: 'gpt-4o-mini'
 });
 agent.addInput({ role: 'user', content: 'Hello!' });
@@ -56,7 +56,7 @@ const response = await agent.run();
 console.log(response.output_text);
 
 // Agent with MCP servers (auto-installs packages)
-const mcpAgent = new Agent('openai', process.env.OPENAI_API_KEY, { 
+const mcpAgent = new Agent(llm, { 
   model: 'gpt-4o-mini', 
   enableMCP: true 
 });
@@ -66,6 +66,34 @@ await mcpAgent.addMCPServer('browser', {
   command: 'npx',
   args: ['@playwright/mcp@latest']
 });
+```
+
+## Prompt Management
+
+Manage prompts efficiently using the `PromptLoader`. Support for yml/db/md/json/txt files.
+
+```javascript
+import { PromptLoader } from '@peebles-group/agentlib-js';
+
+// Load prompts from a file
+const loader = await PromptLoader.create('./prompts.yml');
+
+/*
+prompts.yml
+
+system_instruction: |
+  Write an essay on {{topic}}.
+  Make sure to make it {{depth}}.
+*/
+
+// Get and format a prompt
+const prompt = loader.getPrompt('system_instruction').format({
+  topic: 'AI Agents',
+  depth: 'detailed'
+});
+
+agent.addInput({ role: 'user', content: prompt });
+
 ```
 
 ## Structured Outputs

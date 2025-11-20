@@ -1,0 +1,6 @@
+instruction: |
+  Search the web for the most recent articles or GitHub discussions about the Model Context Protocol (MCP). 
+  Summarize what it is, what tools it provides, and any updates or implementations released in 2025. Then, 
+  open the official MCP GitHub page in the browser and take a screenshot of the repository's main README 
+  section. Save the summary and screenshot in ./reports as mcp_report.txt and mcp_repo.png. Finally, store 
+  a memory note that I have already researched the MCP protocol so you dont repeat this task next time.
