@@ -1,4 +1,4 @@
-import { defaultModel } from "./config.js";
+import { defaultOpenaiModel, defaultGeminiModel } from "./config.js";
 import { MCPManager } from "./mcp/MCPManager.js";
 import { PromptLoader } from "./prompt-loader/promptLoader.js";
 import { fileURLToPath } from 'url';
@@ -16,7 +16,7 @@ export class Agent {
   /**
    * @param {object} llmService - The LLM service used for communication with LLM client.
    * @param {object} [options] - Configuration options for the agent.
-   * @param {string} [options.model=defaultModel] - The model identifier to use.
+   * @param {string} [options.model] - The model identifier to use.
    * @param {Array<object>} [options.tools=[]] - Array of native tools available to the agent.
    * @param {zod object|null} [options.inputSchema=null] - Zod schema for validating input messages.
    * @param {zod object|null} [options.outputSchema=null] - Zod schema for expected final output format.
@@ -24,7 +24,7 @@ export class Agent {
    * @param {boolean} [options.redundantToolInfo=true] - Whether to include tool descriptions in the system prompt.
    * @param {object} [options...] - Additional options passed to the LLM service.
    */
-  constructor(llmService, { model = defaultModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
+  constructor(llmService, { model = llmService.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
     this.llmService = llmService;
     this.model = model;
     this.nativeTools = tools;
@@ -200,10 +200,11 @@ export class Agent {
         this.input.push({
           type: "function_call_output",
           call_id: call.call_id,
+          name: call.name,
           output: JSON.stringify(result),
         });
       }
-      
+
       // Step 6: send updated input back to model for final response
       response = await this.llmService.chat(this.input, {
         tools: allTools,

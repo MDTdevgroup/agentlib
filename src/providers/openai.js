@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { zodTextFormat } from "openai/helpers/zod";
-import { defaultModel } from "../config.js";
+import { defaultOpenaiModel } from "../config.js";
 
 // Factory function to create client
 export function createClient(apiKey) {
@@ -9,7 +9,7 @@ export function createClient(apiKey) {
 
 // Now accepts the client as first parameter
 export async function chat(client, input, { inputSchema, outputSchema, ...options }) {
-    const defaultOptions = { model: defaultModel };
+    const defaultOptions = { model: defaultOpenaiModel };
     const finalOptions = { ...defaultOptions, ...options };
 
     if (inputSchema) {
@@ -21,8 +21,8 @@ export async function chat(client, input, { inputSchema, outputSchema, ...option
         if (outputSchema) {
             response = await client.responses.parse({
                 input: input,
-                text: { 
-                    format: zodTextFormat(outputSchema, "output") 
+                text: {
+                    format: zodTextFormat(outputSchema, "output")
                 },
                 ...finalOptions,
             });
@@ -34,7 +34,7 @@ export async function chat(client, input, { inputSchema, outputSchema, ...option
             });
             output = response.output_text;
         }
-        return {output: output, rawResponse: response};
+        return { output: output, rawResponse: response };
     } catch (error) {
         console.error(`Error during OpenAI chat response creation:`, error);
         throw error;
