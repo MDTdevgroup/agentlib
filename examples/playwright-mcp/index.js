@@ -16,7 +16,6 @@ const server = {
 
 // gemini
 const llm = new LLMService('gemini', process.env.GEMINI_API_KEY);
-console.log(process.env.GEMINI_API_KEY)
 
 async function run() {
   try {

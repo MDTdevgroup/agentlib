@@ -174,7 +174,8 @@ export class Agent {
     rawResponse.output.forEach(item => {
       if (item.type === "function_call") {
         const { parsed_arguments, ...rest } = item;
-        const cleanedItem = { ...rest, arguments: JSON.stringify(item.arguments) };
+        const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
+        const cleanedItem = { ...rest, arguments: args };
         this.addInput(cleanedItem);
       } else {
         this.addInput(item);
@@ -198,9 +199,8 @@ export class Agent {
         const result = await tool.func(args);
 
         this.input.push({
+          ...call,
           type: "function_call_output",
-          call_id: call.call_id,
-          name: call.name,
           output: JSON.stringify(result),
         });
       }

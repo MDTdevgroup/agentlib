@@ -4,47 +4,94 @@ dotenv.config({ path: '../.env' });
 import { GoogleGenAI, Type } from '@google/genai';
 import fs from 'fs';
 
-// Configure the client
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-// Define the function declaration for the model
-const weatherFunctionDeclaration = {
-    name: 'get_current_temperature',
-    description: 'Gets the current temperature for a given location.',
+// Define a function that the model can call to control smart lights
+const setLightValuesFunctionDeclaration = {
+    name: 'set_light_values',
+    description: 'Sets the brightness and color temperature of a light.',
     parameters: {
         type: Type.OBJECT,
         properties: {
-            location: {
+            brightness: {
+                type: Type.NUMBER,
+                description: 'Light level from 0 to 100. Zero is off and 100 is full brightness',
+            },
+            color_temp: {
                 type: Type.STRING,
-                description: 'The city name, e.g. San Francisco',
+                enum: ['daylight', 'cool', 'warm'],
+                description: 'Color temperature of the light fixture, which can be `daylight`, `cool` or `warm`.',
             },
         },
-        required: ['location'],
+        required: ['brightness', 'color_temp'],
     },
 };
+
+/**
+
+*   Set the brightness and color temperature of a room light. (mock API)
+*   @param {number} brightness - Light level from 0 to 100. Zero is off and 100 is full brightness
+*   @param {string} color_temp - Color temperature of the light fixture, which can be `daylight`, `cool` or `warm`.
+*   @return {Object} A dictionary containing the set brightness and color temperature.
+*/
+function setLightValues(brightness, color_temp) {
+    return {
+        brightness: brightness,
+        colorTemperature: color_temp
+    };
+}
+
+// Generation config with function declaration
+const config = {
+    tools: [{
+        functionDeclarations: [setLightValuesFunctionDeclaration]
+    }]
+};
+
+// Configure the client
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// Define user prompt
+const contents = [
+    {
+        role: 'user',
+        parts: [{ text: 'Turn the lights down to a romantic level' }]
+    }
+];
 
 // Send request with function declarations
 const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
-    contents: "What's the temperature in London?",
-    config: {
-        tools: [{
-            functionDeclarations: [weatherFunctionDeclaration]
-        }],
-    },
+    contents: contents,
+    config: config
 });
 
-fs.writeFileSync('gemini_debug.json', JSON.stringify(response, null, 2));
-console.log("Saved full response to gemini_debug.json");
 
-// Check for function calls in the response
-if (response.functionCalls && response.functionCalls.length > 0) {
-    const functionCall = response.functionCalls[0]; // Assuming one function call
-    console.log(`Function to call: ${functionCall.name}`);
-    console.log(`Arguments: ${JSON.stringify(functionCall.args)}`);
-    // In a real app, you would call your actual function here:
-    // const result = await getCurrentTemperature(functionCall.args);
-} else {
-    console.log("No function call found in the response.");
-    console.log(response.text);
+// Extract tool call details
+const tool_call = response.functionCalls[0]
+
+let result;
+if (tool_call.name === 'set_light_values') {
+    result = setLightValues(tool_call.args.brightness, tool_call.args.color_temp);
 }
+
+// Create a function response part
+const function_response_part = {
+    name: tool_call.name,
+    response: { result }
+}
+
+// Append function call and result of the function execution to contents
+contents.push(response.candidates[0].content);
+contents.push({ role: 'user', parts: [{ functionResponse: function_response_part }] });
+
+contents.forEach((content) => {
+    console.log(content)
+})
+
+// Get the final response from the model
+const final_response = await ai.models.generateContent({
+    model: 'gemini-2.5-flash',
+    contents: contents,
+    config: config
+});
+
+

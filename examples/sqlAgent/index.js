@@ -1,9 +1,12 @@
 import { Agent } from "../../src/Agent.js";
+import { LLMService } from "../../src/llmService.js";
 import { initDB, generatorTools, executorTools, mainAgentTools, getSalesForArtist, getTopTracksInGenre } from "./sqlTools.js";
 import readline from "readline";
 import { z } from 'zod';
 import dotenv from 'dotenv';
 dotenv.config({ path: '../../.env' });
+
+const llmService = new LLMService('gemini', process.env.GEMINI_API_KEY);
 
 // Define the output schema for the executor agent
 const executorOutputSchema = z.object({
@@ -26,7 +29,7 @@ async function main() {
   const genTools = generatorTools(db);
   const execTools = executorTools(db);
 
-  const sqlGeneratorAgent = new Agent('openai', process.env.OPENAI_API_KEY, { tools: genTools });
+  const sqlGeneratorAgent = new Agent(llmService, { tools: genTools });
   sqlGeneratorAgent.addInput({
     role: "system",
     content: `You are a helpful SQL generator.
@@ -36,9 +39,9 @@ async function main() {
     - When you are done, reply with ONLY the SQL query, no explanations.`
   });
 
-  const sqlExecutorAgent = new Agent('openai', process.env.OPENAI_API_KEY, { 
-    tools: execTools, 
-    outputSchema: executorOutputSchema 
+  const sqlExecutorAgent = new Agent(llmService, {
+    tools: execTools,
+    outputSchema: executorOutputSchema
   });
   sqlExecutorAgent.addInput({
     role: "system",
@@ -57,7 +60,7 @@ async function main() {
     output: process.stdout
   });
 
-  const mainAgent = new Agent('openai', process.env.OPENAI_API_KEY, {
+  const mainAgent = new Agent(llmService, {
     tools: mainAgentTools(db),
   });
 

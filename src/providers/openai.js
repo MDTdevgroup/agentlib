@@ -7,6 +7,16 @@ export function createClient(apiKey) {
     return new OpenAI({ apiKey });
 }
 
+function _convertInput(input) {
+    return input.map((item) => {
+        if (item.type === 'function_call_output') {
+            return { type: 'function_call_output', call_id: item.call_id, output: JSON.stringify(item.output) };
+        } else {
+            return item;
+        }
+    });
+}
+
 // Now accepts the client as first parameter
 export async function chat(client, input, { inputSchema, outputSchema, ...options }) {
     const defaultOptions = { model: defaultOpenaiModel };
@@ -20,7 +30,7 @@ export async function chat(client, input, { inputSchema, outputSchema, ...option
         let response, output;
         if (outputSchema) {
             response = await client.responses.parse({
-                input: input,
+                input: _convertInput(input),
                 text: {
                     format: zodTextFormat(outputSchema, "output")
                 },
@@ -29,7 +39,7 @@ export async function chat(client, input, { inputSchema, outputSchema, ...option
             output = response.output_parsed;
         } else {
             response = await client.responses.create({
-                input: input,
+                input: _convertInput(input),
                 ...finalOptions,
             });
             output = response.output_text;
