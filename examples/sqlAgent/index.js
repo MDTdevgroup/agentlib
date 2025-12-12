@@ -1,4 +1,7 @@
 import { Agent } from "../../src/Agent.js";
+import { LLMService } from "../../src/LLMService.js";
+import { ToolLoader } from "../../src/ToolLoader.js";
+import { PromptLoader } from "../../src/prompt-loader/promptLoader.js";
 import { initDB, generatorTools, executorTools, mainAgentTools, getSalesForArtist, getTopTracksInGenre } from "./sqlTools.js";
 import readline from "readline";
 import { z } from 'zod';
@@ -23,33 +26,36 @@ async function main() {
   console.log("--------------------------------");
   console.log("Agent: What would you like to do? (type 'quit' to exit)");
   const db = await initDB("./chinook.db");
-  const genTools = generatorTools(db);
-  const execTools = executorTools(db);
+  const promptsPath = './prompts.yml';
 
-  const sqlGeneratorAgent = new Agent('openai', process.env.OPENAI_API_KEY, { tools: genTools });
+  const llmService = new LLMService('openai', process.env.OPENAI_API_KEY);
+
+  const genTools = new ToolLoader();
+  genTools.addTools(generatorTools(db));
+  const execTools = new ToolLoader();
+  execTools.addTools(executorTools(db));
+  const mainTools = new ToolLoader();
+  mainTools.addTools(mainAgentTools(db));
+
+  const promptLoader = await PromptLoader.create(promptsPath);
+
+  const sqlGeneratorAgent = new Agent(llmService, { 
+    toolLoader: genTools 
+  });
+
   sqlGeneratorAgent.addInput({
     role: "system",
-    content: `You are a helpful SQL generator.
-    - Only propose a single SELECT query as your final answer.
-    - Use the provided tools (list_tables, get_schema) to explore the schema as needed.
-    - Do NOT execute queries.
-    - When you are done, reply with ONLY the SQL query, no explanations.`
+    content: promptLoader.getPrompt("sql_generator_sys_prompt").format()
   });
 
-  const sqlExecutorAgent = new Agent('openai', process.env.OPENAI_API_KEY, { 
-    tools: execTools, 
-    outputSchema: executorOutputSchema 
+  const sqlExecutorAgent = new Agent(llmService, {
+    toolLoader: execTools,
+    outputSchema: executorOutputSchema
   });
+
   sqlExecutorAgent.addInput({
     role: "system",
-    content: `You are a SQL expert with a strong attention to detail.
-      Validate the SQL, fix mistakes if needed, and then call run_query.
-      
-      After executing the query, you must provide your response in the following format:
-      - sql_output: The raw results from the SQL query execution
-      - explanation_summary: A clear explanation of what the query does and a summary of the key findings from the results, including sample data if available
-      
-      Make sure to analyze the results and provide meaningful insights about what the data shows.`
+    content: promptLoader.getPrompt("sql_executor_sys_prompt").format()
   });
 
   const rl = readline.createInterface({
@@ -57,26 +63,13 @@ async function main() {
     output: process.stdout
   });
 
-  const mainAgent = new Agent('openai', process.env.OPENAI_API_KEY, {
-    tools: mainAgentTools(db),
+  const mainAgent = new Agent(llmService, {
+    toolLoader: mainTools,
   });
 
   mainAgent.addInput({
     role: "system",
-    content: `
-      You are a routing assistant that MUST call a tool for every user request. You have NO direct access to any database or knowledge about the data.
-
-      CRITICAL RULES:
-      1. You MUST ALWAYS call one of the provided tools - NEVER answer directly
-      2. You do NOT know any data - you can ONLY access data through tools
-      3. For requests about "top tracks" or "best tracks" in a genre, use 'find_top_tracks_in_genre'
-      4. For requests about artist sales or revenue, use 'find_sales_for_artist'
-      5. For complex queries that don't fit the above, use 'generate_custom_sql_query'
-      6. NEVER provide data, numbers, or answers without calling a tool first
-
-      Example: "get top 5 rock tracks" → call find_top_tracks_in_genre with genreName="Rock" and limit=5
-
-      If you answer without calling a tool, you are violating your core function.`
+    content: promptLoader.getPrompt("main_agent_sys_prompt").format()
   });
 
   async function ask() {

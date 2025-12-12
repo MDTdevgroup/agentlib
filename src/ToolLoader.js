@@ -3,7 +3,7 @@ import { MCPManager } from "./mcp/MCPManager.js";
 /**
  * Manages the lifecycle, storage, and retrieval of the agent's tools.
  */
-export class ToolRegistry {
+export class ToolLoader {
     /**
      * @param {boolean} [enableMCP=false] - Whether to initialize the MCP manager.
      */
@@ -37,14 +37,14 @@ export class ToolRegistry {
     }
 
     /**
-     * Registers a new native tool.
+     * Registers a new tool.
      * @param {Object} tool - The tool definition.
      * @param {string} tool.name - The unique name of the tool.
      * @param {Function} tool.func - The function to execute when the tool is called.
      * @param {string} [tool.description] - A description of what the tool does.
      * @throws {Error} If the tool structure is invalid or the name is a duplicate.
      */
-    addNativeTool(tool) {
+    addTool(tool) {
         this._validateToolStructure(tool);
 
         if (this._isDuplicate(tool.name)) {
@@ -55,6 +55,15 @@ export class ToolRegistry {
             description: '',
             ...tool
         });
+    }
+
+    /**
+     * Registers multiple tools.
+     * @param {Array<Object>} tools - An array of tool definitions.
+     * @throws {Error} If any tool structure is invalid or if any name is a duplicate.
+     */
+    addTools(tools) {
+        tools.forEach(tool => this.addTool(tool));
     }
 
     /**
@@ -94,6 +103,14 @@ export class ToolRegistry {
             .join('; ');
 
         return `You are a tool-calling agent. You have access to the following tools: ${descriptions}. Use these tools to answer the user's questions.`;
+    }
+
+    /**
+     * Gets status information about the MCP manager.
+     * @returns {Object} Information about the MCP manager, or { enabled: false } if disabled.
+     */
+    getMCPInfo() {
+        return this.mcpManager ? this.mcpManager.getServerInfo() : { enabled: false };
     }
 
     /**
