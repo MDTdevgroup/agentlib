@@ -1,13 +1,10 @@
 import { defaultModel } from "./config.js";
 import { MCPManager } from "./mcp/MCPManager.js";
-import { PromptLoader } from "./prompt-loader/promptLoader.js";
 import { fileURLToPath } from 'url';
 import path, { dirname } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
-const promptLoader = await PromptLoader.create(path.join(__dirname, 'prompts', 'agentPrompts.yml'));
 
 /**
  * Represents an LLM-based agent capable of tool calling.
@@ -138,7 +135,8 @@ export class Agent {
     const toolDescriptions = allTools.map(tool => `${tool.name}: ${tool.description}`).join('; ');
     this.input = [{
       role: 'system',
-      content: promptLoader.getPrompt('systemPrompt').format({ toolDescriptions })
+      content: `You are a tool-calling agent. You have access to the following tools: ${toolDescriptions}. 
+      Use these tools to answer the user's questions.`
     }];
   }
 
@@ -203,7 +201,7 @@ export class Agent {
           output: JSON.stringify(result),
         });
       }
-      
+
       // Step 6: send updated input back to model for final response
       response = await this.llmService.chat(this.input, {
         tools: allTools,
