@@ -1,0 +1,68 @@
+{
+  output: 'To stay updated on events in Montreal, consider visiting the following websites:\n' +
+    '\n' +
+    '1. **Tourisme Montréal**: Offers a comprehensive calendar of events, including festivals, exhibitions, and cultural activities. ([mtl.org](https://www.mtl.org/en/event-us?utm_source=openai))\n' +
+    '\n' +
+    '2. **Montreal Nightlife**: Provides detailed information on various festivals and events happening throughout the year. ([montrealnightlife.com](https://montrealnightlife.com/en/news/music/festivals/2023/09/montreals-september-festivals-2023-a-cultural-extravaganza/?utm_source=openai))\n' +
+    '\n' +
+    '3. **Go Montreal**: Features monthly listings of events and festivals, categorized by date and type. ([go-montreal.com](https://www.go-montreal.com/attraction_events_jul.htm?utm_source=openai))\n' +
+    '\n' +
+    '4. **MTL Blog**: Highlights upcoming festivals and events, offering insights and recommendations. ([mtlblog.com](https://www.mtlblog.com/montreal/montreal-summer-festivals-2023?utm_source=openai))\n' +
+    '\n' +
+    "5. **DownshiftingPRO**: Provides an extensive guide to Montreal's festivals, including dates, locations, and descriptions. ([downshiftingpro.com](https://www.downshiftingpro.com/the-ultimate-guide-to-festivals-in-montreal/?utm_source=openai))\n" +
+    '\n' +
+    'These resources will help you discover and plan for various events in Montreal throughout the year. ',
+  rawResponse: {
+    id: 'resp_00c40341d100ed5300695a62760b688194a01d9898e75f1880',
+    object: 'response',
+    created_at: 1767531126,
+    status: 'completed',
+    background: false,
+    billing: { payer: 'developer' },
+    completed_at: 1767531130,
+    error: null,
+    incomplete_details: null,
+    instructions: null,
+    max_output_tokens: null,
+    max_tool_calls: null,
+    model: 'gpt-4o-mini-2024-07-18',
+    output: [ [Object], [Object] ],
+    parallel_tool_calls: true,
+    previous_response_id: null,
+    prompt_cache_key: null,
+    prompt_cache_retention: null,
+    reasoning: { effort: null, summary: null },
+    safety_identifier: null,
+    service_tier: 'default',
+    store: true,
+    temperature: 1,
+    text: { format: [Object], verbosity: 'medium' },
+    tool_choice: 'auto',
+    tools: [ [Object] ],
+    top_logprobs: 0,
+    top_p: 1,
+    truncation: 'disabled',
+    usage: {
+      input_tokens: 8174,
+      input_tokens_details: [Object],
+      output_tokens: 326,
+      output_tokens_details: [Object],
+      total_tokens: 8500
+    },
+    user: null,
+    metadata: {},
+    output_text: 'To stay updated on events in Montreal, consider visiting the following websites:\n' +
+      '\n' +
+      '1. **Tourisme Montréal**: Offers a comprehensive calendar of events, including festivals, exhibitions, and cultural activities. ([mtl.org](https://www.mtl.org/en/event-us?utm_source=openai))\n' +
+      '\n' +
+      '2. **Montreal Nightlife**: Provides detailed information on various festivals and events happening throughout the year. ([montrealnightlife.com](https://montrealnightlife.com/en/news/music/festivals/2023/09/montreals-september-festivals-2023-a-cultural-extravaganza/?utm_source=openai))\n' +
+      '\n' +
+      '3. **Go Montreal**: Features monthly listings of events and festivals, categorized by date and type. ([go-montreal.com](https://www.go-montreal.com/attraction_events_jul.htm?utm_source=openai))\n' +
+      '\n' +
+      '4. **MTL Blog**: Highlights upcoming festivals and events, offering insights and recommendations. ([mtlblog.com](https://www.mtlblog.com/montreal/montreal-summer-festivals-2023?utm_source=openai))\n' +
+      '\n' +
+      "5. **DownshiftingPRO**: Provides an extensive guide to Montreal's festivals, including dates, locations, and descriptions. ([downshiftingpro.com](https://www.downshiftingpro.com/the-ultimate-guide-to-festivals-in-montreal/?utm_source=openai))\n" +
+      '\n' +
+      'These resources will help you discover and plan for various events in Montreal throughout the year. '
+  }
+}
