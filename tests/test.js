@@ -1,8 +1,6 @@
-// import { LLMService } from '@peebles-group/agentlib-js';
 import { LLMService } from '../src/llmService.js';
 import dotenv from 'dotenv';
 dotenv.config({ path: '../.env' });
-import OpenAI from 'openai';
 
 const llm = new LLMService('gemini', process.env.GEMINI_API_KEY);
 const input = [
