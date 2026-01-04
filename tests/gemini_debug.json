@@ -1,0 +1,51 @@
+{
+  "sdkHttpResponse": {
+    "headers": {
+      "alt-svc": "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000",
+      "content-encoding": "gzip",
+      "content-type": "application/json; charset=UTF-8",
+      "date": "Tue, 02 Dec 2025 16:01:00 GMT",
+      "server": "scaffolding on HTTPServer2",
+      "server-timing": "gfet4t7; dur=837",
+      "transfer-encoding": "chunked",
+      "vary": "Origin, X-Origin, Referer",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "SAMEORIGIN",
+      "x-xss-protection": "0"
+    }
+  },
+  "candidates": [
+    {
+      "content": {
+        "parts": [
+          {
+            "functionCall": {
+              "name": "get_current_temperature",
+              "args": {
+                "location": "London"
+              }
+            },
+            "thoughtSignature": "CsACAXLI2nw5mSsFhMsEnb8QwxnPHXPgTbX9OwkoKnVCYK+6EjAmYwWOPT2W0ppL8/x46irydOEU+yC5SiEgz+0f3j1u9jyB/zq5KSgDNn7nnSscjh17rln2qzAxBOwzK9T/yRVzJr8/WOEX8cxyWiK70O1+lL4fbWlabvgzyCQxmpBSjOJB2creeMy23j6Sy7NOSnH3p1F4WW/4bdHjthlr57TLyjM9yKWeKQs8cocuVtv0alw3WcQz+Qbmwa9ugWGvagLOjE00PceRigiBUKHA0d0Nl/X7KEfc+2ZtTmqVzCWwybTmHTlYIFKiwqgSTBdm2GqpOK+1b3970++I3NjKZoqve0gxjPBGTUBSeK30viED4NayrpqVoO+ZRIahlIOPWsAlzAg0o/JAm6w3H7z331NMJruMCOvbqakYhbDTdic="
+          }
+        ],
+        "role": "model"
+      },
+      "finishReason": "STOP",
+      "index": 0
+    }
+  ],
+  "modelVersion": "gemini-2.5-flash",
+  "responseId": "PA0vaZn1ON-TjrEP6KXfuQM",
+  "usageMetadata": {
+    "promptTokenCount": 61,
+    "candidatesTokenCount": 17,
+    "totalTokenCount": 146,
+    "promptTokensDetails": [
+      {
+        "modality": "TEXT",
+        "tokenCount": 61
+      }
+    ],
+    "thoughtsTokenCount": 68
+  }
+}

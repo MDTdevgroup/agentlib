@@ -1,4 +1,4 @@
-import { defaultModel } from "./config.js";
+import { defaultOpenaiModel, defaultGeminiModel } from "./config.js";
 import { MCPManager } from "./mcp/MCPManager.js";
 import { fileURLToPath } from 'url';
 import path, { dirname } from 'path';
@@ -13,7 +13,7 @@ export class Agent {
   /**
    * @param {object} llmService - The LLM service used for communication with LLM client.
    * @param {object} [options] - Configuration options for the agent.
-   * @param {string} [options.model=defaultModel] - The model identifier to use.
+   * @param {string} [options.model] - The model identifier to use.
    * @param {Array<object>} [options.tools=[]] - Array of native tools available to the agent.
    * @param {zod object|null} [options.inputSchema=null] - Zod schema for validating input messages.
    * @param {zod object|null} [options.outputSchema=null] - Zod schema for expected final output format.
@@ -21,7 +21,7 @@ export class Agent {
    * @param {boolean} [options.redundantToolInfo=true] - Whether to include tool descriptions in the system prompt.
    * @param {object} [options...] - Additional options passed to the LLM service.
    */
-  constructor(llmService, { model = defaultModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
+  constructor(llmService, { model = llmService.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
     this.llmService = llmService;
     this.model = model;
     this.nativeTools = tools;
@@ -172,7 +172,8 @@ export class Agent {
     rawResponse.output.forEach(item => {
       if (item.type === "function_call") {
         const { parsed_arguments, ...rest } = item;
-        const cleanedItem = { ...rest, arguments: JSON.stringify(item.arguments) };
+        const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
+        const cleanedItem = { ...rest, arguments: args };
         this.addInput(cleanedItem);
       } else {
         this.addInput(item);
@@ -196,8 +197,8 @@ export class Agent {
         const result = await tool.func(args);
 
         this.input.push({
+          ...call,
           type: "function_call_output",
-          call_id: call.call_id,
           output: JSON.stringify(result),
         });
       }
