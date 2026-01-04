@@ -13,10 +13,11 @@
   "dependencies": {
     "@google/genai": "^1.16.0",
     "@modelcontextprotocol/sdk": "^1.18.2",
-    "openai": "^6.0.0",
     "js-yaml": "^4.1.0",
+    "openai": "^6.0.0",
+    "path": "^0.12.7",
     "sqlite3": "^5.1.7",
-    "path": "^0.12.7"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@peebles-group/agentlib-js": "^2.0.0",

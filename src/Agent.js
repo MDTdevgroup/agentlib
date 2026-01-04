@@ -18,8 +18,9 @@ export class Agent {
    * @param {boolean} [options.redundantToolInfo=true] - Whether to include tool descriptions in the system prompt.
    * @param {object} [options...] - Additional options passed to the LLM service.
    */
-  constructor(llmService, { model = llmService.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
+  constructor(llmService, { eventEmitter, model = llmService.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
     this.llmService = llmService;
+    this.events = eventEmitter;
     this.model = model;
     this.nativeTools = tools;
     this.inputSchema = inputSchema;
@@ -180,9 +181,11 @@ export class Agent {
         spanId: llmSpanId1,
         parentSpanId: rootSpanId,
         name: "llm_chat_initial",
-        attributes: { 
-            input_length: this.input.length,
-            tools_available: allTools.map(t => t.name)
+        attributes: {
+          input_length: this.input.length,
+          tools_available: allTools.map(t => t.name),
+          provider: this.llmService.provider,
+          model: this.llmService.model
         }
       });
     }
@@ -194,6 +197,28 @@ export class Agent {
       ...this.additionalOptions
     });
 
+    // --- NORMALIZE METRICS ---
+    let normalizedUsage = {};
+    const rawUsage = response.rawResponse?.usage;
+
+    if (rawUsage) {
+      if (rawUsage.input_tokens !== undefined) {
+        // OpenAI Format
+        normalizedUsage = {
+          input_tokens: rawUsage.input_tokens,
+          output_tokens: rawUsage.output_tokens,
+          total_tokens: rawUsage.total_tokens
+        };
+      } else if (rawUsage.promptTokenCount !== undefined) {
+        // Gemini Format
+        normalizedUsage = {
+          input_tokens: rawUsage.promptTokenCount,
+          output_tokens: rawUsage.candidatesTokenCount,
+          total_tokens: rawUsage.totalTokenCount
+        };
+      }
+    }
+
     // 3. EMIT: First LLM Call Complete
     if (this.events) {
       this.events.emit('llm:complete', {
@@ -201,7 +226,10 @@ export class Agent {
         spanId: llmSpanId1,
         parentSpanId: rootSpanId,
         name: "llm_chat_initial",
-        attributes: { response_type: response.type } 
+        attributes: {
+          usage: normalizedUsage,
+          model: this.model
+        }
       });
     }
 
@@ -283,17 +311,17 @@ export class Agent {
         outputSchema: this.outputSchema,
         ...this.additionalOptions
       });
-    }
 
-    // 7. EMIT: Final LLM Call Complete
-    if (this.events) {
-      this.events.emit('llm:complete', {
-        traceId,
-        spanId: llmSpanId2,
-        parentSpanId: rootSpanId,
-        name: "llm_chat_final",
-        attributes: { response_type: response.type }
-      });
+      // 7. EMIT: Final LLM Call Complete
+      if (this.events) {
+        this.events.emit('llm:complete', {
+          traceId,
+          spanId: llmSpanId2,
+          parentSpanId: rootSpanId,
+          name: "llm_chat_final",
+          attributes: { response_type: response.type }
+        });
+      }
     }
 
     response.executed = executed;

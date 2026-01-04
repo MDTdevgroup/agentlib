@@ -1,0 +1,80 @@
+{
+  output: 'Here are the top 5 URLs for extracting event data in Montreal. These sources are selected based on the volume of events, the reliability of the data, and the consistency of their HTML structure for extraction purposes.\n' +
+    '\n' +
+    '### 1. Eventbrite (Montreal)\n' +
+    'This is the largest aggregator for general events, workshops, and nightlife. The site uses structured data, making it relatively straightforward to extract dates, locations, and ticket prices.\n' +
+    '*   **URL:** `https://www.eventbrite.ca/d/canada--montreal/events/`\n' +
+    '*   **Best for:** Professional networking, parties, workshops, and classes.\n' +
+    '\n' +
+    '### 2. Tourisme Montréal (MTL.org)\n' +
+    'This is the official tourism board website. The data here is highly curated and reliable. It is the best source for major festivals, large-scale exhibitions, and government-sanctioned events.\n' +
+    '*   **URL:** `https://www.mtl.org/en/what-to-do/festivals-and-events`\n' +
+    '*   **Best for:** Festivals, parades, museum exhibitions, and family activities.\n' +
+    '\n' +
+    '### 3. Meetup (Montreal)\n' +
+    'Meetup is essential for extracting community-driven events. If you are building a dataset regarding hobbies, tech, coding, or social groups, this is the primary source.\n' +
+    '*   **URL:** `https://www.meetup.com/find/?location=ca--montreal&source=EVENTS`\n' +
+    '*   **Best for:** Tech groups, hobbyist gatherings, language exchanges, and sports groups.\n' +
+    '\n' +
+    '### 4. Songkick (Montreal)\n' +
+    'For live music data, Songkick is often easier to parse than Ticketmaster. It lists everything from massive arena shows to small gigs at local dive bars. They aggregate data from multiple ticket vendors.\n' +
+    '*   **URL:** `https://www.songkick.com/metro_areas/27377-canada-montreal`\n' +
+    '*   **Best for:** Concerts, live music, and band tour dates.\n' +
+    '\n' +
+    '### 5. Quartier des Spectacles\n' +
+    'This website covers the specific cultural heart of downtown Montreal. It provides a comprehensive calendar of the major outdoor and indoor cultural events happening in the city center.\n' +
+    '*   **URL:** `https://www.quartierdesspectacles.com/en/activity/`\n' +
+    '*   **Best for:** Cultural events, art installations, and outdoor shows in the downtown core.',
+  rawResponse: {
+    output: [ [Object] ],
+    model: 'gemini-3-pro-preview',
+    id: '52haafHpE861vdIPy-j_6Ag',
+    usage: {
+      promptTokenCount: 26,
+      candidatesTokenCount: 513,
+      totalTokenCount: 1801,
+      promptTokensDetails: [Array],
+      thoughtsTokenCount: 1262
+    },
+    originalFormat: GenerateContentResponse {
+      sdkHttpResponse: [Object],
+      candidates: [Array],
+      modelVersion: 'gemini-3-pro-preview',
+      responseId: '52haafHpE861vdIPy-j_6Ag',
+      usageMetadata: [Object]
+    }
+  }
+}
+[
+  {
+    type: 'message',
+    content: {
+      text: 'Here are the top 5 URLs for extracting event data in Montreal. These sources are selected based on the volume of events, the reliability of the data, and the consistency of their HTML structure for extraction purposes.\n' +
+        '\n' +
+        '### 1. Eventbrite (Montreal)\n' +
+        'This is the largest aggregator for general events, workshops, and nightlife. The site uses structured data, making it relatively straightforward to extract dates, locations, and ticket prices.\n' +
+        '*   **URL:** `https://www.eventbrite.ca/d/canada--montreal/events/`\n' +
+        '*   **Best for:** Professional networking, parties, workshops, and classes.\n' +
+        '\n' +
+        '### 2. Tourisme Montréal (MTL.org)\n' +
+        'This is the official tourism board website. The data here is highly curated and reliable. It is the best source for major festivals, large-scale exhibitions, and government-sanctioned events.\n' +
+        '*   **URL:** `https://www.mtl.org/en/what-to-do/festivals-and-events`\n' +
+        '*   **Best for:** Festivals, parades, museum exhibitions, and family activities.\n' +
+        '\n' +
+        '### 3. Meetup (Montreal)\n' +
+        'Meetup is essential for extracting community-driven events. If you are building a dataset regarding hobbies, tech, coding, or social groups, this is the primary source.\n' +
+        '*   **URL:** `https://www.meetup.com/find/?location=ca--montreal&source=EVENTS`\n' +
+        '*   **Best for:** Tech groups, hobbyist gatherings, language exchanges, and sports groups.\n' +
+        '\n' +
+        '### 4. Songkick (Montreal)\n' +
+        'For live music data, Songkick is often easier to parse than Ticketmaster. It lists everything from massive arena shows to small gigs at local dive bars. They aggregate data from multiple ticket vendors.\n' +
+        '*   **URL:** `https://www.songkick.com/metro_areas/27377-canada-montreal`\n' +
+        '*   **Best for:** Concerts, live music, and band tour dates.\n' +
+        '\n' +
+        '### 5. Quartier des Spectacles\n' +
+        'This website covers the specific cultural heart of downtown Montreal. It provides a comprehensive calendar of the major outdoor and indoor cultural events happening in the city center.\n' +
+        '*   **URL:** `https://www.quartierdesspectacles.com/en/activity/`\n' +
+        '*   **Best for:** Cultural events, art installations, and outdoor shows in the downtown core.'
+    }
+  }
+]

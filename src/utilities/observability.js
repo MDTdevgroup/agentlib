@@ -26,8 +26,17 @@ export class DomainObservability {
    * @param {EventEmitter} emitter 
    */
   setupListeners(emitter) {
-    // LISTENER 1: Handle Agent Run Start
-    emitter.on('agent:start', async (payload) => {
+    // Existing listeners...
+    emitter.on('agent:start', async (payload) => await this.writeSpan(payload));
+    emitter.on('llm:start', async (payload) => await this.writeSpan(payload));
+    emitter.on('llm:complete', async (payload) => await this.writeSpan(payload));
+
+    // --- ADD THESE ---
+    emitter.on('tool:start', async (payload) => {
+      await this.writeSpan(payload);
+    });
+
+    emitter.on('tool:complete', async (payload) => {
       await this.writeSpan(payload);
     });
 

@@ -5,6 +5,8 @@ import readline from "readline";
 import { z } from 'zod';
 import dotenv from 'dotenv';
 dotenv.config({ path: '../../.env' });
+import EventEmitter from 'events';
+import { DomainObservability } from "../../src/utilities/observability.js";
 
 const llmService = new LLMService('gemini', process.env.GEMINI_API_KEY);
 
@@ -28,8 +30,10 @@ async function main() {
   const db = await initDB("./chinook.db");
   const genTools = generatorTools(db);
   const execTools = executorTools(db);
+  const sharedBus = new EventEmitter();
+  new DomainObservability(sharedBus);
 
-  const sqlGeneratorAgent = new Agent(llmService, { tools: genTools });
+  const sqlGeneratorAgent = new Agent(llmService, { tools: genTools, eventEmitter: sharedBus });
   sqlGeneratorAgent.addInput({
     role: "system",
     content: `You are a helpful SQL generator.
@@ -41,7 +45,8 @@ async function main() {
 
   const sqlExecutorAgent = new Agent(llmService, {
     tools: execTools,
-    outputSchema: executorOutputSchema
+    outputSchema: executorOutputSchema,
+    eventEmitter: sharedBus
   });
   sqlExecutorAgent.addInput({
     role: "system",
@@ -62,6 +67,7 @@ async function main() {
 
   const mainAgent = new Agent(llmService, {
     tools: mainAgentTools(db),
+    eventEmitter: sharedBus
   });
 
   mainAgent.addInput({
