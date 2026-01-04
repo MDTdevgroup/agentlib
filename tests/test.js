@@ -1,12 +1,11 @@
-import { LLMService } from '@peebles-group/agentlib-js';  
+import { LLMService } from '@peebles-group/agentlib-js';
 import dotenv from 'dotenv';
 dotenv.config({ path: '../.env' });
 import OpenAI from 'openai';
 
-const llm = new LLMService('openai', process.env.OPENAI_API_KEY);
+const llm = new LLMService('gemini', process.env.GEMINI_API_KEY);
 const response = await llm.chat('Search for top 5 urls for extracting events in montreal!', {
     tools: [{ type: "web_search" }],
-    model: 'gpt-4o-mini'
 });
 console.log(response);
 

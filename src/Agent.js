@@ -1,10 +1,7 @@
 import { defaultModel } from "./config.js";
 import { MCPManager } from "./mcp/MCPManager.js";
-import { fileURLToPath } from 'url';
-import path, { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+import { v4 as uuidv4 } from 'uuid';
+import EventEmitter from 'events';
 
 /**
  * Represents an LLM-based agent capable of tool calling.
@@ -157,8 +154,38 @@ export class Agent {
    * @returns {Promise<object>} The final response object from the LLM, including execution details.
    */
   async run() {
+    // 1. EMIT: Agent start
+    const traceId = uuidv4();
+    const rootSpanId = uuidv4();
+    if (this.events) {
+      this.events.emit('agent:start', {
+        traceId,
+        spanId: rootSpanId,
+        name: "agent_run",
+        attributes: {
+          model: this.model,
+          toolCount: this.getAllTools().length
+        }
+      });
+    }
+
     const allTools = this.getAllTools();
     const executed = []
+
+    // 2. EMIT: Agent's first LLM call
+    const llmSpanId1 = uuidv4();
+    if (this.events) {
+      this.events.emit('llm:start', {
+        traceId,
+        spanId: llmSpanId1,
+        parentSpanId: rootSpanId,
+        name: "llm_chat_initial",
+        attributes: { 
+            input_length: this.input.length,
+            tools_available: allTools.map(t => t.name)
+        }
+      });
+    }
 
     let response = await this.llmService.chat(this.input, {
       model: this.model,
@@ -166,6 +193,16 @@ export class Agent {
       tools: allTools,
       ...this.additionalOptions
     });
+
+    if (this.events) {
+      this.events.emit('llm:complete', {
+        traceId,
+        spanId: llmSpanId1,
+        parentSpanId: rootSpanId,
+        name: "llm_chat_initial",
+        attributes: { response_type: response.type } 
+      });
+    }
 
     const { output, rawResponse } = response;
 
