@@ -180,9 +180,9 @@ export class Agent {
         spanId: llmSpanId1,
         parentSpanId: rootSpanId,
         name: "llm_chat_initial",
-        attributes: {
-          input_length: this.input.length,
-          tools_available: allTools.map(t => t.name)
+        attributes: { 
+            input_length: this.input.length,
+            tools_available: allTools.map(t => t.name)
         }
       });
     }
@@ -201,7 +201,7 @@ export class Agent {
         spanId: llmSpanId1,
         parentSpanId: rootSpanId,
         name: "llm_chat_initial",
-        attributes: { response_type: response.type }
+        attributes: { response_type: response.type } 
       });
     }
 
