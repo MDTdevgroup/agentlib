@@ -172,7 +172,7 @@ export class Agent {
     const allTools = this.getAllTools();
     const executed = []
 
-    // 2. EMIT: Agent's first LLM call
+    // 2. EMIT: First LLM Call
     const llmSpanId1 = uuidv4();
     if (this.events) {
       this.events.emit('llm:start', {
@@ -194,6 +194,7 @@ export class Agent {
       ...this.additionalOptions
     });
 
+    // 3. EMIT: First LLM Call Complete
     if (this.events) {
       this.events.emit('llm:complete', {
         traceId,
@@ -231,12 +232,47 @@ export class Agent {
           throw new Error(`Tool ${call.name} not found or missing implementation.`);
         }
 
+        // 4. EMIT: Tool Start
+        const toolSpanId = uuidv4();
+        if (this.events) {
+          this.events.emit('tool:start', {
+            traceId,
+            spanId: toolSpanId,
+            parentSpanId: rootSpanId,
+            name: `tool_exec:${call.name}`,
+            attributes: { arguments: args }
+          });
+        }
+
         const result = await tool.func(args);
+
+        // 5. EMIT: Tool Complete
+        if (this.events) {
+          this.events.emit('tool:complete', {
+            traceId,
+            spanId: toolSpanId,
+            parentSpanId: rootSpanId,
+            name: `tool_exec:${call.name}`,
+            attributes: { result_preview: JSON.stringify(result).slice(0, 100) }
+          });
+        }
 
         this.input.push({
           ...call,
           type: "function_call_output",
           output: JSON.stringify(result),
+        });
+      }
+
+      // 6. EMIT: Final LLM Call
+      const llmSpanId2 = uuidv4();
+      if (this.events) {
+        this.events.emit('llm:start', {
+          traceId,
+          spanId: llmSpanId2,
+          parentSpanId: rootSpanId,
+          name: "llm_chat_final",
+          attributes: { input_length: this.input.length }
         });
       }
 
@@ -248,6 +284,18 @@ export class Agent {
         ...this.additionalOptions
       });
     }
+
+    // 7. EMIT: Final LLM Call Complete
+    if (this.events) {
+      this.events.emit('llm:complete', {
+        traceId,
+        spanId: llmSpanId2,
+        parentSpanId: rootSpanId,
+        name: "llm_chat_final",
+        attributes: { response_type: response.type }
+      });
+    }
+
     response.executed = executed;
     return response;
   }
