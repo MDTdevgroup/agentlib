@@ -92,14 +92,14 @@ export async function chat(client, input, { inputSchema, outputSchema, tools, ..
             systemInstruction: {
                 parts: formattedInput.systemParts || []
             },
-            tools: [{
+            tools: tools ? [{
                 functionDeclarations: tools.map(tool => ({
                     name: tool.name,
                     description: tool.description,
                     parameters: tool.parameters,
                     func: tool.func
                 }))
-            }],
+            }] : [],
             ...options
         }
 
