@@ -28,8 +28,6 @@ export class DomainObservability {
   setupListeners(emitter) {
     // Existing listeners...
     emitter.on('agent:start', async (payload) => await this.writeSpan(payload));
-    emitter.on('llm:start', async (payload) => await this.writeSpan(payload));
-    emitter.on('llm:complete', async (payload) => await this.writeSpan(payload));
 
     // --- ADD THESE ---
     emitter.on('tool:start', async (payload) => {
@@ -47,9 +45,38 @@ export class DomainObservability {
 
     // LISTENER 3: Handle LLM Completion
     emitter.on('llm:complete', async (payload) => {
-      // TODO: normalize OpenAI/Gemini responses here before writing
+      if (payload.attributes && payload.attributes.usage) {
+        payload.attributes.usage = this.normalizeUsage(payload.attributes.usage);
+      }
       await this.writeSpan(payload);
     });
+  }
+
+  /**
+   * Normalizes token usage from different providers into a standard format.
+   * @param {object} rawUsage - The raw usage object from the provider.
+   * @returns {object} Normalized usage with input_tokens, output_tokens, and total_tokens.
+   */
+  normalizeUsage(rawUsage) {
+    if (!rawUsage) return {};
+
+    if (rawUsage.input_tokens !== undefined) {
+      // OpenAI Format
+      return {
+        input_tokens: rawUsage.input_tokens,
+        output_tokens: rawUsage.output_tokens,
+        total_tokens: rawUsage.total_tokens
+      };
+    } else if (rawUsage.promptTokenCount !== undefined) {
+      // Gemini Format
+      return {
+        input_tokens: rawUsage.promptTokenCount,
+        output_tokens: rawUsage.candidatesTokenCount,
+        total_tokens: rawUsage.totalTokenCount
+      };
+    }
+
+    return rawUsage;
   }
 
   /**
