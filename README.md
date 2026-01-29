@@ -153,6 +153,37 @@ import { Agent } from '@peebles-group/agentlib-js';
 import { Agent } from './src/Agent.js';
 ```
 
+## Observability (OpenTelemetry)
+
+AgentLib supports [OpenTelemetry](https://opentelemetry.io/) for standard tracing.
+
+1. **Enable in Library**:
+   ```javascript
+   import { DomainObservability } from '@peebles-group/agentlib-js';
+   import EventEmitter from 'events';
+
+   const emitter = new EventEmitter();
+   // modes: 'file' (JSON logs), 'otel' (Trace spans), 'both'
+   new DomainObservability(emitter, { mode: 'both' });
+   ```
+
+2. **Configure App SDK**:
+   In your application entry point (before importing agentlib), initialize the Node SDK:
+   ```javascript
+   // instrumentation.js
+   import { NodeSDK } from '@opentelemetry/sdk-node';
+   import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
+   import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+
+   const sdk = new NodeSDK({
+     traceExporter: new ConsoleSpanExporter(), // or OTLPTraceExporter
+     instrumentations: [getNodeAutoInstrumentations()],
+   });
+   sdk.start();
+   ```
+
+   Then run: `export OTEL_SERVICE_NAME=my-agent && node --import ./instrumentation.js index.js`
+
 ## API Reference
 
 ### Agent Constructor

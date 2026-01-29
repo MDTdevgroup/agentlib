@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import EventEmitter from 'events';
+import { trace, context } from '@opentelemetry/api';
 
 /**
  * @typedef {Object} SpanPayload
@@ -10,14 +11,114 @@ import EventEmitter from 'events';
  * @property {string} name - The human readable name of the operation (e.g., 'llm_chat').
  * @property {Record<string, any>} [attributes] - Metadata (tokens, model name, inputs).
  */
+
+class FileHandler {
+  constructor(baseDir) {
+    this.baseDir = baseDir;
+  }
+
+  /**
+   * Writes the event to a JSON file.
+   * @param {SpanPayload} payload 
+   */
+  async handle(payload) {
+    const { traceId, spanId, name } = payload;
+    const traceDir = path.join(this.baseDir, traceId);
+    const spansDir = path.join(traceDir, 'spans');
+
+    await fs.mkdir(spansDir, { recursive: true });
+
+    // Unique filename for every event to preserve history of start/complete
+    const filename = `${Date.now()}_${name}_${spanId}.json`;
+    const filePath = path.join(spansDir, filename);
+
+    const data = {
+      ...payload,
+      timestamp: new Date().toISOString()
+    };
+
+    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
+  }
+}
+
+class OtelHandler {
+  constructor() {
+    // You should customize the scope name and version for your library
+    this.tracer = trace.getTracer('@peebles-group/agentlib-js', '2.0.0');
+    this.activeSpans = new Map();
+  }
+
+  /**
+   * Starts a new OpenTelemetry span.
+   * @param {SpanPayload} payload 
+   */
+  async handleStart(payload) {
+    const { spanId, parentSpanId, name, attributes } = payload;
+
+    // 1. Resolve Parent Context
+    let ctx = context.active();
+    if (parentSpanId && this.activeSpans.has(parentSpanId)) {
+      const parentSpan = this.activeSpans.get(parentSpanId);
+      ctx = trace.setSpan(ctx, parentSpan);
+    }
+
+    // 2. Start Span
+    const span = this.tracer.startSpan(name, { attributes }, ctx);
+
+    // 3. Correlate with Agent IDs
+    span.setAttribute('agent.trace_id', payload.traceId);
+    span.setAttribute('agent.span_id', spanId);
+
+    // 4. Store active span
+    this.activeSpans.set(spanId, span);
+  }
+
+  /**
+   * Ends an active OpenTelemetry span.
+   * @param {SpanPayload} payload 
+   */
+  async handleComplete(payload) {
+    const { spanId, attributes } = payload;
+
+    // Retrieve the active span
+    const span = this.activeSpans.get(spanId);
+    if (!span) {
+      // If we missed the start event or it wasn't tracked, we can't end it.
+      return;
+    }
+
+    // Update attributes (e.g. usage stats, outputs)
+    if (attributes) {
+      span.setAttributes(attributes);
+    }
+
+    // End the span
+    span.end();
+
+    // Clean up map
+    this.activeSpans.delete(spanId);
+  }
+}
+
 export class DomainObservability {
   /**
    * Initializes the observability layer.
    * @param {EventEmitter} eventEmitter - The shared event bus.
-   * @param {string} baseDir - The root directory to store trace files.
+   * @param {Object} options
+   * @param {string} [options.mode='file'] - 'file', 'otel', or 'both'.
+   * @param {string} [options.baseDir='./traces'] - Directory for file traces.
    */
-  constructor(eventEmitter, baseDir = './traces') {
-    this.baseDir = baseDir;
+  constructor(eventEmitter, { mode = 'file', baseDir = './traces' } = {}) {
+    this.handlers = [];
+
+    if (mode === 'file' || mode === 'both') {
+      this.handlers.push(new FileHandler(baseDir));
+    }
+
+    if (mode === 'otel' || mode === 'both') {
+      this.handlers.push(new OtelHandler());
+    }
+
     this.setupListeners(eventEmitter);
   }
 
@@ -26,30 +127,45 @@ export class DomainObservability {
    * @param {EventEmitter} emitter 
    */
   setupListeners(emitter) {
-    // Existing listeners...
-    emitter.on('agent:start', async (payload) => await this.writeSpan(payload));
+    // START events
+    emitter.on('agent:start', (p) => this.dispatch('start', p));
+    emitter.on('tool:start', (p) => this.dispatch('start', p));
+    emitter.on('llm:start', (p) => this.dispatch('start', p));
 
-    // --- ADD THESE ---
-    emitter.on('tool:start', async (payload) => {
-      await this.writeSpan(payload);
-    });
+    // COMPLETE events
+    emitter.on('agent:complete', (p) => this.dispatch('complete', p));
+    emitter.on('tool:complete', (p) => this.dispatch('complete', p));
 
-    emitter.on('tool:complete', async (payload) => {
-      await this.writeSpan(payload);
-    });
-
-    // LISTENER 2: Handle LLM Start
-    emitter.on('llm:start', async (payload) => {
-      await this.writeSpan(payload);
-    });
-
-    // LISTENER 3: Handle LLM Completion
-    emitter.on('llm:complete', async (payload) => {
-      if (payload.attributes && payload.attributes.usage) {
-        payload.attributes.usage = this.normalizeUsage(payload.attributes.usage);
+    emitter.on('llm:complete', (p) => {
+      if (p.attributes && p.attributes.usage) {
+        p.attributes.usage = this.normalizeUsage(p.attributes.usage);
       }
-      await this.writeSpan(payload);
+      this.dispatch('complete', p);
     });
+  }
+
+  /**
+   * Dispatches the event to all configured handlers.
+   * @param {'start'|'complete'} eventType 
+   * @param {SpanPayload} payload 
+   */
+  async dispatch(eventType, payload) {
+    for (const handler of this.handlers) {
+      try {
+        if (handler instanceof OtelHandler) {
+          if (eventType === 'start') {
+            await handler.handleStart(payload);
+          } else {
+            await handler.handleComplete(payload);
+          }
+        } else {
+          // FileHandler treats everything as a discrete event log
+          await handler.handle(payload);
+        }
+      } catch (err) {
+        console.error(`[Observability] Error in ${handler.constructor.name}:`, err);
+      }
+    }
   }
 
   /**
@@ -77,32 +193,5 @@ export class DomainObservability {
     }
 
     return rawUsage;
-  }
-
-  /**
-   * Writes the span data to a JSON file on disk.
-   * @param {SpanPayload} payload - The trace data to write.
-   * @returns {Promise<void>}
-   */
-  async writeSpan({ traceId, spanId, parentSpanId, name, attributes }) {
-    const traceDir = path.join(this.baseDir, traceId);
-    const spansDir = path.join(traceDir, 'spans');
-
-    // Ensure the directory exists
-    await fs.mkdir(spansDir, { recursive: true });
-
-    const filename = `${Date.now()}_${name}_${spanId}.json`;
-    const filePath = path.join(spansDir, filename);
-
-    const data = {
-      traceId,
-      spanId,
-      parentSpanId,
-      name,
-      timestamp: new Date().toISOString(),
-      attributes
-    };
-
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2));
   }
 }

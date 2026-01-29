@@ -302,6 +302,19 @@ export class Agent {
       }
     }
 
+    // 8. EMIT: Agent Complete
+    if (this.events) {
+      this.events.emit('agent:complete', {
+        traceId,
+        spanId: rootSpanId,
+        name: "agent_run",
+        attributes: {
+          success: true,
+          total_tools_executed: executed.length
+        }
+      });
+    }
+
     response.executed = executed;
     return response;
   }

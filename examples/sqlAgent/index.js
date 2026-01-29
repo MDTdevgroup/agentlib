@@ -1,3 +1,4 @@
+import './instrumentation.js';
 import { Agent } from "../../src/Agent.js";
 import { LLMService } from "../../src/llmService.js";
 import { initDB, generatorTools, executorTools, mainAgentTools, getSalesForArtist, getTopTracksInGenre } from "./sqlTools.js";
@@ -31,7 +32,9 @@ async function main() {
   const genTools = generatorTools(db);
   const execTools = executorTools(db);
   const sharedBus = new EventEmitter();
-  new DomainObservability(sharedBus);
+
+  // Enable both file and OpenTelemetry output
+  new DomainObservability(sharedBus, { mode: 'both' });
 
   const sqlGeneratorAgent = new Agent(llmService, { tools: genTools, eventEmitter: sharedBus });
   sqlGeneratorAgent.addInput({
