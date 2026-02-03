@@ -8,15 +8,16 @@ import EventEmitter from 'events';
  */
 export class Agent {
   /**
-   * @param {object} llmService - The LLM service used for communication with LLM client.
+   * @param {object} llmService - The LLM service instance used for communication with the LLM provider.
    * @param {object} [options] - Configuration options for the agent.
-   * @param {string} [options.model] - The model identifier to use.
-   * @param {Array<object>} [options.tools=[]] - Array of native tools available to the agent.
-   * @param {zod object|null} [options.inputSchema=null] - Zod schema for validating input messages.
-   * @param {zod object|null} [options.outputSchema=null] - Zod schema for expected final output format.
-   * @param {boolean} [options.enableMCP=false] - Whether to enable MCP (Model Context Protocol) usage.
-   * @param {boolean} [options.redundantToolInfo=true] - Whether to include tool descriptions in the system prompt.
-   * @param {object} [options...] - Additional options passed to the LLM service.
+   * @param {EventEmitter} [options.eventEmitter] - Optional event emitter for observability and tracing events (e.g., 'agent:start', 'tool:start').
+   * @param {string} [options.model] - The specific model identifier to use (defaults to provider-specific default).
+   * @param {Array<object>} [options.tools=[]] - Array of native tool objects available to the agent.
+   * @param {zod.ZodType|null} [options.inputSchema=null] - Zod schema for validating input messages added to the context.
+   * @param {zod.ZodType|null} [options.outputSchema=null] - Zod schema for validating/structuring the expected final output.
+   * @param {boolean} [options.enableMCP=false] - Whether to enable MCP (Model Context Protocol) support for remote tools.
+   * @param {boolean} [options.redundantToolInfo=true] - Whether to explicitly inject tool descriptions into the system prompt (useful for some models).
+   * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
    */
   constructor(llmService, { eventEmitter, model = llmService.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
     this.llmService = llmService;
@@ -150,45 +151,66 @@ export class Agent {
   }
 
   /**
+   * Emits a tracing event if an event emitter is configured.
+   * 
+   * @param {string} eventName - The name of the event (e.g., 'agent:start', 'llm:start').
+   * @param {object} details - The details of the trace event.
+   * @param {string} details.traceId - A unique UUID for the entire execution trace.
+   * @param {string} details.spanId - A unique UUID for this specific span/operation.
+   * @param {string} [details.parentSpanId] - The UUID of the parent span (if this is a child operation).
+   * @param {string} details.name - A human-readable name for the operation (e.g., "agent_run").
+   * @param {object} [details.attributes] - specific metadata about the operation (e.g., model name, tool count).
+   */
+  _emitTrace(eventName, { traceId, spanId, parentSpanId, name, attributes }) {
+    if (this.events) {
+      this.events.emit(eventName, {
+        traceId,
+        spanId,
+        parentSpanId,
+        name,
+        attributes
+      });
+    }
+  }
+
+  /**
    * Runs the agent for a single conversational turn, including tool use if necessary.
    * This method handles the multi-step reasoning: LLM -> Tool Execution -> LLM Final Response.
    * @returns {Promise<object>} The final response object from the LLM, including execution details.
    */
   async run() {
-    // 1. EMIT: Agent start
+    // Generate a new trace ID and root span ID
     const traceId = uuidv4();
     const rootSpanId = uuidv4();
-    if (this.events) {
-      this.events.emit('agent:start', {
-        traceId,
-        spanId: rootSpanId,
-        name: "agent_run",
-        attributes: {
-          model: this.model,
-          toolCount: this.getAllTools().length
-        }
-      });
-    }
+
+    // 1. EMIT: Agent start
+    this._emitTrace('agent:start', {
+      traceId,
+      spanId: rootSpanId,
+      name: "agent_run",
+      attributes: {
+        model: this.model,
+        toolCount: this.getAllTools().length
+      }
+    });
 
     const allTools = this.getAllTools();
     const executed = []
 
     // 2. EMIT: First LLM Call
     const llmSpanId1 = uuidv4();
-    if (this.events) {
-      this.events.emit('llm:start', {
-        traceId,
-        spanId: llmSpanId1,
-        parentSpanId: rootSpanId,
-        name: "llm_chat_initial",
-        attributes: {
-          input_length: this.input.length,
-          tools_available: allTools.map(t => t.name),
-          provider: this.llmService.provider,
-          model: this.llmService.model
-        }
-      });
-    }
+    this._emitTrace('llm:start', {
+      traceId,
+      spanId: llmSpanId1,
+      parentSpanId: rootSpanId,
+      name: "llm_chat_initial",
+      attributes: {
+        input_length: this.input.length,
+        tools_available: allTools.map(t => t.name),
+        provider: this.llmService.provider,
+        model: this.llmService.model
+      }
+    });
 
     let response = await this.llmService.chat(this.input, {
       model: this.model,
@@ -198,18 +220,16 @@ export class Agent {
     });
 
     // 3. EMIT: First LLM Call Complete
-    if (this.events) {
-      this.events.emit('llm:complete', {
-        traceId,
-        spanId: llmSpanId1,
-        parentSpanId: rootSpanId,
-        name: "llm_chat_initial",
-        attributes: {
-          usage: response.rawResponse?.usage,
-          model: this.model
-        }
-      });
-    }
+    this._emitTrace('llm:complete', {
+      traceId,
+      spanId: llmSpanId1,
+      parentSpanId: rootSpanId,
+      name: "llm_chat_initial",
+      attributes: {
+        usage: response.rawResponse?.usage,
+        model: this.model
+      }
+    });
 
     const { output, rawResponse } = response;
 
@@ -240,28 +260,24 @@ export class Agent {
 
         // 4. EMIT: Tool Start
         const toolSpanId = uuidv4();
-        if (this.events) {
-          this.events.emit('tool:start', {
-            traceId,
-            spanId: toolSpanId,
-            parentSpanId: rootSpanId,
-            name: `tool_exec:${call.name}`,
-            attributes: { arguments: args }
-          });
-        }
+        this._emitTrace('tool:start', {
+          traceId,
+          spanId: toolSpanId,
+          parentSpanId: rootSpanId,
+          name: `tool_exec:${call.name}`,
+          attributes: { arguments: args }
+        });
 
         const result = await tool.func(args);
 
         // 5. EMIT: Tool Complete
-        if (this.events) {
-          this.events.emit('tool:complete', {
-            traceId,
-            spanId: toolSpanId,
-            parentSpanId: rootSpanId,
-            name: `tool_exec:${call.name}`,
-            attributes: { result_preview: JSON.stringify(result).slice(0, 100) }
-          });
-        }
+        this._emitTrace('tool:complete', {
+          traceId,
+          spanId: toolSpanId,
+          parentSpanId: rootSpanId,
+          name: `tool_exec:${call.name}`,
+          attributes: { result_preview: JSON.stringify(result).slice(0, 100) }
+        });
 
         this.input.push({
           ...call,
@@ -272,15 +288,13 @@ export class Agent {
 
       // 6. EMIT: Final LLM Call
       const llmSpanId2 = uuidv4();
-      if (this.events) {
-        this.events.emit('llm:start', {
-          traceId,
-          spanId: llmSpanId2,
-          parentSpanId: rootSpanId,
-          name: "llm_chat_final",
-          attributes: { input_length: this.input.length }
-        });
-      }
+      this._emitTrace('llm:start', {
+        traceId,
+        spanId: llmSpanId2,
+        parentSpanId: rootSpanId,
+        name: "llm_chat_final",
+        attributes: { input_length: this.input.length }
+      });
 
       // Step 6: send updated input back to model for final response
       response = await this.llmService.chat(this.input, {
@@ -291,29 +305,25 @@ export class Agent {
       });
 
       // 7. EMIT: Final LLM Call Complete
-      if (this.events) {
-        this.events.emit('llm:complete', {
-          traceId,
-          spanId: llmSpanId2,
-          parentSpanId: rootSpanId,
-          name: "llm_chat_final",
-          attributes: { response_type: response.type }
-        });
-      }
+      this._emitTrace('llm:complete', {
+        traceId,
+        spanId: llmSpanId2,
+        parentSpanId: rootSpanId,
+        name: "llm_chat_final",
+        attributes: { response_type: response.type }
+      });
     }
 
     // 8. EMIT: Agent Complete
-    if (this.events) {
-      this.events.emit('agent:complete', {
-        traceId,
-        spanId: rootSpanId,
-        name: "agent_run",
-        attributes: {
-          success: true,
-          total_tools_executed: executed.length
-        }
-      });
-    }
+    this._emitTrace('agent:complete', {
+      traceId,
+      spanId: rootSpanId,
+      name: "agent_run",
+      attributes: {
+        success: true,
+        total_tools_executed: executed.length
+      }
+    });
 
     response.executed = executed;
     return response;

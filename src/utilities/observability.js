@@ -43,7 +43,7 @@ class FileHandler {
 
 class OtelHandler {
   constructor() {
-    // You should customize the scope name and version for your library
+    // The scope name and version of Agentlib
     this.tracer = trace.getTracer('@peebles-group/agentlib-js', '2.0.0');
     this.activeSpans = new Map();
   }
