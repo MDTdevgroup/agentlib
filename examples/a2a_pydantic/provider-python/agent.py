@@ -33,10 +33,7 @@ class LatLng(BaseModel):
 async def get_lat_lng(ctx: RunContext[Deps], location_description: str) -> LatLng:
     """Get the latitude and longitude of a location."""
     print(f"DEBUG: Getting lat/lng for {location_description}")
-    # Simulating simple logic since the example URL provided in the prompt might be specific to pydantic docs
-    # Using a mock or a simple guess for demo purposes if the endpoint fails, 
-    # but let's try to keep the user's logic if possible.
-    # The user's code used 'https://demo-endpoints.pydantic.workers.dev/latlng'. We will trust it works.
+    # Using the demo endpoints provided in pydantic-ai examples
     r = await ctx.deps.client.get(
         'https://demo-endpoints.pydantic.workers.dev/latlng',
         params={'location': location_description},
@@ -86,6 +83,7 @@ class JSONRPCRequest(BaseModel):
     params: Dict[str, Any]
     id: Any
 
+@app.get("/.well-known/agent-card.json")
 @app.get("/.well-known/a2a/agent-card")
 async def get_agent_card():
     """Expose the Agent Card to discovery."""
@@ -110,12 +108,10 @@ async def get_agent_card():
 async def handle_jsonrpc(request: JSONRPCRequest):
     """Handle incoming A2A messages via JSON-RPC."""
     if request.method not in ["a2a.interaction.send_message", "sendMessage"]:
-        # Fallback for some clients that might use method name directly
         pass
 
     # Extract the message text
     params = request.params
-    # structure might be params -> message -> parts
     message_data = params.get("message", {})
     parts = message_data.get("parts", [])
     user_query = " ".join([p.get("text", "") for p in parts if p.get("kind") == "text"])
@@ -126,7 +122,23 @@ async def handle_jsonrpc(request: JSONRPCRequest):
     async with AsyncClient() as client:
         deps = Deps(client=client)
         result = await weather_agent.run(user_query, deps=deps)
-        response_text = result.data
+        
+        print(f"DEBUG: Agent finished. Result attributes: {dir(result)}")
+        
+        response_text = "ERROR: Could not extract response"
+        
+        if hasattr(result, 'data'):
+             print(f"DEBUG: result.data type: {type(result.data)} value: {result.data}")
+             if result.data:
+                 response_text = result.data
+                 
+        if hasattr(result, 'output'):
+             print(f"DEBUG: result.output type: {type(result.output)} value: {result.output}")
+             # Prefer output if it's a string and available
+             if isinstance(result.output, str) and result.output:
+                 response_text = result.output
+
+        print(f"DEBUG: Final Response Text sent to A2A: {response_text}")
 
     # return the response
     return {

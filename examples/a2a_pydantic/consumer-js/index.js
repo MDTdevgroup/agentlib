@@ -30,11 +30,11 @@ async function runClient() {
 
     const agent = new Agent(llmService, {
         toolLoader,
-        model: 'gpt-4o', // Or gpt-4o-mini
+        model: 'gpt-5',
     });
 
-    // 3. Run the flow
-    const query = "What is the weather like in London and in Wiltshire?";
+    // 3. Run the flow 
+    const query = "What is the weather like in London?";
     console.log(`\nUser: ${query}`);
 
     agent.addInput({ role: 'user', content: query });
