@@ -100,23 +100,64 @@ class OtelHandler {
   }
 }
 
+class ConsoleHandler {
+  /**
+   * Logs events to the console.
+   * @param {'start'|'complete'} eventType 
+   * @param {SpanPayload} payload 
+   */
+  async handle(eventType, payload) {
+    const { name, spanId, attributes, traceId } = payload;
+    const time = new Date().toISOString();
+    const symbol = eventType === 'start' ? '⏳' : '✅';
+
+    console.log(`${symbol} [${time}] [${eventType.toUpperCase()}] ${name}`);
+    console.log(`    Trace: ${traceId} | Span: ${spanId}`);
+
+    if (attributes) {
+      if (attributes.input) {
+        // Show only a preview of large inputs
+        const inp = JSON.stringify(attributes.input);
+        console.log(`    Input: ${inp.length > 200 ? inp.slice(0, 200) + '...' : inp}`);
+      }
+      if (attributes.output) {
+        const out = JSON.stringify(attributes.output);
+        console.log(`    Output: ${out.length > 200 ? out.slice(0, 200) + '...' : out}`);
+      }
+      // Print other scalar attributes
+      const plainAttrs = Object.entries(attributes)
+        .filter(([k]) => k !== 'input' && k !== 'output' && k !== 'response');
+
+      if (plainAttrs.length > 0) {
+        console.log(`    Details:`, Object.fromEntries(plainAttrs));
+      }
+    }
+    console.log(''); // newline
+  }
+}
+
 export class DomainObservability {
   /**
    * Initializes the observability layer.
    * @param {EventEmitter} eventEmitter - The shared event bus.
    * @param {Object} options
-   * @param {string} [options.mode='file'] - 'file', 'otel', or 'both'.
+   * @param {string|string[]} [options.mode='file'] - 'file', 'otel', 'console', or array of them.
    * @param {string} [options.baseDir='./traces'] - Directory for file traces.
    */
-  constructor(eventEmitter, { mode = 'file', baseDir = './traces' } = {}) {
+  constructor(eventEmitter, { mode = 'console', baseDir = './traces' } = {}) {
     this.handlers = [];
+    let modes = Array.isArray(mode) ? mode : [mode];
 
-    if (mode === 'file' || mode === 'both') {
+    if (modes.includes('file')) {
       this.handlers.push(new FileHandler(baseDir));
     }
 
-    if (mode === 'otel' || mode === 'both') {
+    if (modes.includes('otel')) {
       this.handlers.push(new OtelHandler());
+    }
+
+    if (modes.includes('console')) {
+      this.handlers.push(new ConsoleHandler());
     }
 
     this.setupListeners(eventEmitter);
@@ -158,6 +199,8 @@ export class DomainObservability {
           } else {
             await handler.handleComplete(payload);
           }
+        } else if (handler instanceof ConsoleHandler) {
+          await handler.handle(eventType, payload);
         } else {
           // FileHandler treats everything as a discrete event log
           await handler.handle(payload);

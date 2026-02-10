@@ -155,34 +155,60 @@ import { Agent } from './src/Agent.js';
 
 ## Observability (OpenTelemetry)
 
-AgentLib supports [OpenTelemetry](https://opentelemetry.io/) for standard tracing.
+AgentLib supports [OpenTelemetry](https://opentelemetry.io/) for deeply tracing agent execution flow. This allows you to visualize tool calls, LLM requests, and agent reasoning.
 
-1. **Enable in Library**:
-   ```javascript
-   import { DomainObservability } from '@peebles-group/agentlib-js';
-   import EventEmitter from 'events';
+### 1. Enable in AgentLib
+Initialize the observability layer with `mode: 'otel'` (or `'both'` for files + traces).
 
-   const emitter = new EventEmitter();
-   // modes: 'file' (JSON logs), 'otel' (Trace spans), 'both'
-   new DomainObservability(emitter, { mode: 'both' });
-   ```
+```javascript
+import { DomainObservability } from '@peebles-group/agentlib-js';
+import EventEmitter from 'events';
 
-2. **Configure App SDK**:
-   In your application entry point (before importing agentlib), initialize the Node SDK:
-   ```javascript
-   // instrumentation.js
-   import { NodeSDK } from '@opentelemetry/sdk-node';
-   import { ConsoleSpanExporter } from '@opentelemetry/sdk-trace-node';
-   import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+const emitter = new EventEmitter();
+// modes: 'file' (JSON logs), 'otel' (Trace spans), 'console' (Stdout), or array
+new DomainObservability(emitter, { mode: ['console', 'otel'] });
 
-   const sdk = new NodeSDK({
-     traceExporter: new ConsoleSpanExporter(), // or OTLPTraceExporter
-     instrumentations: [getNodeAutoInstrumentations()],
-   });
-   sdk.start();
-   ```
+// Pass the emitter to your Agent
+const agent = new Agent(llmService, { eventEmitter: emitter, ... });
+```
 
-   Then run: `export OTEL_SERVICE_NAME=my-agent && node --import ./instrumentation.js index.js`
+### 2. Configure Your App's Instrumentation
+To send traces to a collector (like Jaeger), you need to configure the Node SDK with the OTLP exporter.
+
+Create a file named `instrumentation.js`:
+```javascript
+import { NodeSDK } from '@opentelemetry/sdk-node';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-proto';
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
+
+const sdk = new NodeSDK({
+  // OTLP exporter points to http://localhost:4318/v1/traces by default
+  traceExporter: new OTLPTraceExporter(),
+  instrumentations: [getNodeAutoInstrumentations()],
+  serviceName: 'my-agent-service',
+});
+
+sdk.start();
+```
+
+### 3. Example: Jaeger (Visualization Tool)
+The easiest way to view traces is to run Jaeger via Docker. This will collect traces from your app and show them in a UI.
+
+```bash
+docker run --name jaeger \
+  --restart=always \
+  -e COLLECTOR_ZIPKIN_HOST_PORT=:9494 \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  -d jaegertracing/all-in-one:latest
+```
+
+### 4. View Traces
+Open your browser to [http://localhost:16686](http://localhost:16686).
+- Select `my-agent-service` from the Service dropdown.
+- Click "Find Traces".
+- Select a trace to view the full waterfall execution of your agent.
 
 ## API Reference
 

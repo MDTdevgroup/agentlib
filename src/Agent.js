@@ -189,8 +189,14 @@ export class Agent {
       spanId: rootSpanId,
       name: "agent_run",
       attributes: {
+        llm_provider: this.llmService.provider,
+        input: this.input,
+        input_length: this.input.length,
         model: this.model,
-        toolCount: this.getAllTools().length
+        tools_available: this.getAllTools().map(t => t.name),
+        tool_count: this.getAllTools().length,
+        mcp_enabled: this.mcpManager ? this.mcpManager.isEnabled() : false,
+        mcp_servers: this.mcpManager ? this.mcpManager.getServerInfo() : {}
       }
     });
 
@@ -205,10 +211,12 @@ export class Agent {
       parentSpanId: rootSpanId,
       name: "llm_chat_initial",
       attributes: {
+        llm_provider: this.llmService.provider,
+        model: this.llmService.model,
+        input: this.input,
         input_length: this.input.length,
         tools_available: allTools.map(t => t.name),
-        provider: this.llmService.provider,
-        model: this.llmService.model
+        tool_count: allTools.length,
       }
     });
 
@@ -226,8 +234,9 @@ export class Agent {
       parentSpanId: rootSpanId,
       name: "llm_chat_initial",
       attributes: {
+        model: this.model,
         usage: response.rawResponse?.usage,
-        model: this.model
+        response: response
       }
     });
 
@@ -265,7 +274,10 @@ export class Agent {
           spanId: toolSpanId,
           parentSpanId: rootSpanId,
           name: `tool_exec:${call.name}`,
-          attributes: { arguments: args }
+          attributes: {
+            tool_name: call.name,
+            arguments: args,
+          }
         });
 
         const result = await tool.func(args);
@@ -276,7 +288,11 @@ export class Agent {
           spanId: toolSpanId,
           parentSpanId: rootSpanId,
           name: `tool_exec:${call.name}`,
-          attributes: { result_preview: JSON.stringify(result).slice(0, 100) }
+          attributes: {
+            tool_name: call.name,
+            arguments: args,
+            result_preview: JSON.stringify(result).slice(0, 100)
+          }
         });
 
         this.input.push({
@@ -293,7 +309,14 @@ export class Agent {
         spanId: llmSpanId2,
         parentSpanId: rootSpanId,
         name: "llm_chat_final",
-        attributes: { input_length: this.input.length }
+        attributes: {
+          llm_provider: this.llmService.provider,
+          model: this.model,
+          input: this.input,
+          input_length: this.input.length,
+          tools_available: allTools.map(t => t.name),
+          tool_count: allTools.length,
+        }
       });
 
       // Step 6: send updated input back to model for final response
@@ -310,7 +333,12 @@ export class Agent {
         spanId: llmSpanId2,
         parentSpanId: rootSpanId,
         name: "llm_chat_final",
-        attributes: { response_type: response.type }
+        attributes: {
+          llm_provider: this.llmService.provider,
+          model: this.model,
+          response: response,
+          usage: response.rawResponse?.usage,
+        }
       });
     }
 

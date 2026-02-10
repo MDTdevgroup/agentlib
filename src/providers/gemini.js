@@ -80,11 +80,6 @@ function _convertResponse(response, output) {
 }
 
 export async function chat(client, input, { inputSchema, outputSchema, tools, ...options }) {
-    console.log("==== API CALL =====")
-    _convertInput(input).contents.forEach(item => {
-        console.log(item)
-        console.log(item.parts)
-    })
     try {
         let response, output;
         const formattedInput = _convertInput(input);
