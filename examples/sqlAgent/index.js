@@ -30,8 +30,6 @@ async function main() {
   const db = await initDB("./chinook.db");
   const promptsPath = './prompts.yml';
 
-  const llmService = new LLMService('openai', process.env.OPENAI_API_KEY);
-
   const genTools = new ToolLoader();
   genTools.addTools(generatorTools(db));
   const execTools = new ToolLoader();
@@ -41,8 +39,8 @@ async function main() {
 
   const promptLoader = await PromptLoader.create(promptsPath);
 
-  const sqlGeneratorAgent = new Agent(llmService, { 
-    toolLoader: genTools 
+  const sqlGeneratorAgent = new Agent(llmService, {
+    toolLoader: genTools
   });
 
   sqlGeneratorAgent.addInput({

@@ -18,11 +18,26 @@ export class LLMService {
         return this.providerNamespace.createClient(this.apiKey);
     }
 
-    async chat(input, {inputSchema = null, outputSchema = null, ...options} = {}) {        
-        return this.providerNamespace.chat(this.client, input, {
-            inputSchema, 
-            outputSchema, 
-            ...options
-        });
+    async chat(input, { inputSchema = null, outputSchema = null, maxRetries = 3, initialDelay = 1000, ...options } = {}) {
+        let attempt = 0;
+        let delay = initialDelay;
+
+        while (true) {
+            try {
+                return await this.providerNamespace.chat(this.client, input, {
+                    inputSchema,
+                    outputSchema,
+                    ...options
+                });
+            } catch (error) {
+                attempt++;
+                if (attempt > maxRetries) {
+                    throw error;
+                }
+                console.warn(`LLM call failed (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms... Error: ${error.message}`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+                delay *= 2; // Exponential backoff
+            }
+        }
     }
 }
