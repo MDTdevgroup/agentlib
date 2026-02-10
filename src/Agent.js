@@ -68,61 +68,66 @@ export class Agent {
    * @returns {Promise<object>} The final response object from the LLM, including execution details.
    */
   async run() {
-    const allTools = this.toolLoader.getTools() || [];
-    const executed = []
+    try {
+      const allTools = this.toolLoader.getTools() || [];
+      const executed = []
 
-    let response = await this.llmService.chat(this.input, {
-      model: this.model,
-      outputSchema: this.outputSchema,
-      tools: allTools,
-      ...this.additionalOptions
-    });
-
-    const { output, rawResponse } = response;
-
-    rawResponse.output.forEach(item => {
-      if (item.type === "function_call") {
-        const { parsed_arguments, ...rest } = item;
-        const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
-        const cleanedItem = { ...rest, arguments: args };
-        this.addInput(cleanedItem);
-      } else {
-        this.addInput(item);
-      }
-    });
-
-    const functionCalls = rawResponse.output.filter(item => item.type === "function_call");
-
-    if (functionCalls.length > 0) {
-      for (const call of functionCalls) {
-        let args;
-        args = JSON.parse(call.arguments);
-        call.arguments = args
-        executed.push(call)
-
-        const tool = this.toolLoader.findTool(call.name);
-        if (!tool || !tool.func) {
-          throw new Error(`Tool ${call.name} not found or missing implementation.`);
-        }
-
-        const result = await tool.func(args);
-
-        this.input.push({
-          ...call,
-          type: "function_call_output",
-          output: JSON.stringify(result),
-        });
-      }
-
-      // Step 6: send updated input back to model for final response
-      response = await this.llmService.chat(this.input, {
-        tools: allTools,
+      let response = await this.llmService.chat(this.input, {
         model: this.model,
         outputSchema: this.outputSchema,
+        tools: allTools,
         ...this.additionalOptions
       });
+
+      const { output, rawResponse } = response;
+
+      rawResponse.output.forEach(item => {
+        if (item.type === "function_call") {
+          const { parsed_arguments, ...rest } = item;
+          const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
+          const cleanedItem = { ...rest, arguments: args };
+          this.addInput(cleanedItem);
+        } else {
+          this.addInput(item);
+        }
+      });
+
+      const functionCalls = rawResponse.output.filter(item => item.type === "function_call");
+
+      if (functionCalls.length > 0) {
+        for (const call of functionCalls) {
+          let args;
+          args = JSON.parse(call.arguments);
+          call.arguments = args
+          executed.push(call)
+
+          const tool = this.toolLoader.findTool(call.name);
+          if (!tool || !tool.func) {
+            throw new Error(`Tool ${call.name} not found or missing implementation.`);
+          }
+
+          const result = await tool.func(args);
+
+          this.input.push({
+            ...call,
+            type: "function_call_output",
+            output: JSON.stringify(result),
+          });
+        }
+
+        // Step 6: send updated input back to model for final response
+        response = await this.llmService.chat(this.input, {
+          tools: allTools,
+          model: this.model,
+          outputSchema: this.outputSchema,
+          ...this.additionalOptions
+        });
+      }
+      response.executed = executed;
+      return response;
+    } catch (error) {
+      console.error('Error running agent:', error);
+      throw error;
     }
-    response.executed = executed;
-    return response;
   }
 }
