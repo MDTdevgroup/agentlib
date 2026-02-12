@@ -21,7 +21,7 @@ async function main() {
   console.log('--- AgentLib Schema Example: Math Tutor ---\n');
 
   // 3. Initialize LLM Service
-  const llmService = new LLMService('gemini', process.env.GEMINI_API_KEY);
+  const llmService = new LLMService('openai', process.env.OPENAI_API_KEY);
 
   // 4. Initialize Agent with Output Schema
   const agent = new Agent(llmService, {
