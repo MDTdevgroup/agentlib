@@ -82,18 +82,27 @@ export async function chat(client, input, { model = defaultGeminiModel, inputSch
     try {
         let response, output;
         const formattedInput = _convertInput(input);
-        const config = {
-            systemInstruction: {
-                parts: formattedInput.systemParts || []
-            },
-            tools: tools ? [{
-                functionDeclarations: tools.map(tool => ({
+        // Separate custom tools (name/description/parameters) from native Gemini tools (e.g. { googleSearch: {} })
+        const customTools = tools ? tools.filter(t => t.name) : [];
+        const nativeTools = tools ? tools.filter(t => !t.name) : [];
+
+        const toolsConfig = [
+            ...(customTools.length > 0 ? [{
+                functionDeclarations: customTools.map(tool => ({
                     name: tool.name,
                     description: tool.description,
                     parameters: tool.parameters,
                     func: tool.func
                 }))
-            }] : [],
+            }] : []),
+            ...nativeTools
+        ];
+
+        const config = {
+            systemInstruction: {
+                parts: formattedInput.systemParts || []
+            },
+            tools: toolsConfig,
             ...options
         }
 
