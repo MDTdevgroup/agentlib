@@ -1,4 +1,4 @@
-import { defaultOpenaiModel } from "./config.js";
+import { defaultOpenaiModel, defaultGeminiModel } from "./config.js";
 import { ToolLoader } from "./ToolLoader.js";
 import { PromptLoader } from "./prompt-loader/promptLoader.js";
 import { fileURLToPath } from 'url';
@@ -23,7 +23,7 @@ export class Agent {
    * @param {boolean} [options.redundantToolInfo=true] - Whether to include tool descriptions in the system prompt.
    * @param {object} [options...] - Additional options passed to the LLM service.
    */
-  constructor(llmService, { model = defaultOpenaiModel, toolLoader = null, inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
+  constructor(llmService, { model = llmService.provider == 'openai' ? defaultOpenaiModel : defaultGeminiModel, toolLoader = null, inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
     this.llmService = llmService;
     this.model = model;
     this.toolLoader = toolLoader || new ToolLoader(enableMCP);

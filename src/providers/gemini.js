@@ -1,5 +1,4 @@
 import { GoogleGenAI } from "@google/genai";
-import { defaultGeminiModel } from "../config.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 export function createClient(apiKey) {
@@ -79,7 +78,7 @@ function _convertResponse(response, output) {
     };
 }
 
-export async function chat(client, input, { inputSchema, outputSchema, tools, ...options }) {
+export async function chat(client, input, { model = defaultGeminiModel, inputSchema, outputSchema, tools, ...options }) {
     try {
         let response, output;
         const formattedInput = _convertInput(input);
@@ -100,7 +99,7 @@ export async function chat(client, input, { inputSchema, outputSchema, tools, ..
 
         if (outputSchema) {
             response = await client.models.generateContent({
-                model: defaultGeminiModel,
+                model,
                 contents: formattedInput.contents,
                 config: {
                     ...config,
@@ -120,7 +119,7 @@ export async function chat(client, input, { inputSchema, outputSchema, tools, ..
             }
         } else {
             response = await client.models.generateContent({
-                model: defaultGeminiModel,
+                model,
                 contents: formattedInput.contents,
                 config: config,
             });

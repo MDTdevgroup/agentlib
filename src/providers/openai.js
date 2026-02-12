@@ -17,10 +17,8 @@ function _convertInput(input) {
     });
 }
 
-// Now accepts the client as first parameter
-export async function chat(client, input, { inputSchema, outputSchema, ...options }) {
-    const defaultOptions = { model: defaultOpenaiModel };
-    const finalOptions = { ...defaultOptions, ...options };
+export async function chat(client, input, { model = defaultOpenaiModel, inputSchema, outputSchema, ...options }) {
+    const finalOptions = { model, ...options };
 
     if (inputSchema) {
         input = inputSchema.parse(input);

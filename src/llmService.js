@@ -1,4 +1,5 @@
 import { getAllowedProviders, validateProviderName } from './providers/registry.js';
+import { defaultOpenaiModel, defaultGeminiModel } from './config.js';
 
 export class LLMService {
     constructor(provider, apiKey) {
@@ -18,13 +19,14 @@ export class LLMService {
         return this.providerNamespace.createClient(this.apiKey);
     }
 
-    async chat(input, { inputSchema = null, outputSchema = null, maxRetries = 3, initialDelay = 1000, ...options } = {}) {
+    async chat(input, { model = this.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, inputSchema = null, outputSchema = null, maxRetries = 3, initialDelay = 1000, ...options } = {}) {
         let attempt = 0;
         let delay = initialDelay;
 
         while (true) {
             try {
                 return await this.providerNamespace.chat(this.client, input, {
+                    model,
                     inputSchema,
                     outputSchema,
                     ...options
