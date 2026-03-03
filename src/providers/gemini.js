@@ -79,11 +79,39 @@ function _convertResponse(response, output) {
     };
 }
 
-export async function chat(client, input, { inputSchema, outputSchema, tools, ...options }) {
+/**
+ * Determines whether a Gemini API error is retryable.
+ * Uses inverted logic: only explicitly non-retryable status codes (user errors)
+ * are rejected. Everything else (5xx, network failures, etc.) is retryable.
+ * For 429 (rate limit), extracts the Retry-After header so the caller can
+ * respect the server's requested delay.
+ *
+ * @returns {{ retryable: boolean, retryAfterMs?: number|null }}
+ */
+export function isRetryable(error) {
+    const status = error.status || error.code;
+    const hardFails = [400, 401, 403, 404];
+    if (hardFails.includes(status)) return { retryable: false };
+
+    let retryAfterMs = null;
+    if (status === 429) {
+        const retryAfter = error.headers?.get?.('retry-after')
+            || error.headers?.['retry-after'];
+        if (retryAfter) {
+            const parsed = parseInt(retryAfter, 10) * 1000;
+            if (!isNaN(parsed)) retryAfterMs = parsed;
+        }
+    }
+
+    return { retryable: true, retryAfterMs };
+}
+
+export async function chat(client, input, { inputSchema, outputSchema, tools, signal, ...options }) {
     try {
         let response, output;
         const formattedInput = _convertInput(input);
         const config = {
+            abortSignal: signal,
             systemInstruction: {
                 parts: formattedInput.systemParts || []
             },
