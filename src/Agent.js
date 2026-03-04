@@ -2,6 +2,7 @@ import { defaultOpenaiModel, defaultGeminiModel } from "./config.js";
 import { MCPManager } from "./mcp/MCPManager.js";
 import { v4 as uuidv4 } from 'uuid';
 import EventEmitter from 'events';
+import { DomainObservability } from "../utilities/observability.js";
 
 /**
  * Represents an LLM-based agent capable of tool calling.
@@ -10,6 +11,7 @@ export class Agent {
   /**
    * @param {object} llmService - The LLM service instance used for communication with the LLM provider.
    * @param {object} [options] - Configuration options for the agent.
+   * @param {string} [options.name='agent'] - The name of the agent (for logging purposes).
    * @param {EventEmitter} [options.eventEmitter] - Optional event emitter for observability and tracing events (e.g., 'agent:start', 'tool:start').
    * @param {string} [options.model] - The specific model identifier to use (defaults to provider-specific default).
    * @param {Array<object>} [options.tools=[]] - Array of native tool objects available to the agent.
@@ -19,9 +21,22 @@ export class Agent {
    * @param {boolean} [options.redundantToolInfo=true] - Whether to explicitly inject tool descriptions into the system prompt (useful for some models).
    * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
    */
-  constructor(llmService, { eventEmitter, model = llmService.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, tools = [], inputSchema = null, outputSchema = null, enableMCP = false, redundantToolInfo = true, ...options } = {}) {
+  constructor(llmService, {
+    name = 'agent',
+    eventEmitter,
+    logmode = 'none', // 'none', 'file', 'otel', 'console', or array of them.
+    model = llmService.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel,
+    tools = [],
+    inputSchema = null,
+    outputSchema = null,
+    enableMCP = false,
+    redundantToolInfo = true,
+    ...options } = {}) {
+
+    this.name = name;
+    this.sessionId = uuidv4();
     this.llmService = llmService;
-    this.events = eventEmitter;
+    this.events = eventEmitter || new EventEmitter();
     this.model = model;
     this.nativeTools = tools;
     this.inputSchema = inputSchema;
@@ -30,6 +45,10 @@ export class Agent {
     this.redundantToolInfo = redundantToolInfo;
     this.additionalOptions = options;
     this.input = [];
+
+    if (logmode !== 'none') {
+      new DomainObservability(this.events, logmode);
+    }
 
     if (this.redundantToolInfo) {
       this.updateSystemPrompt();
@@ -168,7 +187,8 @@ export class Agent {
         spanId,
         parentSpanId,
         name,
-        attributes
+        attributes,
+        sessionId: this.sessionId
       });
     }
   }
@@ -180,8 +200,8 @@ export class Agent {
    */
   async run() {
     // Generate a new trace ID and root span ID
-    const traceId = uuidv4();
-    const rootSpanId = uuidv4();
+    const traceId = this.name + "-" + uuidv4();
+    const rootSpanId = this.name + "-" + uuidv4();
 
     // 1. EMIT: Agent start
     this._emitTrace('agent:start', {
@@ -204,7 +224,7 @@ export class Agent {
     const executed = []
 
     // 2. EMIT: First LLM Call
-    const llmSpanId1 = uuidv4();
+    const llmSpanId1 = "llm_chat_initial-" + uuidv4();
     this._emitTrace('llm:start', {
       traceId,
       spanId: llmSpanId1,
@@ -268,7 +288,7 @@ export class Agent {
         }
 
         // 4. EMIT: Tool Start
-        const toolSpanId = uuidv4();
+        const toolSpanId = "tool_call:" + call.name + "-" + uuidv4();
         this._emitTrace('tool:start', {
           traceId,
           spanId: toolSpanId,
@@ -303,7 +323,7 @@ export class Agent {
       }
 
       // 6. EMIT: Final LLM Call
-      const llmSpanId2 = uuidv4();
+      const llmSpanId2 = "llm_chat_final-" + uuidv4();
       this._emitTrace('llm:start', {
         traceId,
         spanId: llmSpanId2,

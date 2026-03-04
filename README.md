@@ -157,7 +157,20 @@ import { Agent } from './src/Agent.js';
 
 AgentLib supports [OpenTelemetry](https://opentelemetry.io/) for deeply tracing agent execution flow. This allows you to visualize tool calls, LLM requests, and agent reasoning.
 
-### 1. Enable in AgentLib
+### Quick Start (Automatic Setup)
+The easiest way to enable observability is to use the logmode option in the Agent constructor. This automatically initializes the necessary emitters and handlers.
+
+```javascript
+// Single mode
+const agent = new Agent(llm, { logmode: 'console' });
+
+// Multiple modes (Console + file tracing)
+const agent = new Agent(llm, { 
+  logmode: ['console', 'file'] 
+});
+```
+
+### Manual Setup
 Initialize the observability layer with `mode: 'otel'` (or `'both'` for files + traces).
 
 ```javascript
