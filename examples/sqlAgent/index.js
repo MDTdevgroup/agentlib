@@ -1,5 +1,6 @@
+import './instrumentation.js';
 import { Agent } from "../../src/Agent.js";
-import { LLMService } from "../../src/LLMService.js";
+import { LLMService } from "../../src/llmService.js";
 import { ToolLoader } from "../../src/ToolLoader.js";
 import { PromptLoader } from "../../src/prompt-loader/promptLoader.js";
 import { initDB, generatorTools, executorTools, mainAgentTools, getSalesForArtist, getTopTracksInGenre } from "./sqlTools.js";
@@ -7,6 +8,8 @@ import readline from "readline";
 import { z } from 'zod';
 import dotenv from 'dotenv';
 dotenv.config({ path: '../../.env' });
+import EventEmitter from 'events';
+import { DomainObservability } from "../../src/utilities/observability.js";
 
 const llmService = new LLMService('gemini', process.env.GEMINI_API_KEY);
 
@@ -38,10 +41,13 @@ async function main() {
   mainTools.addTools(mainAgentTools(db));
 
   const promptLoader = await PromptLoader.create(promptsPath);
+  const sharedBus = new EventEmitter();
+
+  // Enable both file and OpenTelemetry output
+  new DomainObservability(sharedBus, { mode: ['otel', 'console'] });
 
   const sqlGeneratorAgent = new Agent(llmService, {
-    toolLoader: genTools
-  });
+    toolLoader: genTools, eventEmitter: sharedBus });
 
   sqlGeneratorAgent.addInput({
     role: "system",
@@ -50,7 +56,8 @@ async function main() {
 
   const sqlExecutorAgent = new Agent(llmService, {
     toolLoader: execTools,
-    outputSchema: executorOutputSchema
+    outputSchema: executorOutputSchema,
+    eventEmitter: sharedBus
   });
 
   sqlExecutorAgent.addInput({
@@ -65,6 +72,7 @@ async function main() {
 
   const mainAgent = new Agent(llmService, {
     toolLoader: mainTools,
+    eventEmitter: sharedBus
   });
 
   mainAgent.addInput({
@@ -78,29 +86,22 @@ async function main() {
         rl.close();
         process.exit(0);
       }
-      console.log("--------------------------------");
 
       mainAgent.addInput({ role: "user", content: answer });
 
-      console.log("===RUNNING MAIN (ROUTER) AGENT===");
       const response = await mainAgent.run();
 
-      console.log("executed: ", response.executed);
       if (!response.executed) {
-        console.log(response.output);
         ask();
         return;
       }
 
       for (const item of response.executed) {
         const functionName = item.name;
-        console.log(`Router decided to use tool: ${functionName}`);
         if (functionName === "generate_custom_sql_query") {
           await runSqlGenerator(answer);
         }
       }
-
-      console.log(response.output)
 
       // loop back
       ask();
@@ -108,8 +109,6 @@ async function main() {
   }
 
   async function runSqlGenerator(queryPrompt) {
-    console.log("--------------------------------");
-    console.log("===RUNNING SQL GENERATOR AGENT===");
     sqlGeneratorAgent.addInput({ role: "user", content: queryPrompt });
 
     // Run generator agent
@@ -117,24 +116,14 @@ async function main() {
       const step = await sqlGeneratorAgent.run();
       const hasFunctionCall = step.rawResponse.output.some(item => item.type === "function_call");
       if (!hasFunctionCall) {
-        console.log("\n===Generated Query===");
         const query = step.output;
-        console.log(query + "\n");
         await executeSql(query); // Pass to executor
         break;
-      } else {
-        step.rawResponse.output.forEach(item => {
-          if (item.type === "function_call") {
-            console.log(`Tool Executed:`, item.name);
-          }
-        });
       }
     }
   }
 
   async function executeSql(query) {
-    console.log("--------------------------------");
-    console.log("===RUNNING EXECUTOR AGENT===\n");
     sqlExecutorAgent.addInput({
       role: "user",
       content: `Validate and then execute this SQL query: ${query}`
@@ -143,24 +132,12 @@ async function main() {
     for (let i = 0; i < 12; i++) {
       const step = await sqlExecutorAgent.run();
       const hasFunctionCall = step.rawResponse.output.some(item => item.type === "function_call");
-      if (hasFunctionCall) {
-        step.rawResponse.output.forEach(item => {
-          if (item.type === "function_call") {
-            console.log(`Tool Executed:`, item.name);
-          }
-        });
-      } else {
+      if (!hasFunctionCall) {
         // No more function calls, process the structured output
         try {
           const parsedOutput = step.output;
-          console.log("\n=== SQL Query Results ===");
-          console.log("Raw Output:", JSON.stringify(parsedOutput.sql_output, null, 2));
-          console.log("\n=== Analysis & Summary ===");
           console.log(parsedOutput.explanation_summary);
-          console.log("--------------------------------\n");
         } catch (error) {
-          console.log("Final Answer:", step.output);
-          console.log("--------------------------------\n");
         }
         break;
       }

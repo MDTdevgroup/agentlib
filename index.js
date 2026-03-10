@@ -1,4 +1,5 @@
-export { LLMService } from './src/LLMService.js';
+import './src/instrumentation.js';
+export { LLMService } from './src/llmService.js';
 export { Agent } from './src/Agent.js';
 export { PromptLoader } from './src/prompt-loader/promptLoader.js';
 export { ToolLoader } from "./src/ToolLoader.js";
