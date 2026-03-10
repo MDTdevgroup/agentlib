@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import util from 'util';
 
 export function createClient(apiKey) {
     return new GoogleGenAI({ apiKey });
@@ -9,9 +10,9 @@ function _convertInput(input) {
     const contents = [];
     const systemParts = [];
     for (const object of input) {
-        if (object.role === 'user') {
+        if (object.role === 'user' && typeof object.content === 'string') {
             contents.push({
-                role: "user",
+                role: object.role,
                 parts: [{ text: object.content }]
             })
         } else if (object.type === 'function_call') {
@@ -34,6 +35,27 @@ function _convertInput(input) {
             systemParts.push({
                 text: object.content
             })
+        } else if (Array.isArray(object.content)) {
+            for (const part of object.content) {
+                if (part.type === 'input_image') {
+                    const [prefix, base64ImageFile] = part.image_url.split(",");
+                    const mimeType = prefix.match(/:(.*?);/)[1]; // Extracts something like "image/jpeg"
+                    contents.push({
+                        role: "user",
+                        parts: [{
+                            inlineData: {
+                                mimeType,
+                                data: base64ImageFile
+                            }
+                        }]
+                    });
+                } else if (part.type === 'input_text') {
+                    contents.push({
+                        role: "user",
+                        parts: [{ text: part.text }]
+                    })
+                }
+            }
         }
     }
     return {
@@ -73,12 +95,19 @@ function _convertResponse(response, output) {
             model: response.modelVersion,
             id: response.responseId,
             usage: response.usageMetadata,
-            originalFormat: response
+            // originalFormat: response
         }
     };
 }
 
 export async function chat(client, input, { model = defaultGeminiModel, inputSchema, outputSchema, tools, ...options }) {
+    const originalWarn = console.warn;
+    console.warn = (...args) => {
+        if (typeof args[0] === 'string' && args[0].includes('there are non-text parts')) {
+            return;
+        }
+        originalWarn(...args);
+    };
     try {
         let response, output;
         const formattedInput = _convertInput(input);

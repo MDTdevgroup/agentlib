@@ -226,7 +226,8 @@ export class Agent {
           });
 
           this.input.push({
-            ...call,
+            name: call.name,       // Required for Gemini translation
+            call_id: call.call_id, // Required for OpenAI translation
             type: "function_call_output",
             output: JSON.stringify(result),
           });

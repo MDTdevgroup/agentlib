@@ -31,6 +31,7 @@ Run `npm test` to run the test script under `tests/test.js`.
 
 ## Features
 
+- **Standardized API**: Uses OpenAI's message and response syntax across all LLM providers.
 - **Multi-Provider LLM Support**: OpenAI, Gemini
 - **MCP Integration**: Browser automation, filesystem, web search, memory
 - **Tool Calling**: Native function execution with type safety
@@ -65,6 +66,65 @@ await mcpAgent.addMCPServer('browser', {
   type: 'stdio', 
   command: 'npx',
   args: ['@playwright/mcp@latest']
+});
+```
+
+## Defining Custom Tools
+
+AgentLib enforces the use of a `ToolLoader` to manage both native functions and remote MCP servers. Define your tools using the standard OpenAI function schema, attach your executable logic to the `func` property, and load them into the agent.
+
+```javascript
+import { Agent, LLMService, ToolLoader } from '@peebles-group/agentlib-js';
+
+// 1. Define your custom tools
+const customTools = [
+  {
+    type: "function",
+    name: "find_sales_for_artist",
+    description: "Use this tool to find the total sales for a specific artist.",
+    parameters: {
+      type: "object",
+      properties: {
+        artistName: {
+          type: "string",
+          description: "The name of the artist to search for",
+        },
+      },
+      required: ["artistName"],
+    },
+    // The agent will automatically execute this function when called
+    func: async ({ artistName }) => {
+      const generatedQuery = getSalesForArtist(artistName);
+      return await db.all(generatedQuery);  
+    }, 
+  },
+  {
+    type: "function",
+    name: "generate_custom_sql_query",
+    description: "Fallback for complex SQL queries not matching other tools.",
+    parameters: {
+      type: "object",
+      properties: {
+        naturalLanguageQuery: {
+          type: "string",
+          description: "The user's full, original question",
+        },
+      },
+      required: ["naturalLanguageQuery"],
+    },
+    func: async (args) => args,
+  }
+];
+
+// 2. Initialize the ToolLoader and register the tools
+const myToolLoader = new ToolLoader();
+myToolLoader.addTools(customTools);
+
+// 3. Pass the ToolLoader to your Agent
+const llmService = new LLMService('openai', process.env.OPENAI_API_KEY);
+const agent = new Agent(llmService, { 
+  model: 'gpt-4o-mini',
+  toolLoader: myToolLoader 
 });
 ```
 
@@ -254,10 +314,8 @@ const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
 ```
 
 ### LLM Providers
-- **OpenAI**: `gpt-4o-mini`, `gpt-4o`, `gpt-3.5-turbo`
-- **Gemini**: `gemini-2.5-flash-lite`
 
-Input format follows OpenAI's message structure:
+**Standardized Syntax:** All inputs and outputs across all providers (including Gemini) strictly follow OpenAI's API structure (which are converted to Gemini's API structure internally). Input format follows OpenAI's message structure:
 ```javascript
 [{ role: 'user', content: 'Hello' }]
 ```

@@ -44,10 +44,11 @@ async function main() {
   const sharedBus = new EventEmitter();
 
   // Enable both file and OpenTelemetry output
-  new DomainObservability(sharedBus, { mode: ['otel', 'console'] });
+  new DomainObservability(sharedBus, { mode: 'file' });
 
   const sqlGeneratorAgent = new Agent(llmService, {
-    toolLoader: genTools, eventEmitter: sharedBus });
+    toolLoader: genTools, eventEmitter: sharedBus
+  });
 
   sqlGeneratorAgent.addInput({
     role: "system",
