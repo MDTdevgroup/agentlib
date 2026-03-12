@@ -29,7 +29,8 @@ class FileHandler {
     await fs.mkdir(spansDir, { recursive: true });
 
     // Unique filename for every event to preserve history of start/complete
-    const filename = `${Date.now()}_${name}_${spanId}.json`;
+    const safeTime = new Date().toISOString().replace(/[:.]/g, '-'); // Replace colons and dots with dashes
+    const filename = `${safeTime}_${name}_${spanId}.json`;
     const filePath = path.join(spansDir, filename);
 
     const data = {
