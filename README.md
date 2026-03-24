@@ -68,7 +68,7 @@ await mcpAgent.addMCPServer('browser', {
 });
 ```
 
-## Prompt Management
+## Prompt Management (Prompt Loader)
 
 Manage prompts efficiently using the `PromptLoader`. Support for yml/db/md/json/txt files.
 
@@ -94,6 +94,32 @@ const prompt = loader.getPrompt('system_instruction').format({
 
 agent.addInput({ role: 'user', content: prompt });
 
+```
+
+## Defining Custom Tools
+
+When defining native tools to pass into the agent or `ToolLoader`, they must follow this generalized format. Note that the `type: "function"` field is required.
+
+```javascript
+const myTool = {
+  type: "function",
+  name: "tool_name",
+  description: "Clear description of what the tool does and when to use it.",
+  parameters: {
+    type: "object",
+    properties: {
+      param1: { type: "string", description: "Description of the parameter" },
+      param2: { type: "number" }
+    },
+    // Required parameters array
+    required: ["param1"],
+  },
+  func: async (args) => {
+    // The underlying implementation
+    // 'args' will contain the parsed arguments provided by the LLM
+    return `Executed with ${args.param1}`;
+  },
+};
 ```
 
 ## Structured Outputs

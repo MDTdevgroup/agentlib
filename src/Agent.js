@@ -60,12 +60,18 @@ export class Agent {
    */
   updateSystemPrompt() {
     const allTools = this.toolLoader.getTools();
-    const toolDescriptions = allTools.map(tool => `${tool.name}: ${tool.description}`).join('; ');
-    this.input = [{
-      role: 'system',
-      content: `You are a tool-calling agent. You have access to the following tools: ${toolDescriptions}. 
-      Use these tools to answer the user's questions.`
-    }];
+    const toolDescriptions = allTools
+      .filter(t => t.name && t.description)
+      .map(tool => `${tool.name}: ${tool.description}`)
+      .join('; ');
+
+    if (toolDescriptions) {
+      this.input = [{
+        role: 'system',
+        content: `You are a tool-calling agent. You have access to the following tools: ${toolDescriptions}. 
+        Use these tools to answer the user's questions.`
+      }];
+    }
   }
 
   /**

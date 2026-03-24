@@ -47,14 +47,13 @@ export class ToolLoader {
     addTool(tool) {
         this._validateToolStructure(tool);
 
-        if (this._isDuplicate(tool.name)) {
-            throw new Error(`Tool with name '${tool.name}' already exists.`);
+        const identifier = tool.name || tool.type;
+
+        if (this._isDuplicate(identifier)) {
+            throw new Error(`Tool with name '${identifier}' already exists.`);
         }
 
-        this.nativeTools.set(tool.name, {
-            description: '',
-            ...tool
-        });
+        this.nativeTools.set(identifier, tool);
     }
 
     /**
@@ -99,8 +98,11 @@ export class ToolLoader {
         if (tools.length === 0) return "";
 
         const descriptions = tools
+            .filter(t => t.name && t.description)
             .map(t => `${t.name}: ${t.description}`)
             .join('; ');
+
+        if (!descriptions) return "";
 
         return `You are a tool-calling agent. You have access to the following tools: ${descriptions}. Use these tools to answer the user's questions.`;
     }
@@ -131,6 +133,12 @@ export class ToolLoader {
      */
     _validateToolStructure(tool) {
         if (!tool || typeof tool !== 'object') throw new Error("Invalid tool object");
+
+        // Native LLM tools (e.g. { type: "web_search" }) do not need a func or name
+        if (tool.type && tool.type !== 'function') {
+            return;
+        }
+
         if (typeof tool.name !== 'string' || !tool.name.trim()) throw new Error("Tool missing name");
         if (typeof tool.func !== 'function') throw new Error("Tool missing func");
     }
