@@ -3,8 +3,8 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { defaultOpenaiModel } from "../config.js";
 
 // Factory function to create client
-export function createClient(apiKey) {
-    return new OpenAI({ apiKey });
+export function createClient(auth) {
+    return new OpenAI({ apiKey: auth.apiKey });
 }
 
 function _convertInput(input) {

@@ -397,5 +397,3 @@ When calling an LLM, the result object has the following structure:
 - `usage` - Token consumption details
 - `model` - The model used for the response
 - `status` - Response status ("completed", "failed", etc.)
-
-

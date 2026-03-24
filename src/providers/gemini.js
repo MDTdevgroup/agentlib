@@ -2,8 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import util from 'util';
 
-export function createClient(apiKey) {
-    return new GoogleGenAI({ apiKey });
+export function createClient(auth) {
+    return new GoogleGenAI({ apiKey: auth.apiKey });
 }
 
 function _convertInput(input) {
