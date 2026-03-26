@@ -47,7 +47,7 @@ export class Agent {
     this.input = [];
 
     if (logmode !== 'none') {
-      new DomainObservability(this.events, logmode);
+      new DomainObservability(this.events, { mode: logmode });
     }
 
     if (this.redundantToolInfo) {
@@ -79,10 +79,21 @@ export class Agent {
    * @param {object} input - The message object to add.
    */
   addInput(input) {
-    if (this.inputSchema) {
-      this.inputSchema.parse(input);
+    if (Array.isArray(input)) {
+      for (const item of input) {
+        if (this.inputSchema) {
+          this.inputSchema.parse(item);
+        }
+        this.input.push(item);
+      }
+    } else if (typeof (input) === 'object') {
+      if (this.inputSchema) {
+        this.inputSchema.parse(input);
+      }
+      this.input.push(input);
+    } else {
+      throw new Error('Invalid input type. Input must be an object in the format {role: string, content: string} or an array of objects in the format [{role: string, content: string}, ...].');
     }
-    this.input.push(input);
   }
 
   /**

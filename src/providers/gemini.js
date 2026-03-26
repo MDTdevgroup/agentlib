@@ -36,6 +36,11 @@ function _convertInput(input) {
             })
         }
     }
+
+    if (contents.length === 0) {
+        throw new Error("User prompt not detected, Gemini requires a user prompt.");
+    }
+
     return {
         contents,
         systemParts
@@ -82,6 +87,7 @@ export async function chat(client, input, { model = defaultGeminiModel, inputSch
     try {
         let response, output;
         const formattedInput = _convertInput(input);
+        console.log("\x1b[32mformattedInput: \x1b[0m", formattedInput);
         // Separate custom tools (name/description/parameters) from native Gemini tools (e.g. { googleSearch: {} })
         const customTools = tools ? tools.filter(t => t.name) : [];
         const nativeTools = tools ? tools.filter(t => !t.name) : [];
