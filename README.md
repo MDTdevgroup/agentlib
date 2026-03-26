@@ -31,6 +31,7 @@ Run `npm test` to run the test script under `tests/test.js`.
 
 ## Features
 
+- **Standardized API**: Uses OpenAI's message and response syntax across all LLM providers.
 - **Multi-Provider LLM Support**: OpenAI, Gemini
 - **MCP Integration**: Browser automation, filesystem, web search, memory
 - **Tool Calling**: Native function execution with type safety
@@ -280,10 +281,8 @@ const agent = new Agent('openai', process.env.OPENAI_API_KEY, {
 ```
 
 ### LLM Providers
-- **OpenAI**: `gpt-4o-mini`, `gpt-4o`, `gpt-3.5-turbo`
-- **Gemini**: `gemini-2.5-flash-lite`
 
-Input format follows OpenAI's message structure:
+**Standardized Syntax:** All inputs and outputs across all providers (including Gemini) strictly follow OpenAI's API structure (which are converted to Gemini's API structure internally). Input format follows OpenAI's message structure:
 ```javascript
 [{ role: 'user', content: 'Hello' }]
 ```
@@ -365,5 +364,3 @@ When calling an LLM, the result object has the following structure:
 - `usage` - Token consumption details
 - `model` - The model used for the response
 - `status` - Response status ("completed", "failed", etc.)
-
-

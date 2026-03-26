@@ -12,10 +12,10 @@ const server = {
 };
 
 // openai
-// const llm = new LLMService('openai', process.env.OPENAI_API_KEY);
+// const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 
 // gemini
-const llm = new LLMService('gemini', process.env.GEMINI_API_KEY);
+const llm = new LLMService({ provider: 'gemini', apiKey: process.env.GEMINI_API_KEY });
 
 async function run() {
   try {

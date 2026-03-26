@@ -2,21 +2,17 @@ import { getAllowedProviders, validateProviderName } from './providers/registry.
 import { defaultOpenaiModel, defaultGeminiModel } from './config.js';
 
 export class LLMService {
-    constructor(provider, apiKey) {
-        this.provider = validateProviderName(provider);
+    constructor(auth = { provider, apiKey }) {
+        this.auth = auth;
+        this.provider = validateProviderName(auth.provider);
         this.providerNamespace = getAllowedProviders()[this.provider]?.namespace;
-        this.apiKey = apiKey;
         this.client = this._getProviderClient();
-
-        if (!apiKey) {
-            throw new Error(`API key is required for provider: ${provider}`);
-        }
     }
 
     // Instead of using a dynamic import here, we use the imported registry namespace
     _getProviderClient() {
         // Returns the client instance for the specified provider
-        return this.providerNamespace.createClient(this.apiKey);
+        return this.providerNamespace.createClient(this.auth);
     }
 
     async chat(input, { model = this.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, inputSchema = null, outputSchema = null, maxRetries = 3, initialDelay = 1000, ...options } = {}) {

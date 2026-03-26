@@ -31,7 +31,7 @@ async function runServer() {
     const toolLoader = new ToolLoader();
     toolLoader.addTool(mathTool);
 
-    const llmService = new LLMService('openai', process.env.OPENAI_API_KEY);
+    const llmService = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 
     const agent = new Agent(llmService, {
         toolLoader,

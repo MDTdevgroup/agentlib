@@ -11,7 +11,7 @@ dotenv.config({ path: '../../.env' });
 import EventEmitter from 'events';
 import { DomainObservability } from "../../src/utilities/observability.js";
 
-const llmService = new LLMService('gemini', process.env.GEMINI_API_KEY);
+const llmService = new LLMService({ provider: 'gemini', apiKey: process.env.GEMINI_API_KEY });
 
 // Define the output schema for the executor agent
 const executorOutputSchema = z.object({
@@ -44,10 +44,11 @@ async function main() {
   const sharedBus = new EventEmitter();
 
   // Enable both file and OpenTelemetry output
-  new DomainObservability(sharedBus, { mode: ['otel', 'console'] });
+  new DomainObservability(sharedBus, { mode: 'file' });
 
   const sqlGeneratorAgent = new Agent(llmService, {
-    toolLoader: genTools, eventEmitter: sharedBus });
+    toolLoader: genTools, eventEmitter: sharedBus
+  });
 
   sqlGeneratorAgent.addInput({
     role: "system",

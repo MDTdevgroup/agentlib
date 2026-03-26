@@ -5,7 +5,7 @@ dotenv.config({ path: '../../.env' });
 
 async function runMultiAgent() {
     let isSatisfied = false;
-    const llmService = new LLMService('openai', process.env.OPENAI_API_KEY);
+    const llmService = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 
     const travelAgent = new Agent(llmService, {
         name: 'TravelAgent',
