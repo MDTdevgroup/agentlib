@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import EventEmitter from 'events';
 import { trace, context } from '@opentelemetry/api';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * @typedef {Object} SpanPayload
@@ -239,3 +240,42 @@ export class DomainObservability {
     return rawUsage;
   }
 }
+
+/**
+ * Creates a reusable tracer function that wraps operations and emits standardized telemetry.
+ */
+export const createTracer = (eventEmitter, sessionId) => {
+  return async (name, attributes, fn) => {
+    const spanId = uuidv4();
+
+    eventEmitter.emit(`${name.split(':')[0]}:start`, {
+      spanId,
+      sessionId,
+      name,
+      attributes,
+      timestamp: Date.now()
+    });
+
+    try {
+      const result = await fn(spanId);
+
+      eventEmitter.emit(`${name.split(':')[0]}:complete`, {
+        spanId,
+        sessionId,
+        name,
+        result: typeof result === 'object' ? { ...result, rawResponse: undefined } : result,
+        timestamp: Date.now()
+      });
+
+      return result;
+    } catch (error) {
+      eventEmitter.emit(`${name.split(':')[0]}:error`, {
+        spanId,
+        sessionId,
+        name,
+        error: error.message
+      });
+      throw error;
+    }
+  };
+};
