@@ -1,5 +1,6 @@
 import { getAllowedProviders, validateProviderName } from './providers/registry.js';
 import { defaultOpenaiModel, defaultGeminiModel } from './config.js';
+import { withRetries } from './utilities/retry.js';
 
 export class LLMService {
     constructor(auth = { provider, apiKey }) {
@@ -15,27 +16,46 @@ export class LLMService {
         return this.providerNamespace.createClient(this.auth);
     }
 
-    async chat(input, { model = this.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, inputSchema = null, outputSchema = null, maxRetries = 3, initialDelay = 1000, ...options } = {}) {
-        let attempt = 0;
-        let delay = initialDelay;
-
-        while (true) {
-            try {
-                return await this.providerNamespace.chat(this.client, input, {
-                    model,
-                    inputSchema,
-                    outputSchema,
-                    ...options
-                });
-            } catch (error) {
-                attempt++;
-                if (attempt > maxRetries) {
-                    throw error;
+    async chat(input, {
+        model = this.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel,
+        inputSchema = null,
+        outputSchema = null,
+        maxRetries = 3,
+        baseDelay = 500,
+        incrementalDelay = 500,
+        maxDelay = 30000,
+        timeout = 60000,
+        ...options
+    } = {}) {
+        return withRetries(
+            // Thunk: zero-argument function wrapping the actual LLM call
+            () => this.providerNamespace.chat(this.client, input, {
+                model,
+                inputSchema,
+                outputSchema,
+                ...options
+            }),
+            {
+                maxRetries,
+                baseDelay,
+                incrementalDelay,
+                maxDelay,
+                timeout,
+                shouldRetry: (error) => {
+                    // Don't retry auth or client errors (4xx)
+                    const status = error?.status || error?.response?.status;
+                    if (status && status >= 400 && status < 500) {
+                        return false;
+                    }
+                    return true;
+                },
+                onRetry: (attempt, error, delay) => {
+                    console.warn(
+                        `LLM call failed (attempt ${attempt}/${maxRetries}). ` +
+                        `Retrying in ${delay}ms... Error: ${error.message}`
+                    );
                 }
-                console.warn(`LLM call failed (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms... Error: ${error.message}`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2; // Exponential backoff
             }
-        }
+        );
     }
 }
