@@ -1,4 +1,4 @@
-import { MCPManager } from "./mcp/MCPManager.js";
+import { MCPManager } from "../mcp/mcp-manager.js";
 
 /**
  * Manages the lifecycle, storage, and retrieval of the agent's tools.

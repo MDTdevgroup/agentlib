@@ -1,39 +1,70 @@
 import { v4 as uuidv4 } from 'uuid';
 import EventEmitter from 'events';
-import { ToolLoader } from "../ToolLoader.js";
 import { createTracer, DomainObservability } from "../services/observability.js";
+import { Context } from "../memory/context.js";
+import { defaultMaxTurns } from "../config.js";
 
 /**
- * The Orchestrator. Manages state, tool execution, and the CPS loop.
+ * A generalized Runner that orchestrates the outer multi-turn loop
+ * and handles the Continuation-Passing Style (CPS) snapshotting automatically.
  */
 export class AgentRunner {
     /**
-     * @param {CoreAgent} coreAgent - The stateless LLM executor instance.
-     * @param {object} [options={}] - Configuration options for the runner.
-     * @param {string} [options.name='agent_runner'] - Identifier name for tracing and logging.
-     * @param {EventEmitter} [options.eventEmitter] - Custom event emitter for observability routing.
-     * @param {string} [options.logmode='none'] - Determines logging strategy ('none', 'console', 'otel', etc.).
-     * @param {ToolLoader} [options.toolLoader=null] - Instance managing available native and remote tools.
-     * @param {boolean} [options.enableMCP=false] - Flag to enable the Model Context Protocol for remote tools.
-     * @param {boolean} [options.redundantToolInfo=true] - Flag to explicitly inject tool definitions into the system prompt.
+     * @param {Agent|Array<Agent>|Record<string, Agent>} agents - A configured Agent instance, Array, or dictionary of Agents.
+     * @param {object} [options={}] - Runner-specific configuration options.
+     * @param {string} [options.name='agent_runner'] - Identifier for tracing and logging.
+     * @param {EventEmitter} [options.eventEmitter] - Custom event emitter.
+     * @param {string} [options.logmode='none'] - Logging strategy.
+     * @param {number} [options.maxTurns=5] - Maximum number of outer macro turns allowed.
+     * @param {Function} [options.turnStrategy] - A user-defined function for driving turns.
      */
-    constructor(coreAgent, {
+    constructor(agents, {
         name = 'agent_runner',
         eventEmitter,
         logmode = 'none',
-        toolLoader = null,
-        enableMCP = false,
-        redundantToolInfo = true,
+        maxTurns = defaultMaxTurns,
+        turnStrategy = null,
     } = {}) {
+        if (typeof agents === 'object' && !Array.isArray(agents) && !(agents.run)) {
+            this.agents = agents;
+            Object.entries(agents).forEach(([key, agent]) => {
+                if (agent.name === 'agent') agent.name = key;
+            });
+        } else if (Array.isArray(agents)) {
+            this.agents = {};
+            agents.forEach((agent, i) => {
+                const key = agent.name === 'agent' ? `agent_${i + 1}` : agent.name;
+                agent.name = key;
+                this.agents[key] = agent;
+            });
+        } else {
+            this.agents = { [agents.name]: agents };
+        }
 
-        this.coreAgent = coreAgent;
+        // Default strategy for backward compatibility
+        if (!turnStrategy) {
+            this.turnStrategy = async (agentDict, turn, defaultInput) => {
+                const agent = Object.values(agentDict)[0];
+                if (turn === 1 && defaultInput) {
+                    agent.addInput(defaultInput);
+                }
+                const res = await agent.run();
+                return {
+                    response: res.output,
+                    executedTools: res.executedTools,
+                    rawResponse: res.rawResponse,
+                    isSatisfied: true // In single agent mode without custom strategy, one fully finished turn satisfies the loop
+                };
+            };
+        } else {
+            this.turnStrategy = turnStrategy;
+        }
+
         this.name = name;
         this.sessionId = uuidv4();
         this.events = eventEmitter || new EventEmitter();
         this.tracer = createTracer(this.events, this.sessionId);
-
-        this.toolLoader = toolLoader || new ToolLoader(enableMCP);
-        this.redundantToolInfo = redundantToolInfo;
+        this.maxTurns = maxTurns;
 
         if (logmode !== 'none') {
             new DomainObservability(this.events, { mode: logmode });
@@ -41,101 +72,76 @@ export class AgentRunner {
     }
 
     /**
-     * Initializes the base context with the system prompt and tool descriptions.
-     * * @returns {Array<object>} An array containing the initial system message block.
+     * Starts the conversation loop.
+     * @param {string|object} [initialInput] - The starting user prompt for single agent backward compatibility.
      */
-    _buildBaseContext() {
-        const allTools = this.toolLoader.getTools();
-        const context = [];
+    async run(initialInput = null) {
+        const history = [];
+        const normInput = initialInput ? this._normalizeInput(initialInput) : null;
+        await this._runLoop(1, history, normInput);
+        return history;
+    }
 
-        if (this.redundantToolInfo) {
-            const toolDescriptions = allTools
-                .filter(t => t.name && t.description)
-                .map(tool => `${tool.name}: ${tool.description}`)
-                .join('; ');
+    // Fallback for executeTask for backward compatibility
+    async executeTask(userInput) {
+        return await this.run(userInput);
+    }
 
-            if (toolDescriptions) {
-                context.push({
-                    role: 'system',
-                    content: `You are a tool-calling agent. You have access to the following tools: ${toolDescriptions}. Use these tools to answer the user's questions.`
-                });
+    _normalizeInput(input) {
+        if (typeof input === 'string') return { role: 'user', content: input };
+        if (input && typeof input === 'object' && input.role && input.content) return input;
+        throw new Error('Input must be a string or an object with { role, content }.');
+    }
+
+    /**
+     * The internal recursive loop that acts as the CPS driver.
+     */
+    async _runLoop(turn, history, initialInput = null) {
+        await this._executeTurn(turn, initialInput, async (result) => {
+            history.push(result);
+
+            // Outer loop exit conditions
+            if (result.isSatisfied) {
+                return;
             }
-        }
-        return context;
+            if (turn >= this.maxTurns) {
+                return;
+            }
+
+            // Continue the outer loop
+            await this._runLoop(turn + 1, history);
+        });
     }
 
     /**
-     * Entry point to start a new conversation branch.
-     * @param {string|object} initialInput - The starting user prompt.
-     * @returns {Promise<object>} The resulting CPS turn object for the initial execution.
+     * Executes a single turn, snapshots agent states, and passes the 
+     * continuation (k) to allow time-travel / branching.
      */
-    async start(initialInput) {
-        const baseContext = this._buildBaseContext();
-        return await this.next(initialInput, baseContext);
-    }
+    async _executeTurn(turn, defaultInput, k) {
+        return await this.tracer('agent_runner:turn', { turn }, async () => {
+            // 1. Snapshot all agents' inputs before mutations occur
+            const snapshots = {};
+            for (const [name, agent] of Object.entries(this.agents)) {
+                snapshots[name] = agent.context.clone();
+            }
 
-    /**
-     * The CPS Loop execution. Processes a turn and returns continuations for future turns.
-     * @param {string|object} userInput - The user prompt for this specific turn.
-     * @param {Array<object>} previousContext - The immutable message history leading up to this turn.
-     * @returns {Promise<object>} A turn object containing the LLM output, executed tools, current context, and continuation callbacks (next/branch).
-     */
-    async next(userInput, previousContext) {
-        return await this.tracer('agent:turn', { input: userInput }, async (turnSpanId) => {
+            // 2. Run the user-provided turn strategy 
+            // This is where agent.run() happens (the inner loop)
+            const turnData = await this.turnStrategy(this.agents, turn, defaultInput);
 
-            let activeContext = [...previousContext, userInput];
-            const allTools = this.toolLoader.getTools() || [];
-            const executed = [];
-
-            let response = await this.coreAgent.execute(activeContext, allTools, this.tracer);
-
-            response.rawResponse.output.forEach(item => {
-                if (item.type === "function_call") {
-                    const { parsed_arguments, ...rest } = item;
-                    const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
-                    activeContext.push({ ...rest, arguments: args });
-                } else {
-                    activeContext.push(item);
+            // 3. Package the result with a resume() function for the CPS branching
+            await k({
+                turn,
+                ...turnData,
+                resume: async (newContinuation) => {
+                    // Restore state from snapshot
+                    for (const [name, agent] of Object.entries(this.agents)) {
+                        agent.context = snapshots[name].clone();
+                    }
+                    // Re-run this exact turn branching into the new continuation
+                    await this._executeTurn(turn, defaultInput, newContinuation);
                 }
             });
-
-            const functionCalls = response.rawResponse.output.filter(item => item.type === "function_call");
-
-            if (functionCalls.length > 0) {
-                for (const call of functionCalls) {
-                    let args = JSON.parse(call.arguments);
-                    call.arguments = args;
-                    executed.push(call);
-
-                    const tool = this.toolLoader.findTool(call.name);
-                    if (!tool || !tool.func) throw new Error(`Tool ${call.name} missing.`);
-
-                    const result = await this.tracer(`tool:${call.name}`, { args }, async () => {
-                        return await tool.func(args);
-                    });
-
-                    activeContext.push({
-                        name: call.name,
-                        call_id: call.call_id,
-                        type: "function_call_output",
-                        output: JSON.stringify(result),
-                    });
-                }
-
-                response = await this.coreAgent.execute(activeContext, allTools, this.tracer);
-
-                response.rawResponse.output.forEach(item => activeContext.push(item));
-            }
-
-            return {
-                message: response.output,
-                rawResponse: response.rawResponse,
-                executedTools: executed,
-                context: activeContext,
-
-                next: async (newInput) => this.next(newInput, activeContext),
-                branch: async (alternativeInput) => this.next(alternativeInput, previousContext)
-            };
         });
     }
 }

@@ -1,9 +1,9 @@
-import MCPClient from "./MCPClient.js";
+import MCPClient from "./mcp-client.js";
 
 export class MCPManager {
   constructor() {
-    this.clients = new Map(); 
-    this.serverConfigs = new Map(); 
+    this.clients = new Map();
+    this.serverConfigs = new Map();
   }
 
   async addServer(serverName, serverConfig) {
@@ -14,13 +14,13 @@ export class MCPManager {
     try {
       const client = new MCPClient();
       const tools = await client.connectToServer(serverConfig);
-      
+
       this.clients.set(serverName, client);
       this.serverConfigs.set(serverName, serverConfig);
-      
+
       console.log(`MCPManager: Connected to server '${serverName}' with ${tools.length} tools`);
       return { serverName, tools, toolCount: tools.length };
-      
+
     } catch (error) {
       console.error(`MCPManager: Failed to connect to server '${serverName}':`, error);
       throw error;
@@ -49,11 +49,11 @@ export class MCPManager {
   // Get all tools from all connected servers
   getAllTools() {
     const allTools = [];
-    
+
     for (const [serverName, client] of this.clients) {
       allTools.push(...client.getTools());
     }
-    
+
     return allTools;
   }
 
@@ -68,7 +68,7 @@ export class MCPManager {
         }
       }
     }
-    
+
     throw new Error(`MCPManager: Tool '${toolName}' not found on any connected server`);
   }
 
@@ -84,7 +84,7 @@ export class MCPManager {
     for (const [serverName, client] of this.clients) {
       const isConnected = client.isServerConnected();
       const tools = isConnected ? client.getAvailableTools() : [];
-      
+
       if (isConnected) {
         info.connectedServers++;
         info.totalTools += tools.length;
@@ -134,7 +134,7 @@ export class MCPManager {
 
     // Remove existing connection
     await this.removeServer(serverName);
-    
+
     // Reconnect
     return await this.addServer(serverName, config);
   }
@@ -142,7 +142,7 @@ export class MCPManager {
   // Reconnect all disconnected servers
   async reconnectAll() {
     const results = [];
-    
+
     for (const [serverName, client] of this.clients) {
       if (!client.isServerConnected()) {
         try {
@@ -153,14 +153,14 @@ export class MCPManager {
         }
       }
     }
-    
+
     return results;
   }
 
   // Batch operations
   async addMultipleServers(serverConfigs) {
     const results = [];
-    
+
     for (const { name, config } of serverConfigs) {
       try {
         const result = await this.addServer(name, config);
@@ -169,7 +169,7 @@ export class MCPManager {
         results.push({ serverName: name, status: 'failed', error: error.message });
       }
     }
-    
+
     return results;
   }
 
@@ -177,12 +177,12 @@ export class MCPManager {
   getServersByTool(toolNamePattern) {
     const matchingServers = [];
     const regex = new RegExp(toolNamePattern, 'i');
-    
+
     for (const [serverName, client] of this.clients) {
       if (client.isServerConnected()) {
         const tools = client.getAvailableTools();
         const matchingTools = tools.filter(tool => regex.test(tool));
-        
+
         if (matchingTools.length > 0) {
           matchingServers.push({
             serverName,
@@ -191,27 +191,27 @@ export class MCPManager {
         }
       }
     }
-    
+
     return matchingServers;
   }
 
   // Cleanup all connections
   async cleanup() {
     console.log(`MCPManager: Cleaning up ${this.clients.size} connections...`);
-    
+
     const disconnectPromises = [];
     for (const [serverName, client] of this.clients) {
       disconnectPromises.push(
-        client.disconnect().catch(error => 
+        client.disconnect().catch(error =>
           console.error(`MCPManager: Error disconnecting '${serverName}':`, error)
         )
       );
     }
-    
+
     await Promise.allSettled(disconnectPromises);
     this.clients.clear();
     this.serverConfigs.clear();
-    
+
     console.log('MCPManager: Cleanup completed');
   }
 
@@ -222,7 +222,7 @@ export class MCPManager {
 
   // Get list of connected server names
   getConnectedServerNames() {
-    return Array.from(this.clients.keys()).filter(serverName => 
+    return Array.from(this.clients.keys()).filter(serverName =>
       this.clients.get(serverName).isServerConnected()
     );
   }

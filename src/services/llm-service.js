@@ -1,5 +1,5 @@
-import { getAllowedProviders, validateProviderName } from './providers/registry.js';
-import { defaultOpenaiModel, defaultGeminiModel } from './config.js';
+import { getAllowedProviders, validateProviderName } from '../providers/registry.js';
+import { defaultOpenaiModel, defaultGeminiModel } from '../config.js';
 
 export class LLMService {
     constructor(auth = { provider, apiKey }) {
