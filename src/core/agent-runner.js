@@ -50,13 +50,19 @@ export class AgentRunner {
                 }
                 const res = await agent.run();
                 return {
-                    response: res.output,
+                    output: res.output,
                     executedTools: res.executedTools,
                     rawResponse: res.rawResponse,
                     isSatisfied: true // In single agent mode without custom strategy, one fully finished turn satisfies the loop
                 };
             };
         } else {
+            // turnStrategy returns {
+            //     output: "The final string message or output",
+            //     executedTools: [], // Array of tools that were run during the turn
+            //     rawResponse: {},  // Complete underlying provider response 
+            //     isSatisfied: Boolean // Loop termination flag 
+            // }
             this.turnStrategy = turnStrategy;
         }
 
