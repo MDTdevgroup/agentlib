@@ -43,16 +43,18 @@ export class AgentRunner {
 
         // Default strategy for backward compatibility
         if (!turnStrategy) {
-            this.turnStrategy = async (agentDict, turn, defaultInput) => {
+            this.turnStrategy = async (agentDict, turn, currentState) => {
                 const agent = Object.values(agentDict)[0];
-                if (turn === 1 && defaultInput) {
-                    agent.addInput(defaultInput);
+                let activeState = currentState;
+                if (turn === 1 && currentState && !(currentState instanceof Context)) {
+                    activeState = new Context([currentState]);
                 }
-                const res = await agent.run();
+                const res = await agent.run(activeState);
                 return {
                     output: res.output,
                     executedTools: res.executedTools,
                     rawResponse: res.rawResponse,
+                    newContext: res.newContext,
                     isSatisfied: true // In single agent mode without custom strategy, one fully finished turn satisfies the loop
                 };
             };
@@ -61,6 +63,7 @@ export class AgentRunner {
             //     output: "The final string message or output",
             //     executedTools: [], // Array of tools that were run during the turn
             //     rawResponse: {},  // Complete underlying provider response 
+            //     newContext: Context, // The updated context state
             //     isSatisfied: Boolean // Loop termination flag 
             // }
             this.turnStrategy = turnStrategy;
@@ -102,8 +105,8 @@ export class AgentRunner {
     /**
      * The internal recursive loop that acts as the CPS driver.
      */
-    async _runLoop(turn, history, initialInput = null) {
-        await this._executeTurn(turn, initialInput, async (result) => {
+    async _runLoop(turn, history, currentState = null) {
+        await this._executeTurn(turn, currentState, async (result) => {
             history.push(result);
 
             // Outer loop exit conditions
@@ -115,37 +118,27 @@ export class AgentRunner {
             }
 
             // Continue the outer loop
-            await this._runLoop(turn + 1, history);
+            await this._runLoop(turn + 1, history, result.newContext);
         });
     }
 
     /**
-     * Executes a single turn, snapshots agent states, and passes the 
+     * Executes a single turn, uses the current state, and passes the 
      * continuation (k) to allow time-travel / branching.
      */
-    async _executeTurn(turn, defaultInput, k) {
+    async _executeTurn(turn, currentState, k) {
         return await this.tracer('agent_runner:turn', { turn }, async () => {
-            // 1. Snapshot all agents' inputs before mutations occur
-            const snapshots = {};
-            for (const [name, agent] of Object.entries(this.agents)) {
-                snapshots[name] = agent.context.clone();
-            }
+            // 1. Run the user-provided turn strategy 
+            // This is where agent.run(currentState) happens (the inner loop)
+            const turnData = await this.turnStrategy(this.agents, turn, currentState);
 
-            // 2. Run the user-provided turn strategy 
-            // This is where agent.run() happens (the inner loop)
-            const turnData = await this.turnStrategy(this.agents, turn, defaultInput);
-
-            // 3. Package the result with a resume() function for the CPS branching
+            // 2. Package the result with a resume() function for the CPS branching
             await k({
                 turn,
                 ...turnData,
                 resume: async (newContinuation) => {
-                    // Restore state from snapshot
-                    for (const [name, agent] of Object.entries(this.agents)) {
-                        agent.context = snapshots[name].clone();
-                    }
                     // Re-run this exact turn branching into the new continuation
-                    await this._executeTurn(turn, defaultInput, newContinuation);
+                    await this._executeTurn(turn, currentState, newContinuation);
                 }
             });
         });

@@ -72,11 +72,7 @@ export class Agent {
     return [];
   }
 
-  /**
-   * Adds user instruction or assistant response to the current conversation history.
-   * @param {object} input - The message object to add.
-   */
-  addInput(input) {
+  _validateInput(input) {
     if (Array.isArray(input)) {
       for (const item of input) {
         if (this.inputSchema) {
@@ -90,7 +86,15 @@ export class Agent {
     } else {
       throw new Error('Invalid input type. Input must be an object in the format {role: string, content: string} or an array of objects in the format [{role: string, content: string}, ...].');
     }
-    this.context.addInput(input);
+  }
+
+  /**
+   * Adds user instruction or assistant response to the current conversation history.
+   * @param {object} input - The message object to add.
+   */
+  addInput(input) {
+    this._validateInput(input);
+    this.context = this.context.addInput(input);
   }
 
   /**
@@ -122,12 +126,14 @@ export class Agent {
    * This method handles the multi-step reasoning: LLM -> Tool Execution -> LLM Final Response.
    * @returns {Promise<object>} The final response object from the LLM, including execution details.
    */
-  async run(messages = []) {
+  async run(externalContext = null) {
     try {
-      if (messages.length > 0) {
-        // If external messages are explicitly passed during a turn call, override the current context messages entirely.
-        this.context.messages = [...messages];
+      let activeContext = externalContext || this.context;
+      if (externalContext && !(externalContext instanceof Context)) {
+        const msgArray = Array.isArray(externalContext) ? externalContext : [externalContext];
+        activeContext = new Context(msgArray);
       }
+      let nextContext = activeContext;
 
       // Generate a new trace ID and root span ID
       const traceId = this.name + "-" + uuidv4();
@@ -142,8 +148,8 @@ export class Agent {
         name: "agent_run",
         attributes: {
           llm_provider: this.llmService.provider,
-          input: this.context.getMessages(),
-          input_length: this.context.getMessages().length,
+          input: nextContext.getMessages(),
+          input_length: nextContext.getMessages().length,
           model: this.model,
           tools_available: allTools.map(t => t.name),
           tool_count: allTools.length,
@@ -173,16 +179,17 @@ export class Agent {
           attributes: {
             llm_provider: this.llmService.provider,
             model: this.model,
-            input: this.context.getMessages(),
-            input_length: this.context.getMessages().length,
+            input: nextContext.getMessages(),
+            input_length: nextContext.getMessages().length,
             tools_available: allTools.map(t => t.name),
             tool_count: allTools.length,
             step: loopSteps
           }
         });
 
-        let response = await this.llmService.chat(this.context.getMessages(), {
+        let response = await this.llmService.chat(nextContext.getMessages(), {
           model: this.model,
+          pruningOptions: { enabled: true },
           outputSchema: this.outputSchema,
           tools: allTools,
           ...this.additionalOptions
@@ -215,14 +222,16 @@ export class Agent {
             const { parsed_arguments, ...rest } = item;
             const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
             const cleanedItem = { ...rest, arguments: args };
-            this.addInput(cleanedItem);
+            this._validateInput(cleanedItem);
+            nextContext = nextContext.addInput(cleanedItem);
           } else {
             // Attach name to identify which agent generated this response in a multi-agent context
             const messageToAdd = { ...item };
             if (messageToAdd.role === 'assistant' && this.name) {
               messageToAdd.content = `[${this.name}]: ${messageToAdd.content}`;
             }
-            this.addInput(messageToAdd);
+            this._validateInput(messageToAdd);
+            nextContext = nextContext.addInput(messageToAdd);
           }
         });
 
@@ -269,12 +278,14 @@ export class Agent {
               }
             });
 
-            this.addInput({
+            const functionMessage = {
               name: call.name,       // Required for Gemini translation
               call_id: call.call_id, // Required for OpenAI translation
               type: "function_call_output",
               output: JSON.stringify(result),
-            });
+            };
+            this._validateInput(functionMessage);
+            nextContext = nextContext.addInput(functionMessage);
           }
         }
       }
@@ -290,11 +301,15 @@ export class Agent {
         }
       });
 
+      if (externalContext === null) {
+        this.context = nextContext;
+      }
+
       return {
         output: finalResponse.output,
         rawResponse: finalResponse.rawResponse,
         executedTools: executed,
-        messages: [...this.context.getMessages()],
+        newContext: nextContext,
         isFinished: true,
       };
     } catch (error) {

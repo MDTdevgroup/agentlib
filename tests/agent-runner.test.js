@@ -28,8 +28,8 @@ async function runTests() {
     const history1 = await runner.run('Say exactly: Hello');
     assert(history1.length === 1, 'History has 1 turn');
     assert(history1[0].isSatisfied === true, 'Turn is satisfied');
-    assert(typeof history1[0].response === 'string', 'Agent response extracted');
-    assert(history1[0].response.includes('Hello'), 'Agent responded correctly');
+    assert(typeof history1[0].output === 'string', 'Agent response extracted');
+    assert(history1[0].output.includes('Hello'), 'Agent responded correctly');
     assert(typeof history1[0].resume === 'function', 'Resume continuation present');
 
     console.log('\n=== Test 4: Branching / Time-Travel ===');
