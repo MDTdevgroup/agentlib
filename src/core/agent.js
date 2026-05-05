@@ -1,6 +1,7 @@
 import { defaultOpenaiModel, defaultGeminiModel, defaultMaxToolCalls } from "../config.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
 import { v4 as uuidv4 } from 'uuid';
+import { WindowCompactor } from "../memory/compactors/index.js";
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
 import { Context } from "../memory/context.js";
@@ -33,9 +34,19 @@ export class Agent {
     outputSchema = null,
     enableMCP = false,
     redundantToolInfo = true,
+    pruningStrategy = 'none',
+    pruningOptions = {},
     ...options } = {}) {
 
     this.name = name;
+    
+    if (typeof pruningStrategy === 'string' && pruningStrategy === 'window') {
+        this.compactor = new WindowCompactor(pruningOptions);
+    } else if (typeof pruningStrategy === 'object' && pruningStrategy !== null) {
+        this.compactor = pruningStrategy;
+    } else {
+        this.compactor = null;
+    }
     this.sessionId = uuidv4();
     this.llmService = llmService;
     this.events = eventEmitter || new EventEmitter();
@@ -187,9 +198,12 @@ export class Agent {
           }
         });
 
-        let response = await this.llmService.chat(nextContext.getMessages(), {
+        const messagesToSend = this.compactor 
+            ? await this.compactor.compact(nextContext.getMessages())
+            : nextContext.getMessages();
+
+        let response = await this.llmService.chat(messagesToSend, {
           model: this.model,
-          pruningOptions: { enabled: true },
           outputSchema: this.outputSchema,
           tools: allTools,
           ...this.additionalOptions

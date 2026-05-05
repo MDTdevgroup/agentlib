@@ -17,20 +17,11 @@ function _convertInput(input) {
     });
 }
 
-async function _applySemanticPruning(messages) {
-    // TODO: Implement embedding-based cosine similarity filtering
-    return messages;
-}
-
-export async function chat(client, input, { model = defaultOpenaiModel, pruningOptions, inputSchema, outputSchema, ...options }) {
+export async function chat(client, input, { model = defaultOpenaiModel, inputSchema, outputSchema, ...options }) {
     const finalOptions = { model, ...options };
 
     if (inputSchema) {
         input = inputSchema.parse(input);
-    }
-
-    if (pruningOptions?.enabled) {
-        input = await _applySemanticPruning(input);
     }
 
     try {

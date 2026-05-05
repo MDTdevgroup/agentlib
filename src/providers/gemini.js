@@ -105,12 +105,7 @@ function _convertResponse(response, output) {
     };
 }
 
-async function _applySemanticPruning(messages) {
-    // TODO: Implement embedding-based cosine similarity filtering
-    return messages;
-}
-
-export async function chat(client, input, { model = defaultGeminiModel, pruningOptions, inputSchema, outputSchema, tools, ...options }) {
+export async function chat(client, input, { model = defaultGeminiModel, inputSchema, outputSchema, tools, ...options }) {
     const originalWarn = console.warn;
     console.warn = (...args) => {
         if (typeof args[0] === 'string' && args[0].includes('there are non-text parts')) {
@@ -120,10 +115,6 @@ export async function chat(client, input, { model = defaultGeminiModel, pruningO
     };
     try {
         let response, output;
-
-        if (pruningOptions?.enabled) {
-            input = await _applySemanticPruning(input);
-        }
 
         const formattedInput = _convertInput(input);
         // Separate custom tools (name/description/parameters) from native Gemini tools (e.g. { googleSearch: {} })
