@@ -48,7 +48,7 @@ const thunkConvo = (id) => async () => {
     console.log(`[Convo ${id}] Finished.\n`);
 };
 
-// 3. Execution (The "Force")
+// 3. Execution
 async function main() {
     console.log("Queuing 3 conversations...");
     const thunks = [thunkConvo(1), thunkConvo(2), thunkConvo(3)];
