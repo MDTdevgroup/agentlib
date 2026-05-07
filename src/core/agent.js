@@ -1,7 +1,7 @@
 import { defaultOpenaiModel, defaultGeminiModel, defaultMaxToolCalls } from "../config.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
 import { v4 as uuidv4 } from 'uuid';
-import { WindowCompactor } from "../memory/compactors/index.js";
+import { WindowCompactor, SummarizerCompactor, ProvenceCompactor } from "../memory/compactors/index.js";
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
 import { Context } from "../memory/context.js";
@@ -40,8 +40,16 @@ export class Agent {
 
     this.name = name;
     
-    if (typeof pruningStrategy === 'string' && pruningStrategy === 'window') {
-        this.compactor = new WindowCompactor(pruningOptions);
+    if (typeof pruningStrategy === 'string') {
+        if (pruningStrategy === 'window') {
+            this.compactor = new WindowCompactor(pruningOptions);
+        } else if (pruningStrategy === 'summarizer') {
+            this.compactor = new SummarizerCompactor({ ...pruningOptions, llmService: this.llmService, model: this.model });
+        } else if (pruningStrategy === 'provence') {
+            this.compactor = new ProvenceCompactor(pruningOptions);
+        } else {
+            this.compactor = null;
+        }
     } else if (typeof pruningStrategy === 'object' && pruningStrategy !== null) {
         this.compactor = pruningStrategy;
     } else {
