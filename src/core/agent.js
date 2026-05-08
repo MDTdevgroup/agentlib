@@ -72,28 +72,11 @@ export class Agent {
     return [];
   }
 
-  _validateInput(input) {
-    if (Array.isArray(input)) {
-      for (const item of input) {
-        if (this.inputSchema) {
-          this.inputSchema.parse(item);
-        }
-      }
-    } else if (typeof (input) === 'object') {
-      if (this.inputSchema) {
-        this.inputSchema.parse(input);
-      }
-    } else {
-      throw new Error('Invalid input type. Input must be an object in the format {role: string, content: string} or an array of objects in the format [{role: string, content: string}, ...].');
-    }
-  }
-
   /**
    * Adds user instruction or assistant response to the current conversation history.
    * @param {object} input - The message object to add.
    */
   addInput(input) {
-    this._validateInput(input);
     this.context = this.context.addInput(input);
   }
 
@@ -222,15 +205,29 @@ export class Agent {
             const { parsed_arguments, ...rest } = item;
             const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
             const cleanedItem = { ...rest, arguments: args };
-            this._validateInput(cleanedItem);
             nextContext = nextContext.addInput(cleanedItem);
-          } else {
-            // Attach name to identify which agent generated this response in a multi-agent context
-            const messageToAdd = { ...item };
-            if (messageToAdd.role === 'assistant' && this.name) {
-              messageToAdd.content = `[${this.name}]: ${messageToAdd.content}`;
+          } else if (item.type === "message") {
+            const textBlocks = item.content.filter(block => block.type === 'output_text');
+            const otherBlocks = item.content.filter(block => block.type !== 'output_text');
+
+            let newContent = [...otherBlocks];
+
+            if (textBlocks.length > 0) {
+              // Combine all text, but keep metadata (annotations, logprobs) from the first block
+              const combinedText = textBlocks.map(b => b.text).join('\n');
+              const mergedTextBlock = {
+                ...textBlocks[0],
+                text: `[${this.name}]: ${combinedText}`
+              };
+              // Put the text block first, followed by any tools or other blocks
+              newContent = [mergedTextBlock, ...otherBlocks];
             }
-            this._validateInput(messageToAdd);
+
+            const messageToAdd = {
+              ...item,
+              content: newContent
+            };
+            
             nextContext = nextContext.addInput(messageToAdd);
           }
         });
@@ -284,7 +281,6 @@ export class Agent {
               type: "function_call_output",
               output: JSON.stringify(result),
             };
-            this._validateInput(functionMessage);
             nextContext = nextContext.addInput(functionMessage);
           }
         }

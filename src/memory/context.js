@@ -23,4 +23,17 @@ export class Context {
     getMessages() {
         return this.messages;
     }
+    /**
+     * Returns an isolated, deep-cloned instance of this Context.
+     */
+    clone() {
+        return new Context(
+            structuredClone(this.messages),
+            structuredClone(this.summary),
+            {
+                maxTokens: this.maxTokens,
+                truncateToTokens: this.truncateToTokens
+            }
+        );
+    }
 }
