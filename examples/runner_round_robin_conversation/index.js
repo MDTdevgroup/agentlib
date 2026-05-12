@@ -36,7 +36,8 @@ async function main() {
 
             // Execute the speaker
             const currentSpeakerCtx = agentContexts[speakerName] || speaker.context;
-            const res = await speaker.run(currentSpeakerCtx);
+            const history = await speaker.run(currentSpeakerCtx);
+            const res = history[history.length - 1];
 
             console.log(`Turn ${turnNumber} | ${speakerName}: ${res.output}`);
 
@@ -48,7 +49,7 @@ async function main() {
 
             const updatedContexts = { 
                 ...agentContexts, 
-                [speakerName]: res.newContext,
+                [speakerName]: res.context,
                 [listenerName]: currentListenerCtx.addInput({ 
                     role: 'user', 
                     content: `[${speakerName}]: ${res.output}` 

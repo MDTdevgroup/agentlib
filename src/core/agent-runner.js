@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import EventEmitter from 'events';
 import { createTracer, DomainObservability } from "../services/observability.js";
-import { Context } from "../memory/context.js";
 import { defaultMaxTurns } from "../config.js";
 
 /**
@@ -48,16 +47,17 @@ export class AgentRunner {
          * @param {number} turnNumber - The current iteration index (starting from 1).
          * @returns {Promise<{
          *   output: string,
-         *   executedTools: Array,
+         *   executedTools: Array<{name: string, args: object}>,
          *   rawResponse: Object,
-         *   contextSnapshot: Object,
+         *   contextSnapshot: {AgentName: string, Context: Context},
          *   isSatisfied: boolean
          * }>}
          */
         if (!turnStrategy) { // Run last agent in the dictionary by default
             this.turnStrategy = async (agentDict, agentContexts, turnNumber) => {
                 const agent = Object.values(agentDict).at(-1);
-                const res = await agent.run(agentContexts[agent.name] || null);
+                const history = await agent.run(agentContexts[agent.name] || null);
+                const res = history[history.length - 1];
                 const updatedContexts = { ...agentContexts, [agent.name]: res.context };
 
                 return {
