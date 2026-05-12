@@ -1,7 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import EventEmitter from 'events';
 import { createTracer, DomainObservability } from "../services/observability.js";
-import { Context } from "../memory/context.js";
 import { defaultMaxTurns } from "../config.js";
 
 /**
@@ -41,31 +40,35 @@ export class AgentRunner {
             this.agents = { [agents.name]: agents };
         }
 
-        // Default strategy for backward compatibility
-        if (!turnStrategy) {
-            this.turnStrategy = async (agentDict, turn, currentState) => {
-                const agent = Object.values(agentDict)[0];
-                let activeState = currentState;
-                if (turn === 1 && currentState && !(currentState instanceof Context)) {
-                    activeState = new Context([currentState]);
-                }
-                const res = await agent.run(activeState);
+        /**
+         * @callback turnStrategy
+         * @param {Object.<string, Agent>} agentDict - A map of agent keys to Agent instances.
+         * @param {Object.<string, Context>} agentContexts - A map of agent keys to Context instances.
+         * @param {number} turnNumber - The current iteration index (starting from 1).
+         * @returns {Promise<{
+         *   output: string,
+         *   executedTools: Array<{name: string, args: object}>,
+         *   rawResponse: Object,
+         *   contextSnapshot: {AgentName: string, Context: Context},
+         *   isSatisfied: boolean
+         * }>}
+         */
+        if (!turnStrategy) { // Run last agent in the dictionary by default
+            this.turnStrategy = async (agentDict, agentContexts, turnNumber) => {
+                const agent = Object.values(agentDict).at(-1);
+                const history = await agent.run(agentContexts[agent.name] || null);
+                const res = history[history.length - 1];
+                const updatedContexts = { ...agentContexts, [agent.name]: res.context };
+
                 return {
                     output: res.output,
                     executedTools: res.executedTools,
                     rawResponse: res.rawResponse,
-                    newContext: res.newContext,
-                    isSatisfied: true // In single agent mode without custom strategy, one fully finished turn satisfies the loop
+                    contextSnapshot: updatedContexts,
+                    isSatisfied: true
                 };
             };
         } else {
-            // turnStrategy returns {
-            //     output: "The final string message or output",
-            //     executedTools: [], // Array of tools that were run during the turn
-            //     rawResponse: {},  // Complete underlying provider response 
-            //     newContext: Context, // The updated context state
-            //     isSatisfied: Boolean // Loop termination flag 
-            // }
             this.turnStrategy = turnStrategy;
         }
 
@@ -81,66 +84,97 @@ export class AgentRunner {
     }
 
     /**
-     * Starts the conversation loop.
-     * @param {string|object} [initialInput] - The starting user prompt for single agent backward compatibility.
+     * Starts the conversation and pauses immediately after the first turn.
      */
-    async run(initialInput = null) {
+    async start(initialInput = null, options = {}) {
+        const normInput = initialInput ? this._normalizeInput(initialInput) : {};
+        const limit = options.maxTurns || this.maxTurns;
+        return this._executeTurn(1, normInput, limit);
+    }
+
+    /**
+     * Executes the entire agent system loop until completion.
+     * @param {string|object} [initialInput] - The starting user prompt.
+     */
+    async run(initialInput = null, options = {}) {
         const history = [];
-        const normInput = initialInput ? this._normalizeInput(initialInput) : null;
-        await this._runLoop(1, history, normInput);
+        const normInput = initialInput ? this._normalizeInput(initialInput) : {};
+        const limit = options.maxTurns || this.maxTurns;
+
+        let currentTurn = await this._executeTurn(1, normInput, limit);
+        history.push(currentTurn);
+
+        while (!currentTurn.isDone) {
+            currentTurn = await currentTurn.next();
+            history.push(currentTurn);
+        }
+
         return history;
     }
 
-    // Fallback for executeTask for backward compatibility
-    async executeTask(userInput) {
-        return await this.run(userInput);
+    /**
+     * Time Travel: Branches from a historical turn with a modified context,
+     * and automatically runs the new branch to completion.
+     */
+    async branch(turn, overrideContexts, options = {}) {
+        const branchHistory = [turn];
+        const limit = options.maxTurns || this.maxTurns;
+
+        // "Refuel" the branch execution
+        let currentTurn = await turn.next(overrideContexts, { maxTurns: limit });
+        branchHistory.push(currentTurn);
+
+        while (!currentTurn.isDone) {
+            currentTurn = await currentTurn.next();
+            branchHistory.push(currentTurn);
+        }
+        return branchHistory;
     }
 
     _normalizeInput(input) {
         if (typeof input === 'string') return { role: 'user', content: input };
         if (input && typeof input === 'object' && input.role && input.content) return input;
-        throw new Error('Input must be a string or an object with { role, content }.');
+        throw new Error('AgentRunner.run() initialInput must be a string or an object with { role, content }.');
     }
 
     /**
-     * The internal recursive loop that acts as the CPS driver.
+     * @param {number} turnNumber - The absolute index in history.
+     * @param {object} agentContexts - The current state.
+     * @param {number} remainingTurns - How many more steps are allowed in this run.
      */
-    async _runLoop(turn, history, currentState = null) {
-        await this._executeTurn(turn, currentState, async (result) => {
-            history.push(result);
+    async _executeTurn(turnNumber, agentContexts, remainingTurns) {
+        return await this.tracer('agent_runner:turn', { turnNumber }, async () => {
+            const turnData = await this.turnStrategy(this.agents, agentContexts, turnNumber);
 
-            // Outer loop exit conditions
-            if (result.isSatisfied) {
-                return;
-            }
-            if (turn >= this.maxTurns) {
-                return;
-            }
+            // Logic: Stop if agent is satisfied OR we ran out of "fuel"
+            const isDone = turnData.isSatisfied || remainingTurns <= 1;
+            const frozenContexts = Object.freeze(turnData.contextSnapshot);
 
-            // Continue the outer loop
-            await this._runLoop(turn + 1, history, result.newContext);
-        });
-    }
-
-    /**
-     * Executes a single turn, uses the current state, and passes the 
-     * continuation (k) to allow time-travel / branching.
-     */
-    async _executeTurn(turn, currentState, k) {
-        return await this.tracer('agent_runner:turn', { turn }, async () => {
-            // 1. Run the user-provided turn strategy 
-            // This is where agent.run(currentState) happens (the inner loop)
-            const turnData = await this.turnStrategy(this.agents, turn, currentState);
-
-            // 2. Package the result with a resume() function for the CPS branching
-            await k({
-                turn,
+            return {
+                turn: turnNumber,
+                isDone,
                 ...turnData,
-                resume: async (newContinuation) => {
-                    // Re-run this exact turn branching into the new continuation
-                    await this._executeTurn(turn, currentState, newContinuation);
+                contextSnapshot: frozenContexts,
+
+                next: async (overrideContexts = null, options = {}) => {
+                    const nextState = overrideContexts || frozenContexts;
+
+                    // If the user passes a NEW maxTurns, we reset the gauge (Refuel)
+                    // Otherwise, we just decrement the current gauge
+                    const nextRemaining = options.maxTurns || (remainingTurns - 1);
+
+                    const safeNextState = {};
+                    for (const [agentName, contextObj] of Object.entries(nextState)) {
+                        if (contextObj && typeof contextObj.clone === 'function') {
+                            safeNextState[agentName] = contextObj.clone();
+                        } else {
+                            safeNextState[agentName] = structuredClone(contextObj);
+                        }
+                    }
+
+                    return this._executeTurn(turnNumber + 1, safeNextState, nextRemaining);
                 }
-            });
+            };
         });
     }
 }
