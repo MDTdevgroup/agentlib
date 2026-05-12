@@ -35,7 +35,7 @@ async function main() {
             const currentListenerCtx = agentContexts[listenerName] || listener.context;
             const updatedContexts = {
                 ...agentContexts,
-                [speakerName]: res.newContext, // Using newContext from your Agent class
+                [speakerName]: res.newContext,
                 [listenerName]: currentListenerCtx.addInput({ role: 'user', content: res.output })
             };
 
