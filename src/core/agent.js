@@ -127,7 +127,7 @@ export class Agent {
             let currentTurn = await this.start(externalContext);
             history.push(currentTurn);
 
-            while (!currentTurn.isFinished) {
+            while (!currentTurn.isDone) {
                 currentTurn = await currentTurn.next();
                 history.push(currentTurn);
             }
@@ -151,7 +151,7 @@ export class Agent {
         let currentTurn = await turn.next(overrideContext);
         branchHistory.push(currentTurn);
 
-        while (!currentTurn.isFinished) {
+        while (!currentTurn.isDone) {
             currentTurn = await currentTurn.next();
             branchHistory.push(currentTurn)
         }
@@ -243,11 +243,11 @@ export class Agent {
         });
 
         const functionCalls = rawResponse.output.filter(item => item.type === "function_call");
-        const isFinished = functionCalls.length === 0;
+        const isDone = functionCalls.length === 0;
 
         let newExecutedTools = [...executedTools];
 
-        if (!isFinished) {
+        if (!isDone) {
             for (const call of functionCalls) {
                 let args;
                 args = JSON.parse(call.arguments);
@@ -298,12 +298,12 @@ export class Agent {
 
             // Return CPS object to continue to the next turn
             return {
-                isFinished: false,
+                isDone: false,
                 output: output,
                 rawResponse: rawResponse,
                 executedTools: newExecutedTools,
                 context: nextContext,
-                next: async (overrideContext = null) => {
+                next: async (overrideContext = null, options = {}) => {
                     const stateToPass = overrideContext || nextContext;
                     return this._executeTurn(stepNumber + 1, stateToPass, newExecutedTools, traceId, rootSpanId, updateInternalContext);
                 }
@@ -329,7 +329,7 @@ export class Agent {
                 rawResponse: rawResponse,
                 executedTools: newExecutedTools,
                 context: nextContext,
-                isFinished: true
+                isDone: true
             };
         }
     }

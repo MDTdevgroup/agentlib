@@ -49,7 +49,7 @@ export class AgentRunner {
          *   output: string,
          *   executedTools: Array<{name: string, args: object}>,
          *   rawResponse: Object,
-         *   contextSnapshot: {AgentName: string, Context: Context},
+         *   context: {AgentName: string, Context: Context},
          *   isSatisfied: boolean
          * }>}
          */
@@ -64,7 +64,7 @@ export class AgentRunner {
                     output: res.output,
                     executedTools: res.executedTools,
                     rawResponse: res.rawResponse,
-                    contextSnapshot: updatedContexts,
+                    context: updatedContexts,
                     isSatisfied: true
                 };
             };
@@ -148,13 +148,13 @@ export class AgentRunner {
 
             // Logic: Stop if agent is satisfied OR we ran out of "fuel"
             const isDone = turnData.isSatisfied || remainingTurns <= 1;
-            const frozenContexts = Object.freeze(turnData.contextSnapshot);
+            const frozenContexts = Object.freeze(turnData.context);
 
             return {
                 turn: turnNumber,
                 isDone,
                 ...turnData,
-                contextSnapshot: frozenContexts,
+                context: frozenContexts,
 
                 next: async (overrideContexts = null, options = {}) => {
                     const nextState = overrideContexts || frozenContexts;
