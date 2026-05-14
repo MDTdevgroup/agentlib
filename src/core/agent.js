@@ -31,6 +31,8 @@ export class Agent {
         toolLoader = null,
         outputSchema = null,
         enableMCP = false,
+        compactor = 'window',
+        maxMessages = 10,
         ...options } = {}) {
 
         this.name = name;
@@ -38,6 +40,25 @@ export class Agent {
         this.llmService = llmService;
         this.events = eventEmitter || new EventEmitter();
         this.model = model;
+
+        switch (compactor.toLowerCase()) {
+            case 'window':
+                this.compactor = new WindowCompactor({ maxMessages });
+                break;
+            case 'summarizer':
+                this.compactor = new SummarizerCompactor({ maxMessages, llmService: this.llmService, model: this.model });
+                break;
+            case 'provence':
+                this.compactor = new ProvenceCompactor({ embeddingService: options.embeddingService, similarityThreshold: options.similarityThreshold || 0.75 });
+                break;
+            case 'none':
+                this.compactor = null;
+                break;
+            default:
+                console.warn(`Unknown compactor strategy: ${compactor}. Defaulting to WindowCompactor.`);
+                this.compactor = new WindowCompactor({ maxMessages });
+        }
+
         this.toolLoader = toolLoader || new ToolLoader(enableMCP);
         this.outputSchema = outputSchema;
         this.additionalOptions = options;
@@ -189,9 +210,17 @@ export class Agent {
             }
         });
 
+        let activeMessages = currentContext.getMessages();
+        if (this.compactor) {
+            activeMessages = await this.compactor.compact(activeMessages);
+            currentContext = new Context(activeMessages, currentContext.summary, {
+                maxTokens: currentContext.maxTokens,
+                truncateToTokens: currentContext.truncateToTokens
+            });
+        }
+
         let response = await this.llmService.chat(currentContext.getMessages(), {
             model: this.model,
-            pruningOptions: { enabled: true },
             outputSchema: this.outputSchema,
             tools: allTools,
             ...this.additionalOptions
