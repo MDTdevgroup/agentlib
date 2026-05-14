@@ -58,7 +58,7 @@ async function main() {
 
             return {
                 output: res.output,
-                contextSnapshot: updatedContexts,
+                context: updatedContexts,
                 isSatisfied: false
             };
         }

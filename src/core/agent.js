@@ -39,6 +39,12 @@ export class Agent {
         this.model = model;
         this.toolLoader = toolLoader || new ToolLoader(enableMCP);
         this.outputSchema = outputSchema;
+
+        if (options.tools) {
+            this.toolLoader.addTools(options.tools);
+            delete options.tools;
+        }
+
         this.additionalOptions = options;
         this.context = new Context();
 
@@ -53,6 +59,18 @@ export class Agent {
      */
     addInput(input) {
         this.context = this.context.addInput(input);
+    }
+
+    /**
+     * Adds one or more native tools to the agent's tool loader.
+     * @param {object|Array<object>} toolOrTools - A single tool object or an array of tool objects.
+     */
+    addTool(toolOrTools) {
+        if (Array.isArray(toolOrTools)) {
+            this.toolLoader.addTools(toolOrTools);
+        } else {
+            this.toolLoader.addTool(toolOrTools);
+        }
     }
 
     /**
@@ -218,6 +236,8 @@ export class Agent {
                 const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
                 const cleanedItem = { ...rest, arguments: args };
                 nextContext = nextContext.addInput(cleanedItem);
+            } else if (item.type === "reasoning") {
+                nextContext = nextContext.addInput(item);
             } else if (item.type === "message") {
                 const textBlocks = item.content.filter(block => block.type === 'output_text');
                 const otherBlocks = item.content.filter(block => block.type !== 'output_text');
