@@ -1,5 +1,5 @@
-import { loadStrategies } from './loadStrategies.js';
-import { parseStrategies } from './parseStrategies.js';
+import { loadStrategies } from './load-strategies.js';
+import { parseStrategies } from './parse-strategies.js';
 import path from 'path';
 
 class Prompt {

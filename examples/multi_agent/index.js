@@ -29,25 +29,25 @@ dotenv.config({ path: '../../.env' });
  * @param {Function} k  – the continuation: (TurnResult) => Promise<void>
  */
 async function runTurn(turn, travelAgent, grumpyTraveler, maxTurns, k) {
-    // ── snapshot both agents' inputs before anything mutates ──
-    const taSnapshot = travelAgent.input;
-    const gtSnapshot = grumpyTraveler.input;
-    console.log(taSnapshot);
-    console.log(gtSnapshot);
+    // ── snapshot both agents' contexts before anything mutates ──
+    const taSnapshot = travelAgent.context;
+    const gtSnapshot = grumpyTraveler.context;
 
     // ── Travel Agent responds ──
     console.log(`\n--- Turn ${turn} ---`);
     console.log("Travel Agent is thinking...");
-    const TAResponse = await travelAgent.run();
+    const taHistory = await travelAgent.run();
+    const TAResponse = taHistory[taHistory.length - 1];
     const travelAgentReply = TAResponse.output || '(No text response)';
     console.log(`\nTravel Agent: ${travelAgentReply}`);
 
     // ── Grumpy Traveler responds ──
     grumpyTraveler.addInput({ role: 'user', content: travelAgentReply });
     console.log("\nGrumpy Traveler is thinking...");
-    const GTResponse = await grumpyTraveler.run();
+    const gtHistory = await grumpyTraveler.run();
+    const GTResponse = gtHistory[gtHistory.length - 1];
 
-    const isSatisfied = GTResponse.executed?.some(t => t.name === 'exit_loop') ?? false;
+    const isSatisfied = GTResponse.executedTools?.some(t => t.name === 'exit_loop') ?? false;
     const grumpyReply = isSatisfied ? null : (GTResponse.output || '(No text response)');
 
     if (!isSatisfied) {
@@ -69,8 +69,8 @@ async function runTurn(turn, travelAgent, grumpyTraveler, maxTurns, k) {
          * @param {Function} k2 – new continuation for the replayed turn
          */
         resume: async (k2) => {
-            travelAgent.input = JSON.parse(JSON.stringify(taSnapshot));
-            grumpyTraveler.input = JSON.parse(JSON.stringify(gtSnapshot));
+            travelAgent.context = taSnapshot;
+            grumpyTraveler.context = gtSnapshot;
             await runTurn(turn, travelAgent, grumpyTraveler, maxTurns, k2);
         },
     });

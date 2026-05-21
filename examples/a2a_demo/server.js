@@ -35,8 +35,7 @@ async function runServer() {
 
     const agent = new Agent(llmService, {
         toolLoader,
-        model: 'gpt-5',
-        redundantToolInfo: true
+        model: 'gpt-5'
     });
 
     console.log("Starting Math Expert Agent Server...");

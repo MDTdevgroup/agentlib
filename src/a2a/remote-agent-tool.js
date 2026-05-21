@@ -17,8 +17,7 @@ export async function createRemoteAgentTool(remoteUrl, toolName = 'remote_agent'
     try {
         client = await factory.createFromUrl(remoteUrl);
     } catch (err) {
-        console.warn(`Failed to connect to remote agent at ${remoteUrl}:`, err.message);
-        // We return the tool anyway, but it might fail at runtime if not fixed.
+        throw new Error(`Failed to connect to remote agent at ${remoteUrl}: ${err.message}`);
     }
 
     return {

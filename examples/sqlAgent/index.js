@@ -1,15 +1,12 @@
 import './instrumentation.js';
-import { Agent } from "../../src/Agent.js";
-import { LLMService } from "../../src/llmService.js";
-import { ToolLoader } from "../../src/ToolLoader.js";
-import { PromptLoader } from "../../src/prompt-loader/promptLoader.js";
+import { Agent, LLMService, ToolLoader, PromptLoader } from "../../index.js";
 import { initDB, generatorTools, executorTools, mainAgentTools, getSalesForArtist, getTopTracksInGenre } from "./sqlTools.js";
 import readline from "readline";
 import { z } from 'zod';
 import dotenv from 'dotenv';
 dotenv.config({ path: '../../.env' });
 import EventEmitter from 'events';
-import { DomainObservability } from "../../src/utilities/observability.js";
+import { DomainObservability } from "../../src/services/observability.js";
 
 const llmService = new LLMService({ provider: 'gemini', apiKey: process.env.GEMINI_API_KEY });
 
@@ -90,14 +87,19 @@ async function main() {
 
       mainAgent.addInput({ role: "user", content: answer });
 
-      const response = await mainAgent.run();
+      let turn = await mainAgent.start();
+      while (!turn.isDone) {
+        turn = await turn.next();
+      }
 
-      if (!response.executed) {
+      const response = turn;
+
+      if (!response.executedTools || response.executedTools.length === 0) {
         ask();
         return;
       }
 
-      for (const item of response.executed) {
+      for (const item of response.executedTools) {
         const functionName = item.name;
         if (functionName === "generate_custom_sql_query") {
           await runSqlGenerator(answer);
@@ -112,16 +114,13 @@ async function main() {
   async function runSqlGenerator(queryPrompt) {
     sqlGeneratorAgent.addInput({ role: "user", content: queryPrompt });
 
-    // Run generator agent
-    for (let i = 0; i < 10; i++) {
-      const step = await sqlGeneratorAgent.run();
-      const hasFunctionCall = step.rawResponse.output.some(item => item.type === "function_call");
-      if (!hasFunctionCall) {
-        const query = step.output;
-        await executeSql(query); // Pass to executor
-        break;
-      }
+    let turn = await sqlGeneratorAgent.start();
+    while (!turn.isDone) {
+      turn = await turn.next();
     }
+    
+    const query = turn.output;
+    await executeSql(query);
   }
 
   async function executeSql(query) {
@@ -130,18 +129,16 @@ async function main() {
       content: `Validate and then execute this SQL query: ${query}`
     });
 
-    for (let i = 0; i < 12; i++) {
-      const step = await sqlExecutorAgent.run();
-      const hasFunctionCall = step.rawResponse.output.some(item => item.type === "function_call");
-      if (!hasFunctionCall) {
-        // No more function calls, process the structured output
-        try {
-          const parsedOutput = step.output;
-          console.log(parsedOutput.explanation_summary);
-        } catch (error) {
-        }
-        break;
-      }
+    let turn = await sqlExecutorAgent.start();
+    while (!turn.isDone) {
+      turn = await turn.next();
+    }
+    
+    try {
+      const parsedOutput = turn.rawResponse.output_parsed;
+      console.log(parsedOutput.explanation_summary);
+    } catch (error) {
+      console.log(turn.output);
     }
   }
 

@@ -13,7 +13,7 @@ import {
     restHandler,
     UserBuilder
 } from '@a2a-js/sdk/server/express';
-import { AgentExecutorAdapter } from './AgentExecutorAdapter.js';
+import { AgentExecutorAdapter } from "./agent-executor-adapter.js";
 
 /**
  * Starts an A2A-compliant server for the given agent.

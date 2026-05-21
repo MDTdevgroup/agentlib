@@ -1,6 +1,4 @@
-import { AgentRunner } from '../../src/core/agent-runner.js';
-import { Agent } from '../../src/core/agent.js';
-import { LLMService } from '../../src/services/llm-service.js';
+import { Agent, AgentRunner, LLMService } from '../../index.js';
 import dotenv from 'dotenv';
 dotenv.config({ path: '../../.env' });
 

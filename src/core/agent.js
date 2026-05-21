@@ -74,6 +74,27 @@ export class Agent {
     }
 
     /**
+     * Adds an MCP server connection to this agent.
+     * @param {string} serverName - Identifier for the MCP server.
+     * @param {Object} config - Configuration object for the MCP server.
+     */
+    async addMCPServer(serverName, config) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return await this.toolLoader.addMCPServer(serverName, config);
+    }
+
+    /**
+     * Cleans up all MCP servers and agent resources.
+     */
+    async cleanup() {
+        if (this.toolLoader) {
+            await this.toolLoader.cleanup();
+        }
+    }
+
+    /**
      * Emits a tracing event if an event emitter is configured.
      * 
      * @param {string} eventName - The name of the event (e.g., 'agent:start', 'llm:start').
@@ -239,26 +260,36 @@ export class Agent {
             } else if (item.type === "reasoning") {
                 nextContext = nextContext.addInput(item);
             } else if (item.type === "message") {
-                const textBlocks = item.content.filter(block => block.type === 'output_text');
-                const otherBlocks = item.content.filter(block => block.type !== 'output_text');
-
-                let newContent = [...otherBlocks];
-
-                if (textBlocks.length > 0) {
-                    const combinedText = textBlocks.map(b => b.text).join('\n');
-                    const mergedTextBlock = {
-                        ...textBlocks[0],
-                        text: `[${this.name}]: ${combinedText}`
+                if (typeof item.content === 'string') {
+                    const messageToAdd = {
+                        ...item,
+                        content: `[${this.name}]: ${item.content}`
                     };
-                    newContent = [mergedTextBlock, ...otherBlocks];
+                    nextContext = nextContext.addInput(messageToAdd);
+                } else if (Array.isArray(item.content)) {
+                    const textBlocks = item.content.filter(block => block.type === 'output_text');
+                    const otherBlocks = item.content.filter(block => block.type !== 'output_text');
+
+                    let newContent = [...otherBlocks];
+
+                    if (textBlocks.length > 0) {
+                        const combinedText = textBlocks.map(b => b.text).join('\n');
+                        const mergedTextBlock = {
+                            ...textBlocks[0],
+                            text: `[${this.name}]: ${combinedText}`
+                        };
+                        newContent = [mergedTextBlock, ...otherBlocks];
+                    }
+
+                    const messageToAdd = {
+                        ...item,
+                        content: newContent
+                    };
+
+                    nextContext = nextContext.addInput(messageToAdd);
+                } else {
+                    nextContext = nextContext.addInput(item);
                 }
-
-                const messageToAdd = {
-                    ...item,
-                    content: newContent
-                };
-
-                nextContext = nextContext.addInput(messageToAdd);
             }
         });
 

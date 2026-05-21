@@ -39,13 +39,9 @@ async function runClient() {
 
     agent.addInput({ role: 'user', content: query });
 
-    const response = await agent.run();
-
-    if (response.rawResponse && response.rawResponse.content) {
-        console.log("\nAgent Response:", response.rawResponse.content);
-    } else {
-        console.log("\nAgent Response:", response);
-    }
+    const history = await agent.run();
+    const response = history[history.length - 1];
+    console.log("\nAgent Response:", response.output);
 }
 
 runClient().catch(err => console.error(err));

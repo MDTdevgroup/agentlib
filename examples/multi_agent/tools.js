@@ -1,4 +1,4 @@
-import { ToolLoader } from '../../src/ToolLoader.js';
+import { ToolLoader } from '../../index.js';
 
 const webSearchTool = {
     type: "web_search"
