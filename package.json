@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "test": "cd tests && node test.js"
+    "test": "node --test tests/*.test.js"
   },
   "author": "Peebles Group",
   "license": "MIT",

@@ -1,69 +1,110 @@
+import { test, describe, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
 import { AgentRunner } from '../src/core/agent-runner.js';
 import { Agent } from '../src/core/agent.js';
 import { LLMService } from '../src/services/llm-service.js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../.env' });
+import { registerProvider } from '../src/providers/registry.js';
+import * as FakeProvider from './helpers/fake-provider.js';
 
-const llmService = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
-const agent = new Agent(llmService, { logmode: 'none', name: 'agent' });
+describe('AgentRunner (Offline)', () => {
+    let fakeProvider;
 
-async function runTests() {
-    let passed = 0;
-    let failed = 0;
-
-    function assert(condition, label) {
-        if (condition) { passed++; console.log(`  ✅ ${label}`); }
-        else { failed++; console.log(`  ❌ ${label}`); }
-    }
-
-    console.log('\n=== Test 1: Constructor ===');
-    const runner = new AgentRunner(agent);
-    assert(runner.agents['agent'] === agent, 'Stores agent by name');
-
-    console.log('\n=== Test 2: Input norm ===');
-    const n1 = runner._normalizeInput('hi');
-    assert(n1.role === 'user' && n1.content === 'hi', 'String -> obj');
-
-    console.log('\n=== Test 3: Single Agent Run ===');
-    const history1 = await runner.run('Say exactly: Hello');
-    assert(history1.length === 1, 'History has 1 turn');
-    assert(history1[0].isSatisfied === true, 'Turn is satisfied');
-    assert(typeof history1[0].output === 'string', 'Agent response extracted');
-    assert(history1[0].output.includes('Hello'), 'Agent responded correctly');
-    assert(typeof history1[0].resume === 'function', 'Resume continuation present');
-
-    console.log('\n=== Test 4: Branching / Time-Travel ===');
-    let branchedCalled = false;
-    await history1[0].resume(async (newContinuation) => {
-        branchedCalled = true;
-        assert(newContinuation.turn === 1, 'Resumes at exactly the same turn layer');
-    });
-    assert(branchedCalled, 'Branch execution worked');
-
-    console.log('\n=== Test 5: Multi-agent turnStrategy ===');
-    const writerAgent = new Agent(llmService, { name: 'writer' });
-    const editorAgent = new Agent(llmService, { name: 'editor' });
-
-    const multiRunner = new AgentRunner({ writer: writerAgent, editor: editorAgent }, {
-        turnStrategy: async (agents, turn, defaultInput) => {
-            let res1 = await agents.writer.run([{ role: 'user', content: 'Say exactly: Draft' }]);
-            let res2 = await agents.editor.run([{ role: 'user', content: 'Say exactly: Looks good' }]);
-            return {
-                isSatisfied: turn >= 2,
-                writerRes: res1.output,
-                editorRes: res2.output
-            };
-        }
+    beforeEach(() => {
+        fakeProvider = FakeProvider.createFakeProvider();
+        registerProvider('fake', fakeProvider, 'Fake Provider');
     });
 
-    const multiHistory = await multiRunner.run();
-    assert(multiHistory.length === 2, 'Runs exactly 2 turns based on strategy');
-    assert(multiHistory[0].writerRes.includes('Draft'), 'Writer runs properly');
-    assert(multiHistory[1].isSatisfied === true, 'Exit condition works');
+    test('Test 1: Constructor stores agent by name', () => {
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, { name: 'my-agent' });
+        const runner = new AgentRunner(agent);
 
-    console.log(`\n=== RESULTS: ${passed} passed, ${failed} failed ===`);
-    if (failed === 0) console.log('🎉 ALL TESTS PASSED');
-    process.exit(failed > 0 ? 1 : 0);
-}
+        assert.equal(runner.agents['my-agent'], agent);
+    });
 
-runTests().catch(e => { console.error('FATAL:', e); process.exit(1); });
+    test('Test 2: Input normalization', () => {
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, { name: 'agent' });
+        const runner = new AgentRunner(agent);
+
+        const n1 = runner._normalizeInput('hi');
+        assert.deepEqual(n1, { role: 'user', content: 'hi' });
+
+        const n2 = runner._normalizeInput({ role: 'user', content: 'hello' });
+        assert.deepEqual(n2, { role: 'user', content: 'hello' });
+
+        assert.throws(() => runner._normalizeInput(123), /initialInput must be a string or an object/);
+    });
+
+    test('Test 3: Single Agent Run with continuation', async () => {
+        fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Hello from fake model'));
+
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, { name: 'agent' });
+        const runner = new AgentRunner(agent);
+
+        const history = await runner.run('Say hello');
+        assert.equal(history.length, 1, 'History has 1 turn');
+        assert.equal(history[0].isSatisfied, true, 'Turn is satisfied');
+        assert.equal(typeof history[0].output, 'string');
+        assert.ok(history[0].output.includes('Hello from fake model'));
+        assert.equal(typeof history[0].next, 'function', 'Continuation next function is present');
+    });
+
+    test('Test 4: Branching / Time-Travel with next continuation', async () => {
+        fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Original response'));
+
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, { name: 'agent' });
+        const runner = new AgentRunner(agent);
+
+        const history = await runner.run('Initial prompt');
+        assert.equal(history.length, 1);
+
+        fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Branched response'));
+        const nextTurn = await history[0].next();
+        assert.equal(nextTurn.turn, 2, 'Continuation steps to turn 2');
+        assert.equal(nextTurn.output, 'Branched response');
+    });
+
+    test('Test 5: Multi-agent turnStrategy that runs exactly N turns', async () => {
+        let writerCount = 0;
+        let editorCount = 0;
+
+        fakeProvider.setHandler(async (input) => {
+            const lastMsg = input[input.length - 1]?.content || '';
+            if (lastMsg.includes('Draft')) {
+                writerCount++;
+                return FakeProvider.fakeTextResponse(`Draft ${writerCount}`);
+            }
+            if (lastMsg.includes('Review')) {
+                editorCount++;
+                return FakeProvider.fakeTextResponse(`Looks good ${editorCount}`);
+            }
+            return FakeProvider.fakeTextResponse('OK');
+        });
+
+        const llm = new LLMService({ provider: 'fake' });
+        const writerAgent = new Agent(llm, { name: 'writer' });
+        const editorAgent = new Agent(llm, { name: 'editor' });
+
+        const multiRunner = new AgentRunner({ writer: writerAgent, editor: editorAgent }, {
+            turnStrategy: async (agents, agentContexts, turn) => {
+                const res1 = await agents.writer.run([{ role: 'user', content: `Draft turn ${turn}` }]);
+                const res2 = await agents.editor.run([{ role: 'user', content: `Review turn ${turn}` }]);
+                return {
+                    isSatisfied: turn >= 3,
+                    writerRes: res1[res1.length - 1].output,
+                    editorRes: res2[res2.length - 1].output,
+                    context: agentContexts
+                };
+            }
+        });
+
+        const multiHistory = await multiRunner.run();
+        assert.equal(multiHistory.length, 3, 'Runs exactly 3 turns based on turnStrategy isSatisfied');
+        assert.ok(multiHistory[0].writerRes.includes('Draft 1'));
+        assert.ok(multiHistory[2].editorRes.includes('Looks good 3'));
+        assert.equal(multiHistory[2].isSatisfied, true);
+    });
+});

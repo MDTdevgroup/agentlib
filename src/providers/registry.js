@@ -8,6 +8,18 @@ const ALLOWED_PROVIDERS = {
     vllm: { name: 'vLLM', namespace: VllmProvider },
 };
 
+export function registerProvider(key, namespace, name = key) {
+    if (typeof key !== 'string' || !key.trim()) {
+        throw new TypeError('Provider key must be a non-empty string.');
+    }
+    const normalizedKey = key.trim().toLowerCase();
+    ALLOWED_PROVIDERS[normalizedKey] = {
+        name: name || key,
+        namespace,
+    };
+    return normalizedKey;
+}
+
 export function getAllowedProviders() {
     // Procedure that returns the object
     return ALLOWED_PROVIDERS;
@@ -20,13 +32,21 @@ export function validateProviderName(providerName) {
     }
 
     const normalize = text => text.trim().toLowerCase();
+    const normalized = normalize(providerName);
+    const providers = getAllowedProviders();
 
-    const allowedProviders = Object.values(getAllowedProviders()).map(provider => normalize(provider.name));
-    const normalizedName = normalize(providerName);
-
-    if (!allowedProviders.includes(normalizedName)) {
-        throw new Error(`Unsupported provider. Allowed providers: ${allowedProviders.join(', ')}`);
+    // Check direct key match (e.g. 'openai', 'gemini', 'vllm', 'fake')
+    if (Object.hasOwn(providers, normalized)) {
+        return normalized;
     }
 
-    return normalizedName;
+    // Check display name match (e.g. 'OpenAI' -> 'openai')
+    for (const [key, provider] of Object.entries(providers)) {
+        if (provider.name && normalize(provider.name) === normalized) {
+            return key;
+        }
+    }
+
+    const allowed = Object.keys(providers);
+    throw new Error(`Unsupported provider. Allowed providers: ${allowed.join(', ')}`);
 }
