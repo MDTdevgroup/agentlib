@@ -1,8 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import EventEmitter from 'events';
 import { trace, context } from '@opentelemetry/api';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 
 /**
  * @typedef {Object} SpanPayload
@@ -246,7 +245,7 @@ export class DomainObservability {
  */
 export const createTracer = (eventEmitter, sessionId) => {
     return async (name, attributes, fn) => {
-        const spanId = uuidv4();
+        const spanId = randomUUID();
 
         eventEmitter.emit(`${name.split(':')[0]}:start`, {
             spanId,

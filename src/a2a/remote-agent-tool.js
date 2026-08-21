@@ -1,5 +1,5 @@
 import { ClientFactory } from '@a2a-js/sdk/client';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Creates a tool function that calls a remote A2A agent.
@@ -32,7 +32,7 @@ export async function createRemoteAgentTool(remoteUrl, toolName = 'remote_agent'
 
             const sendParams = {
                 message: {
-                    messageId: uuidv4(),
+                    messageId: randomUUID(),
                     role: 'user',
                     parts: [{ kind: 'text', text: request }],
                     kind: 'message',

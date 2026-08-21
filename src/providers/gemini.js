@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import util from 'util';
+import { defaultGeminiModel } from "../config.js";
 
 export function createClient(auth) {
     return new GoogleGenAI({ apiKey: auth.apiKey });
@@ -111,15 +111,12 @@ async function _applySemanticPruning(messages) {
 }
 
 export async function chat(client, input, { model = defaultGeminiModel, pruningOptions, inputSchema, outputSchema, tools, ...options }) {
-    const originalWarn = console.warn;
-    console.warn = (...args) => {
-        if (typeof args[0] === 'string' && args[0].includes('there are non-text parts')) {
-            return;
-        }
-        originalWarn(...args);
-    };
     try {
         let response, output;
+
+        if (inputSchema) {
+            input = inputSchema.parse(input);
+        }
 
         if (pruningOptions?.enabled) {
             input = await _applySemanticPruning(input);

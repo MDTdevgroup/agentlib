@@ -50,7 +50,7 @@ export class MCPManager {
     getAllTools() {
         const allTools = [];
 
-        for (const [serverName, client] of this.clients) {
+        for (const [_serverName, client] of this.clients) {
             allTools.push(...client.getTools());
         }
 

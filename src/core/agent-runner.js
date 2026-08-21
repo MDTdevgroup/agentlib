@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { createTracer, DomainObservability } from "../services/observability.js";
 import { defaultMaxTurns } from "../config.js";
@@ -54,7 +54,7 @@ export class AgentRunner {
          * }>}
          */
         if (!turnStrategy) { // Run last agent in the dictionary by default
-            this.turnStrategy = async (agentDict, agentContexts, turnNumber) => {
+            this.turnStrategy = async (agentDict, agentContexts, _turnNumber) => {
                 const agent = Object.values(agentDict).at(-1);
                 const history = await agent.run(agentContexts[agent.name] || null);
                 const res = history[history.length - 1];
@@ -73,7 +73,7 @@ export class AgentRunner {
         }
 
         this.name = name;
-        this.sessionId = uuidv4();
+        this.sessionId = randomUUID();
         this.events = eventEmitter || new EventEmitter();
         this.tracer = createTracer(this.events, this.sessionId);
         this.maxTurns = maxTurns;

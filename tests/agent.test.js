@@ -73,11 +73,11 @@ describe('Agent Core Loop (Offline)', () => {
             },
             {
                 name: 'fetch_posts',
-                func: async ({ userId }) => { order.push('fetch_posts'); return [{ id: 1, title: 'Post 1' }]; }
+                func: async ({ userId: _userId }) => { order.push('fetch_posts'); return [{ id: 1, title: 'Post 1' }]; }
             },
             {
                 name: 'fetch_comments',
-                func: async ({ postId }) => { order.push('fetch_comments'); return ['Great!']; }
+                func: async ({ postId: _postId }) => { order.push('fetch_comments'); return ['Great!']; }
             }
         ];
 

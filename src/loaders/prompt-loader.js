@@ -1,6 +1,6 @@
 import { loadStrategies } from './load-strategies.js';
 import { parseStrategies } from './parse-strategies.js';
-import path from 'path';
+import path from 'node:path';
 
 class Prompt {
     /**
@@ -14,8 +14,8 @@ class Prompt {
         this.delimiterEnd = endDel;
 
         // Escape special chars so user delimiters like '?' don't break regex logic.
-        const escapedStart = this.delimiterStart.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const escapedEnd = this.delimiterEnd.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const escapedStart = this.delimiterStart.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const escapedEnd = this.delimiterEnd.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
 
         // Matches start delimiter, captures variable name (alphanumeric + dots), matches end.
         this.varRegex = new RegExp(`${escapedStart}\\s*([a-zA-Z0-9_.]+)\\s*${escapedEnd}`, 'g');

@@ -1,6 +1,6 @@
 import { defaultOpenaiModel, defaultGeminiModel, defaultMaxToolCalls } from "../config.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
 import { Context } from "../memory/context.js";
@@ -33,7 +33,7 @@ export class Agent {
         ...options } = {}) {
 
         this.name = name;
-        this.sessionId = uuidv4();
+        this.sessionId = randomUUID();
         this.llmService = llmService;
         this.events = eventEmitter || new EventEmitter();
         this.model = model;
@@ -131,9 +131,10 @@ export class Agent {
         }
 
         // Generate a new trace ID and root span ID
-        const traceId = this.name + "-" + uuidv4();
-        const rootSpanId = this.name + "-" + uuidv4();
+        const traceId = this.name + "-" + randomUUID();
+        const rootSpanId = this.name + "-" + randomUUID();
         const allTools = this.toolLoader.getTools() || [];
+        const mcpInfo = this.toolLoader.getMCPInfo();
 
         // 1. EMIT: Agent start
         this._emitTrace('agent:start', {
@@ -147,8 +148,8 @@ export class Agent {
                 model: this.model,
                 tools_available: allTools.map(t => t.name),
                 tool_count: allTools.length,
-                mcp_enabled: this.mcpManager ? this.mcpManager.isEnabled() : false,
-                mcp_servers: this.mcpManager ? this.mcpManager.getServerInfo() : {}
+                mcp_enabled: mcpInfo.enabled !== false,
+                mcp_servers: mcpInfo.servers || mcpInfo
             }
         });
 
@@ -210,7 +211,7 @@ export class Agent {
         const allTools = this.toolLoader.getTools() || [];
 
         // 2. EMIT: LLM Call
-        const llmSpanId = "llm_call_" + stepNumber + "-" + uuidv4();
+        const llmSpanId = "llm_call_" + stepNumber + "-" + randomUUID();
         this._emitTrace('llm:start', {
             traceId,
             spanId: llmSpanId,
@@ -253,7 +254,7 @@ export class Agent {
 
         rawResponse.output.forEach(item => {
             if (item.type === "function_call") {
-                const { parsed_arguments, ...rest } = item;
+                const { parsed_arguments: _parsed_arguments, ...rest } = item;
                 const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
                 const cleanedItem = { ...rest, arguments: args };
                 nextContext = nextContext.addInput(cleanedItem);
@@ -311,7 +312,7 @@ export class Agent {
                 }
 
                 // 4. EMIT: Tool Start
-                const toolSpanId = "tool_call:" + call.name + "-" + uuidv4();
+                const toolSpanId = "tool_call:" + call.name + "-" + randomUUID();
                 this._emitTrace('tool:start', {
                     traceId,
                     spanId: toolSpanId,
@@ -354,7 +355,7 @@ export class Agent {
                 rawResponse: rawResponse,
                 executedTools: newExecutedTools,
                 context: nextContext,
-                next: async (overrideContext = null, options = {}) => {
+                next: async (overrideContext = null, _options = {}) => {
                     const stateToPass = overrideContext || nextContext;
                     return this._executeTurn(stepNumber + 1, stateToPass, newExecutedTools, traceId, rootSpanId, updateInternalContext);
                 }

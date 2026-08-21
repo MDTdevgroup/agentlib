@@ -1,5 +1,4 @@
 
-import express from 'express';
 import {
     AGENT_CARD_PATH
 } from '@a2a-js/sdk';
@@ -17,13 +16,14 @@ import { AgentExecutorAdapter } from "./agent-executor-adapter.js";
 
 /**
  * Starts an A2A-compliant server for the given agent.
- * @param {import('../Agent').Agent} agent - The agent to expose.
+ * @param {import('../core/agent.js').Agent} agent - The agent to expose.
  * @param {object} options
  * @param {number} [options.port=4000] - The port to listen on.
  * @param {string} [options.name] - Agent name override.
  * @param {string} [options.baseUrl] - The public URL (e.g., http://localhost:4000).
  */
-export function startA2AServer(agent, { port = 4000, name, baseUrl = `http://localhost:${port}` } = {}) {
+export async function startA2AServer(agent, { port = 4000, name, baseUrl = `http://localhost:${port}` } = {}) {
+    const { default: express } = await import('express');
 
     // 1. Generate Agent Card
     const tools = agent.toolLoader.getTools();

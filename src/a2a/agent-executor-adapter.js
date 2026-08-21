@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Adapts an agentlib Agent to the A2A AgentExecutor interface.
@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
  */
 export class AgentExecutorAdapter {
     /**
-     * @param {import('../Agent').Agent} agent - The agent to adapt.
+     * @param {import('../core/agent.js').Agent} agent - The agent to adapt.
      */
     constructor(agent) {
         this.agent = agent;
@@ -53,26 +53,28 @@ export class AgentExecutorAdapter {
             // Run the agent
             const response = await this.agent.run();
 
-            // The response from agentlib is typically { rawResponse, output: [...messages], ... }
-            // We want the final text response.
-            // Depending on the Agent implementation, output might be the full history or just the new messages.
-            // Based on Agent.js, run() returns `response` which has `executed`. 
-            // The last message in `this.agent.input` should be the assistant's response.
-
-            const lastMessage = this.agent.input[this.agent.input.length - 1];
+            // The response from agentlib is an array of turns (CPS history)
+            const messages = this.agent.context?.getMessages() || [];
+            const lastMessage = messages[messages.length - 1];
             let responseText = "No response generated";
 
-            if (lastMessage && lastMessage.role === 'assistant') {
+            if (lastMessage && lastMessage.role === 'assistant' && typeof lastMessage.content === 'string') {
                 responseText = lastMessage.content;
-            } else if (response.rawResponse && response.rawResponse.content) {
-                // Fallback if not added to input yet
+            } else if (Array.isArray(response) && response.length > 0) {
+                const finalTurn = response[response.length - 1];
+                if (typeof finalTurn.output === 'string') {
+                    responseText = finalTurn.output;
+                } else if (finalTurn.rawResponse && finalTurn.rawResponse.content) {
+                    responseText = finalTurn.rawResponse.content;
+                }
+            } else if (response && response.rawResponse && response.rawResponse.content) {
                 responseText = response.rawResponse.content;
             }
 
             // Publish the response message
             eventBus.publish({
                 kind: 'message',
-                messageId: uuidv4(),
+                messageId: randomUUID(),
                 role: 'agent',
                 parts: [{ kind: 'text', text: responseText }],
                 contextId: contextId,
@@ -101,7 +103,7 @@ export class AgentExecutorAdapter {
         }
     }
 
-    async cancelTask(taskId, eventBus) {
+    async cancelTask(taskId, _eventBus) {
         this.cancelledTasks.add(taskId);
         // Note: To fully support cancellation, Agent.js would need to check this flag during its execution loop.
         // For now, this just marks it.

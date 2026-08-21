@@ -2,7 +2,7 @@ import { getAllowedProviders, validateProviderName } from '../providers/registry
 import { defaultOpenaiModel, defaultGeminiModel } from '../config.js';
 
 export class LLMService {
-    constructor(auth = { provider, apiKey }) {
+    constructor(auth = {}) {
         this.auth = auth;
         this.provider = validateProviderName(auth.provider);
         this.providerNamespace = getAllowedProviders()[this.provider]?.namespace;
