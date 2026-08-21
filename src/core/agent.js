@@ -36,6 +36,9 @@ export class Agent {
         this.sessionId = randomUUID();
         this.llmService = llmService;
         this.events = eventEmitter || new EventEmitter();
+        if (this.llmService && !this.llmService.events) {
+            this.llmService.events = this.events;
+        }
         this.model = model;
         this.toolLoader = toolLoader || new ToolLoader(enableMCP);
         this.outputSchema = outputSchema;

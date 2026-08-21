@@ -5,3 +5,13 @@ export const defaultMaxContextTokens = 64000;
 export const defaultTruncateToTokens = 48000;
 export const defaultMaxToolCalls = 100;
 export const defaultMaxTurns = 100;
+
+export function getDefaultRetrySpec() {
+    return {
+        maxRetries: 3,
+        timeoutMS: 300000,
+        baseDelayMS: 1000,
+        exprDelayMS: 500,
+        maxDelayMS: 60000,
+    };
+}

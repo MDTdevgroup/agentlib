@@ -6,6 +6,34 @@ export function createClient(auth) {
     return new GoogleGenAI({ apiKey: auth.apiKey });
 }
 
+export function isRetryable(error) {
+    if (!error) return { retryable: false };
+
+    const status = error.status || error.statusCode || error.response?.status;
+    const message = error.message || '';
+
+    // 400, 401, 403, 404: Fatal hard failures
+    if (status === 400 || status === 401 || status === 403 || status === 404) {
+        return { retryable: false };
+    }
+
+    // 429 Rate Limit or 5xx Server Error
+    if (status === 429 || (status >= 500 && status <= 599)) {
+        return { retryable: true };
+    }
+
+    // GoogleGenAI status text identifiers
+    if (message.includes('RESOURCE_EXHAUSTED') || message.includes('UNAVAILABLE') || message.includes('DEADLINE_EXCEEDED')) {
+        return { retryable: true };
+    }
+
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND' || error.name === 'AbortError') {
+        return { retryable: true };
+    }
+
+    return { retryable: false };
+}
+
 function _convertInput(input) {
     const contents = [];
     const systemParts = [];

@@ -12,6 +12,8 @@ export function createClient(auth) {
     });
 }
 
+export { isRetryable } from './openai.js';
+
 function _convertInput(input) {
     // Map your agentlib structured inputs onto the standard Chat Completions `messages` format
     return input.map((item) => {

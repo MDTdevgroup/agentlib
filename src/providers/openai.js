@@ -7,6 +7,34 @@ export function createClient(auth) {
     return new OpenAI({ apiKey: auth.apiKey });
 }
 
+export function isRetryable(error) {
+    if (!error) return { retryable: false };
+
+    const status = error.status || error.statusCode || error.response?.status;
+    const retryAfterHeader = error.headers?.['retry-after'] || error.response?.headers?.get?.('retry-after');
+    let retryAfterMs = undefined;
+    if (retryAfterHeader) {
+        const parsed = Number(retryAfterHeader);
+        if (!Number.isNaN(parsed) && parsed > 0) {
+            retryAfterMs = parsed * 1000;
+        }
+    }
+
+    if (status === 400 || status === 401 || status === 403 || status === 404) {
+        return { retryable: false };
+    }
+
+    if (status === 429 || (status >= 500 && status <= 599)) {
+        return { retryable: true, retryAfterMs };
+    }
+
+    if (error.code === 'ECONNRESET' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND' || error.name === 'AbortError') {
+        return { retryable: true, retryAfterMs };
+    }
+
+    return { retryable: false };
+}
+
 function _convertInput(input) {
     return input.map((item) => {
         if (item.type === 'function_call_output') {

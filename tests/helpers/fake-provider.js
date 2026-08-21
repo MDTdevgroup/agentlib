@@ -39,6 +39,21 @@ export function fakeError(error) {
     return typeof error === 'string' ? new Error(error) : error;
 }
 
+export function isRetryable(error) {
+    if (!error) return { retryable: false };
+    const status = error.status || error.statusCode;
+    if (status === 400 || status === 401 || status === 403 || status === 404) {
+        return { retryable: false };
+    }
+    if (status === 429 || (status >= 500 && status <= 599)) {
+        return { retryable: true, retryAfterMs: error.retryAfterMs };
+    }
+    if (error.retryable !== undefined) {
+        return { retryable: Boolean(error.retryable), retryAfterMs: error.retryAfterMs };
+    }
+    return { retryable: true };
+}
+
 class FakeClient {
     constructor(auth = {}) {
         this.auth = auth;
@@ -196,6 +211,9 @@ export function createFakeProvider() {
         },
         getCalls() {
             return instanceCalls;
+        },
+        isRetryable(error) {
+            return isRetryable(error);
         },
         reset() {
             instanceResponses.length = 0;

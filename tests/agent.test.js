@@ -164,7 +164,12 @@ describe('Agent Core Loop (Offline)', () => {
 
         await assert.rejects(
             async () => { await agent.run(); },
-            /Network connection timeout/
+            (err) => {
+                const isCauseMatch = err.cause?.message === 'Network connection timeout';
+                const isDirectMatch = /Network connection timeout|RetryExhausted/.test(err.message);
+                assert.ok(isCauseMatch || isDirectMatch);
+                return true;
+            }
         );
     });
 });
