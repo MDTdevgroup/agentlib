@@ -153,11 +153,8 @@ export function toolCallArgs(item) {
         return item.arguments;
     }
     if (typeof item.arguments === 'string') {
-        try {
-            return JSON.parse(item.arguments);
-        } catch {
-            return item.arguments;
-        }
+        if (!item.arguments.trim()) return {};
+        return JSON.parse(item.arguments);
     }
     return {};
 }

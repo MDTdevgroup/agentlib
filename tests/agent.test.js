@@ -103,7 +103,7 @@ describe('Agent Core Loop (Offline)', () => {
         assert.equal(history[1].output, 'User, posts, and comments fetched.');
     });
 
-    test('4. An agent that hits the step limit', async () => {
+    test('4. An agent that hits the step limit terminates gracefully', async () => {
         const dummyTool = {
             name: 'loop_tool',
             func: async () => 'looping...'
@@ -119,16 +119,16 @@ describe('Agent Core Loop (Offline)', () => {
         });
 
         const llm = new LLMService({ provider: 'fake' });
-        const agent = new Agent(llm, { name: 'runaway-agent', tools: [dummyTool] });
+        const agent = new Agent(llm, { name: 'runaway-agent', tools: [dummyTool], maxToolCalls: 3 });
         agent.addInput({ role: 'user', content: 'Run forever' });
 
-        await assert.rejects(
-            async () => { await agent.run(); },
-            /Agent exceeded maximum tool call limit/
-        );
+        const history = await agent.run();
+        const finalTurn = history[history.length - 1];
+        assert.equal(finalTurn.isDone, true);
+        assert.equal(finalTurn.stopReason, 'step_limit');
     });
 
-    test('5. A tool that throws', async () => {
+    test('5. A tool that throws with onToolError: throw policy rejects', async () => {
         const failingTool = {
             name: 'failing_tool',
             func: async () => {
@@ -143,7 +143,7 @@ describe('Agent Core Loop (Offline)', () => {
         }));
 
         const llm = new LLMService({ provider: 'fake' });
-        const agent = new Agent(llm, { name: 'error-agent', tools: [failingTool] });
+        const agent = new Agent(llm, { name: 'error-agent', tools: [failingTool], onToolError: 'throw' });
         agent.addInput({ role: 'user', content: 'Execute failing tool' });
 
         await assert.rejects(

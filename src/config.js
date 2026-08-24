@@ -5,6 +5,7 @@ export const defaultMaxContextTokens = 64000;
 export const defaultTruncateToTokens = 48000;
 export const defaultMaxToolCalls = 100;
 export const defaultMaxTurns = 100;
+export const defaultToolConcurrency = 5;
 
 export function getDefaultRetrySpec() {
     return {

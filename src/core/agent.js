@@ -1,10 +1,11 @@
-import { defaultMaxToolCalls } from "../config.js";
+import { defaultMaxToolCalls, defaultToolConcurrency } from "../config.js";
 import { getDefaultModel } from "../providers/registry.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
 import { Context } from "../memory/context.js";
+import { asyncSettleAll } from "../util/async.js";
 import {
     isToolCall,
     isTextMessage,
@@ -33,7 +34,9 @@ export class Agent {
      * @param {Array<object>} [options.tools=[]] - Array of native tool objects available to the agent.
      * @param {zod.ZodType|null} [options.outputSchema=null] - Zod schema for validating/structuring the expected final output.
      * @param {boolean} [options.enableMCP=false] - Whether to enable MCP (Model Context Protocol) support for remote tools.
-     * @param {boolean} [options.redundantToolInfo=true] - Whether to explicitly inject tool descriptions into the system prompt (useful for some models).
+     * @param {number} [options.toolConcurrency=5] - Maximum concurrency limit for parallel tool executions in a single turn.
+     * @param {'feedback'|'throw'} [options.onToolError='feedback'] - Policy for handling tool errors (feed back to LLM vs throw immediately).
+     * @param {number} [options.maxToolCalls=100] - Maximum allowable tool calling iterations before terminating.
      * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
      */
     constructor(llmService, {
@@ -44,6 +47,9 @@ export class Agent {
         toolLoader = null,
         outputSchema = null,
         enableMCP = false,
+        toolConcurrency = defaultToolConcurrency,
+        onToolError = 'feedback',
+        maxToolCalls = defaultMaxToolCalls,
         ...options } = {}) {
 
         this.name = name;
@@ -56,6 +62,9 @@ export class Agent {
         this.model = model;
         this.toolLoader = toolLoader || new ToolLoader(enableMCP);
         this.outputSchema = outputSchema;
+        this.toolConcurrency = toolConcurrency;
+        this.onToolError = onToolError;
+        this.maxToolCalls = maxToolCalls;
 
         if (options.tools) {
             this.toolLoader.addTools(options.tools);
@@ -112,36 +121,139 @@ export class Agent {
     }
 
     /**
-     * Emits a tracing event if an event emitter is configured.
-     * 
-     * @param {string} eventName - The name of the event (e.g., 'agent:start', 'llm:start').
-     * @param {object} details - The details of the trace event.
-     * @param {string} details.traceId - A unique UUID for the entire execution trace.
-     * @param {string} details.spanId - A unique UUID for this specific span/operation.
-     * @param {string} [details.parentSpanId] - The UUID of the parent span (if this is a child operation).
-     * @param {string} details.name - A human-readable name for the operation (e.g., "agent_run").
-     * @param {object} [details.attributes] - specific metadata about the operation (e.g., model name, tool count).
+     * Format traces and emit them through the agent's EventEmitter.
      */
-    _emitTrace(eventName, { traceId, spanId, parentSpanId, name, attributes }) {
-        if (this.events) {
-            this.events.emit(eventName, {
+    _emitTrace(eventName, payload) {
+        if (!this.events) return;
+        this.events.emit(eventName, {
+            ...payload,
+            timestamp: Date.now(),
+            agent_name: this.name,
+            session_id: this.sessionId,
+        });
+    }
+
+    /**
+     * Executes a single tool call, handling errors, missing tools, and telemetry.
+     */
+    async _executeSingleTool(call, traceId, rootSpanId) {
+        const name = toolCallName(call);
+        const callId = toolCallId(call);
+        const toolSpanId = "tool_call:" + name + "-" + randomUUID();
+
+        let args;
+        try {
+            args = toolCallArgs(call);
+            if (args === undefined) {
+                args = {};
+            }
+        } catch (parseErr) {
+            this._emitTrace('tool:error', {
                 traceId,
-                spanId,
-                parentSpanId,
-                name,
-                attributes,
-                sessionId: this.sessionId
+                spanId: toolSpanId,
+                parentSpanId: rootSpanId,
+                name: `tool_exec:${name || 'unknown'}`,
+                attributes: {
+                    tool_name: name,
+                    error: `Failed to parse tool arguments: ${parseErr.message}`,
+                }
             });
+            if (this.onToolError === 'throw') throw parseErr;
+            return {
+                callId,
+                name,
+                args: {},
+                result: { error: `Failed to parse tool arguments: ${parseErr.message}` },
+            };
+        }
+
+        const tool = this.toolLoader.findTool(name);
+        if (!tool || typeof tool.func !== 'function') {
+            const err = new Error(`Tool "${name}" not found or missing implementation.`);
+            this._emitTrace('tool:error', {
+                traceId,
+                spanId: toolSpanId,
+                parentSpanId: rootSpanId,
+                name: `tool_exec:${name}`,
+                attributes: {
+                    tool_name: name,
+                    arguments: args,
+                    error: err.message,
+                }
+            });
+            if (this.onToolError === 'throw') throw err;
+            return {
+                callId,
+                name,
+                args,
+                result: { error: `Tool "${name}" not found.` },
+            };
+        }
+
+        this._emitTrace('tool:start', {
+            traceId,
+            spanId: toolSpanId,
+            parentSpanId: rootSpanId,
+            name: `tool_exec:${name}`,
+            attributes: {
+                tool_name: name,
+                arguments: args,
+            }
+        });
+
+        try {
+            const result = await tool.func(args);
+            this._emitTrace('tool:complete', {
+                traceId,
+                spanId: toolSpanId,
+                parentSpanId: rootSpanId,
+                name: `tool_exec:${name}`,
+                attributes: {
+                    tool_name: name,
+                    arguments: args,
+                    result_preview: JSON.stringify(result)?.slice(0, 100),
+                }
+            });
+            return {
+                callId,
+                name,
+                args,
+                result,
+            };
+        } catch (execErr) {
+            this._emitTrace('tool:error', {
+                traceId,
+                spanId: toolSpanId,
+                parentSpanId: rootSpanId,
+                name: `tool_exec:${name}`,
+                attributes: {
+                    tool_name: name,
+                    arguments: args,
+                    error: execErr.message,
+                }
+            });
+            if (this.onToolError === 'throw') throw execErr;
+            return {
+                callId,
+                name,
+                args,
+                result: { error: `Tool "${name}" execution failed: ${execErr.message}` },
+            };
         }
     }
 
     /**
-     * Starts the agent for a single conversational turn, including tool use if necessary.
-     * This method initializes the multi-step reasoning: LLM -> Tool Execution -> LLM Final Response.
-     * It returns the first turn state object in Continuation-Passing Style (CPS).
+     * Starts the conversation loop and pauses after the first turn.
+     * @param {Context|null} [externalContext=null] - Optional external context to execute turn against.
+     * @returns {Promise<object>} The first turn object in CPS format.
      */
     async start(externalContext = null) {
-        let activeContext = externalContext || this.context;
+        let activeContext;
+        if (externalContext !== null) {
+            activeContext = externalContext;
+        } else {
+            activeContext = this.context;
+        }
         if (externalContext && !(externalContext instanceof Context)) {
             const msgArray = Array.isArray(externalContext) ? externalContext : [externalContext];
             activeContext = new Context(msgArray);
@@ -210,7 +322,7 @@ export class Agent {
 
         while (!currentTurn.isDone) {
             currentTurn = await currentTurn.next();
-            branchHistory.push(currentTurn)
+            branchHistory.push(currentTurn);
         }
 
         return branchHistory;
@@ -220,9 +332,31 @@ export class Agent {
      * Executes a single step of the agent's inner loop (LLM Call -> Tool Execution).
      */
     async _executeTurn(stepNumber, currentContext, executedTools, traceId, rootSpanId, updateInternalContext) {
-        const MAX_TOOL_CALLS = defaultMaxToolCalls;
-        if (stepNumber > MAX_TOOL_CALLS) {
-            throw new Error(`Agent exceeded maximum tool call limit of ${MAX_TOOL_CALLS}`);
+        if (stepNumber > this.maxToolCalls) {
+            // Emit agent complete with step limit stop reason
+            this._emitTrace('agent:complete', {
+                traceId,
+                spanId: rootSpanId,
+                name: "agent_run",
+                attributes: {
+                    success: false,
+                    stop_reason: 'step_limit',
+                    total_tools_executed: executedTools.length
+                }
+            });
+
+            if (updateInternalContext) {
+                this.context = currentContext;
+            }
+
+            return {
+                output: '',
+                rawResponse: null,
+                executedTools,
+                context: currentContext,
+                isDone: true,
+                stopReason: 'step_limit',
+            };
         }
 
         const allTools = this.toolLoader.getTools() || [];
@@ -304,52 +438,36 @@ export class Agent {
         let newExecutedTools = [...executedTools];
 
         if (!isDone) {
-            for (const call of functionCalls) {
-                const name = toolCallName(call);
-                const callId = toolCallId(call);
-                const args = toolCallArgs(call);
+            const thunks = functionCalls.map(call => () => this._executeSingleTool(call, traceId, rootSpanId));
+            const toolSettled = await asyncSettleAll(thunks, this.toolConcurrency, 0);
 
-                newExecutedTools.push({ name, args });
-
-                const tool = this.toolLoader.findTool(name);
-                if (!tool || !tool.func) {
-                    throw new Error(`Tool ${name} not found or missing implementation.`);
+            for (let i = 0; i < toolSettled.length; i++) {
+                const settled = toolSettled[i];
+                if (settled.status === 'fulfilled') {
+                    const { callId, name, args, result } = settled.value;
+                    newExecutedTools.push({ name, args });
+                    const functionMessage = makeToolResult({
+                        callId,
+                        name,
+                        value: result,
+                    });
+                    nextContext = nextContext.addInput(functionMessage);
+                } else {
+                    const originalCall = functionCalls[i];
+                    const name = toolCallName(originalCall);
+                    const callId = toolCallId(originalCall);
+                    const error = settled.reason;
+                    if (this.onToolError === 'throw') {
+                        throw error;
+                    }
+                    newExecutedTools.push({ name, args: {} });
+                    const functionMessage = makeToolResult({
+                        callId,
+                        name,
+                        value: { error: error.message },
+                    });
+                    nextContext = nextContext.addInput(functionMessage);
                 }
-
-                // 4. EMIT: Tool Start
-                const toolSpanId = "tool_call:" + name + "-" + randomUUID();
-                this._emitTrace('tool:start', {
-                    traceId,
-                    spanId: toolSpanId,
-                    parentSpanId: rootSpanId,
-                    name: `tool_exec:${name}`,
-                    attributes: {
-                        tool_name: name,
-                        arguments: args,
-                    }
-                });
-
-                const result = await tool.func(args);
-
-                // 5. EMIT: Tool Complete
-                this._emitTrace('tool:complete', {
-                    traceId,
-                    spanId: toolSpanId,
-                    parentSpanId: rootSpanId,
-                    name: `tool_exec:${name}`,
-                    attributes: {
-                        tool_name: name,
-                        arguments: args,
-                        result_preview: JSON.stringify(result).slice(0, 100)
-                    }
-                });
-
-                const functionMessage = makeToolResult({
-                    callId,
-                    name,
-                    value: result,
-                });
-                nextContext = nextContext.addInput(functionMessage);
             }
 
             // Return CPS object to continue to the next turn
