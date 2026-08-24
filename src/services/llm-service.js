@@ -1,5 +1,5 @@
-import { getAllowedProviders, validateProviderName } from '../providers/registry.js';
-import { defaultOpenaiModel, defaultGeminiModel, getDefaultRetrySpec } from '../config.js';
+import { getAllowedProviders, validateProviderName, getDefaultModel } from '../providers/registry.js';
+import { getDefaultRetrySpec } from '../config.js';
 import { withRetries } from '../util/retry.js';
 
 export class LLMService {
@@ -18,7 +18,7 @@ export class LLMService {
     }
 
     async chat(input, {
-        model = this.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel,
+        model = getDefaultModel(this.provider),
         retry = getDefaultRetrySpec(),
         signal,
         ...options

@@ -50,3 +50,12 @@ export function validateProviderName(providerName) {
     const allowed = Object.keys(providers);
     throw new Error(`Unsupported provider. Allowed providers: ${allowed.join(', ')}`);
 }
+
+export function getDefaultModel(providerName) {
+    const key = validateProviderName(providerName);
+    const provider = ALLOWED_PROVIDERS[key];
+    if (provider?.namespace?.defaultModel) {
+        return provider.namespace.defaultModel;
+    }
+    return 'default';
+}

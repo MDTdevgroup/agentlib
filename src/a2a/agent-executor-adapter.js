@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { messageText } from '../memory/message.js';
 
 /**
  * Adapts an agentlib Agent to the A2A AgentExecutor interface.
@@ -54,22 +55,10 @@ export class AgentExecutorAdapter {
             const response = await this.agent.run();
 
             // The response from agentlib is an array of turns (CPS history)
+            const finalTurn = Array.isArray(response) ? response[response.length - 1] : response;
             const messages = this.agent.context?.getMessages() || [];
             const lastMessage = messages[messages.length - 1];
-            let responseText = "No response generated";
-
-            if (lastMessage && lastMessage.role === 'assistant' && typeof lastMessage.content === 'string') {
-                responseText = lastMessage.content;
-            } else if (Array.isArray(response) && response.length > 0) {
-                const finalTurn = response[response.length - 1];
-                if (typeof finalTurn.output === 'string') {
-                    responseText = finalTurn.output;
-                } else if (finalTurn.rawResponse && finalTurn.rawResponse.content) {
-                    responseText = finalTurn.rawResponse.content;
-                }
-            } else if (response && response.rawResponse && response.rawResponse.content) {
-                responseText = response.rawResponse.content;
-            }
+            const responseText = messageText(finalTurn) || messageText(lastMessage) || "No response generated";
 
             // Publish the response message
             eventBus.publish({

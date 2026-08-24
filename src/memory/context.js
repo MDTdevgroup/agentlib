@@ -1,4 +1,5 @@
 import { defaultMaxContextTokens, defaultTruncateToTokens } from '../config.js';
+import { deepFreeze } from './message.js';
 
 /**
  * A data container for episodic and semantic memory.
@@ -6,7 +7,7 @@ import { defaultMaxContextTokens, defaultTruncateToTokens } from '../config.js';
  */
 export class Context {
     constructor(messages = [], summary = null, options = {}) {
-        this.messages = Object.freeze([...messages]);
+        this.messages = deepFreeze([...messages]);
         this.summary = summary;
         this.maxTokens = options.maxTokens || defaultMaxContextTokens;
         this.truncateToTokens = options.truncateToTokens || defaultTruncateToTokens;

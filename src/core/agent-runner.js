@@ -7,6 +7,8 @@ import { defaultMaxTurns } from "../config.js";
  * A generalized Runner that orchestrates the outer multi-turn loop
  * and handles the Continuation-Passing Style (CPS) snapshotting automatically.
  */
+import { makeTextMessage } from '../memory/message.js';
+
 export class AgentRunner {
     /**
      * @param {Agent|Array<Agent>|Record<string, Agent>} agents - A configured Agent instance, Array, or dictionary of Agents.
@@ -132,8 +134,10 @@ export class AgentRunner {
     }
 
     _normalizeInput(input) {
-        if (typeof input === 'string') return { role: 'user', content: input };
-        if (input && typeof input === 'object' && input.role && input.content) return input;
+        if (typeof input === 'string') return makeTextMessage({ role: 'user', text: input });
+        if (input && typeof input === 'object' && input.role && (input.content !== undefined || input.text !== undefined)) {
+            return makeTextMessage({ role: input.role, text: input.text || input.content });
+        }
         throw new Error('AgentRunner.run() initialInput must be a string or an object with { role, content }.');
     }
 

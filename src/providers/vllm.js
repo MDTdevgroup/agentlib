@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import { zodResponseFormat } from "openai/helpers/zod";
-// import { defaultVllmModel } from "../config.js"; // Optional: Add this to your config if needed
+export const defaultModel = 'default';
 
 // Factory function to create client pointing to vLLM
 export function createClient(auth) {
@@ -14,14 +14,15 @@ export function createClient(auth) {
 
 export { isRetryable } from './openai.js';
 
-function _convertInput(input) {
+export function toProvider(input) {
     // Map your agentlib structured inputs onto the standard Chat Completions `messages` format
     return input.map((item) => {
         if (item.type === 'function_call_output') {
+            const out = typeof item.output === 'string' ? item.output : JSON.stringify(item.output ?? null);
             return {
                 role: 'tool',
                 tool_call_id: item.call_id,
-                content: typeof item.output === 'string' ? item.output : JSON.stringify(item.output)
+                content: out,
             };
         } else if (item.role === 'assistant' && item.type === 'function_call') {
             return {
@@ -93,6 +94,8 @@ function _convertResponse(response) {
     };
 }
 
+export const fromProvider = _convertResponse;
+
 export async function chat(client, input, { model, inputSchema, outputSchema, ...options }) {
     const finalOptions = { model, ...options };
 
@@ -102,7 +105,7 @@ export async function chat(client, input, { model, inputSchema, outputSchema, ..
 
     try {
         let response, output;
-        const messages = _convertInput(input);
+        const messages = toProvider(input);
 
         // vLLM exposes the standard Chat Completions API instead of the new Responses API
         if (outputSchema) {

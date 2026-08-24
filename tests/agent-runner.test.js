@@ -28,10 +28,10 @@ describe('AgentRunner (Offline)', () => {
         const runner = new AgentRunner(agent);
 
         const n1 = runner._normalizeInput('hi');
-        assert.deepEqual(n1, { role: 'user', content: 'hi' });
+        assert.deepEqual(n1, { type: 'message', role: 'user', content: 'hi' });
 
         const n2 = runner._normalizeInput({ role: 'user', content: 'hello' });
-        assert.deepEqual(n2, { role: 'user', content: 'hello' });
+        assert.deepEqual(n2, { type: 'message', role: 'user', content: 'hello' });
 
         assert.throws(() => runner._normalizeInput(123), /initialInput must be a string or an object/);
     });

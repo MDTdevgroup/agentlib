@@ -3,6 +3,10 @@
  * Implements the Provider contract: createClient(auth) and chat(client, input, options).
  */
 
+export const defaultModel = 'fake-model';
+export const toProvider = (input) => input;
+export const fromProvider = (raw) => (raw && Array.isArray(raw.output) ? raw.output : []);
+
 export function fakeTextResponse(text = '') {
     return {
         output: text,

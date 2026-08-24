@@ -1,9 +1,23 @@
-import { defaultOpenaiModel, defaultGeminiModel, defaultMaxToolCalls } from "../config.js";
+import { defaultMaxToolCalls } from "../config.js";
+import { getDefaultModel } from "../providers/registry.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
 import { Context } from "../memory/context.js";
+import {
+    isToolCall,
+    isTextMessage,
+    isReasoning,
+    toolCallName,
+    toolCallId,
+    toolCallArgs,
+    messageText,
+    makeTextMessage,
+    makeToolCall,
+    makeToolResult,
+    makeReasoning,
+} from "../memory/message.js";
 
 /**
  * Represents an LLM-based agent capable of tool calling.
@@ -14,7 +28,7 @@ export class Agent {
      * @param {object} [options] - Configuration options for the agent.
      * @param {string} [options.name='agent'] - The name of the agent (for logging purposes).
      * @param {EventEmitter} [options.eventEmitter] - Optional event emitter for observability and tracing events (e.g., 'agent:start', 'tool:start').
-     * @param {string} [options.model=defaultModel] - The specific model identifier to use (defaults to provider-specific default).
+     * @param {string} [options.model] - The specific model identifier to use (defaults to provider-specific default).
      * @param {ToolLoader} [options.toolLoader=null] - Optional ToolLoader instance.
      * @param {Array<object>} [options.tools=[]] - Array of native tool objects available to the agent.
      * @param {zod.ZodType|null} [options.outputSchema=null] - Zod schema for validating/structuring the expected final output.
@@ -26,7 +40,7 @@ export class Agent {
         name = 'agent',
         eventEmitter,
         logmode = 'none', // 'none', 'file', 'otel', 'console', or array of them.
-        model = llmService.provider == 'openai' ? defaultOpenaiModel : defaultGeminiModel,
+        model = llmService?.provider ? getDefaultModel(llmService.provider) : undefined,
         toolLoader = null,
         outputSchema = null,
         enableMCP = false,
@@ -254,75 +268,63 @@ export class Agent {
 
         const { output, rawResponse } = response;
         let nextContext = currentContext;
+        const rawItems = Array.isArray(rawResponse?.output) ? rawResponse.output : [];
 
-        rawResponse.output.forEach(item => {
-            if (item.type === "function_call") {
-                const { parsed_arguments: _parsed_arguments, ...rest } = item;
-                const args = typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments);
-                const cleanedItem = { ...rest, arguments: args };
-                nextContext = nextContext.addInput(cleanedItem);
-            } else if (item.type === "reasoning") {
+        rawItems.forEach(item => {
+            if (isToolCall(item)) {
+                const call = makeToolCall({
+                    name: toolCallName(item),
+                    args: item.arguments,
+                    callId: toolCallId(item),
+                });
+                nextContext = nextContext.addInput(call);
+            } else if (isReasoning(item)) {
+                const reasoning = makeReasoning({
+                    summary: item.summary,
+                    details: item.content,
+                });
+                nextContext = nextContext.addInput(reasoning);
+            } else if (isTextMessage(item)) {
+                const text = messageText(item);
+                const msg = makeTextMessage({
+                    role: item.role || 'assistant',
+                    text,
+                    speaker: this.name,
+                    id: item.id,
+                });
+                nextContext = nextContext.addInput(msg);
+            } else {
                 nextContext = nextContext.addInput(item);
-            } else if (item.type === "message") {
-                if (typeof item.content === 'string') {
-                    const messageToAdd = {
-                        ...item,
-                        content: `[${this.name}]: ${item.content}`
-                    };
-                    nextContext = nextContext.addInput(messageToAdd);
-                } else if (Array.isArray(item.content)) {
-                    const textBlocks = item.content.filter(block => block.type === 'output_text');
-                    const otherBlocks = item.content.filter(block => block.type !== 'output_text');
-
-                    let newContent = [...otherBlocks];
-
-                    if (textBlocks.length > 0) {
-                        const combinedText = textBlocks.map(b => b.text).join('\n');
-                        const mergedTextBlock = {
-                            ...textBlocks[0],
-                            text: `[${this.name}]: ${combinedText}`
-                        };
-                        newContent = [mergedTextBlock, ...otherBlocks];
-                    }
-
-                    const messageToAdd = {
-                        ...item,
-                        content: newContent
-                    };
-
-                    nextContext = nextContext.addInput(messageToAdd);
-                } else {
-                    nextContext = nextContext.addInput(item);
-                }
             }
         });
 
-        const functionCalls = rawResponse.output.filter(item => item.type === "function_call");
+        const functionCalls = rawItems.filter(isToolCall);
         const isDone = functionCalls.length === 0;
 
         let newExecutedTools = [...executedTools];
 
         if (!isDone) {
             for (const call of functionCalls) {
-                let args;
-                args = JSON.parse(call.arguments);
-                call.arguments = args;
-                newExecutedTools.push({ name: call.name, args: args });
+                const name = toolCallName(call);
+                const callId = toolCallId(call);
+                const args = toolCallArgs(call);
 
-                const tool = this.toolLoader.findTool(call.name);
+                newExecutedTools.push({ name, args });
+
+                const tool = this.toolLoader.findTool(name);
                 if (!tool || !tool.func) {
-                    throw new Error(`Tool ${call.name} not found or missing implementation.`);
+                    throw new Error(`Tool ${name} not found or missing implementation.`);
                 }
 
                 // 4. EMIT: Tool Start
-                const toolSpanId = "tool_call:" + call.name + "-" + randomUUID();
+                const toolSpanId = "tool_call:" + name + "-" + randomUUID();
                 this._emitTrace('tool:start', {
                     traceId,
                     spanId: toolSpanId,
                     parentSpanId: rootSpanId,
-                    name: `tool_exec:${call.name}`,
+                    name: `tool_exec:${name}`,
                     attributes: {
-                        tool_name: call.name,
+                        tool_name: name,
                         arguments: args,
                     }
                 });
@@ -334,20 +336,19 @@ export class Agent {
                     traceId,
                     spanId: toolSpanId,
                     parentSpanId: rootSpanId,
-                    name: `tool_exec:${call.name}`,
+                    name: `tool_exec:${name}`,
                     attributes: {
-                        tool_name: call.name,
+                        tool_name: name,
                         arguments: args,
                         result_preview: JSON.stringify(result).slice(0, 100)
                     }
                 });
 
-                const functionMessage = {
-                    name: call.name,       // Required for Gemini translation
-                    call_id: call.call_id, // Required for OpenAI translation
-                    type: "function_call_output",
-                    output: JSON.stringify(result),
-                };
+                const functionMessage = makeToolResult({
+                    callId,
+                    name,
+                    value: result,
+                });
                 nextContext = nextContext.addInput(functionMessage);
             }
 
