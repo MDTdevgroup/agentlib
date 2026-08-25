@@ -7,7 +7,7 @@ The `Context` class is a simple data container in AgentLib that handles episodic
 You can initialize a new `Context` with an array of messages or start with an empty context.
 
 ```javascript
-import { Context } from '@peebles-group/agentlib-js/src/memory/context.js';
+import { Context } from '@peebles-group/agentlib-js';
 
 // Empty context
 const ctx = new Context();

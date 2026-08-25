@@ -1,6 +1,4 @@
 // import { LLMService } from '@peebles-group/agentlib-js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../.env' });
 import { GoogleGenAI, Type } from '@google/genai';
 
 // Define a function that the model can call to control smart lights

@@ -1,7 +1,5 @@
 import { Agent, LLMService, PromptLoader } from '../../index.js';
 import { travelAgentToolLoader, grumpyTravelerToolLoader } from './tools.js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
 
 /**
  * CPS-based multi-agent conversation loop.

@@ -1,13 +1,5 @@
-
-import dotenv from 'dotenv';
-dotenv.config();
-
-import { Agent, ToolLoader, createRemoteAgentTool, LLMService } from '../../index.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
-dotenv.config({ path: '../../.env' });
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { Agent, ToolLoader, LLMService } from '../../index.js';
+import { createRemoteAgentTool } from '../../src/a2a/index.js';
 
 async function runClient() {
     // Create a tool that talks to the remote agent

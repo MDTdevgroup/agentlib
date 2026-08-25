@@ -1,12 +1,9 @@
 // This script is intended to be run only once to generate embeddings for all documents
 // and store them in MongoDB for later use in a RAG pipeline.
 
-import dotenv from "dotenv";
 import OpenAI from "openai";
 import { MongoClient } from "mongodb";
 import { MONGODB_URI, DATABASE_NAME, COLLECTION_NAME, docs } from './config.js';
-
-dotenv.config({ path: "../../.env" });
 
 const client = new MongoClient(MONGODB_URI);
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });

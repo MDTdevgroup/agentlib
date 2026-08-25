@@ -1,6 +1,4 @@
 import { Agent, AgentRunner, LLMService, PromptLoader } from '../../index.js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
 
 const server = {
   command: 'npx',

@@ -1,18 +1,8 @@
-
-import {
-    AGENT_CARD_PATH
-} from '@a2a-js/sdk';
-import {
-    DefaultRequestHandler,
-    InMemoryTaskStore,
-} from '@a2a-js/sdk/server';
-import {
-    agentCardHandler,
-    jsonRpcHandler,
-    restHandler,
-    UserBuilder
-} from '@a2a-js/sdk/server/express';
 import { AgentExecutorAdapter } from "./agent-executor-adapter.js";
+import { loadOptional } from "../util/optional-dep.js";
+
+const A2A_INSTALL_CMD = 'npm install @a2a-js/sdk express';
+const A2A_CUSTOM_MSG = "The A2A server requires '@a2a-js/sdk' and 'express'.\nInstall with: npm install @a2a-js/sdk express";
 
 /**
  * Starts an A2A-compliant server for the given agent.
@@ -23,7 +13,28 @@ import { AgentExecutorAdapter } from "./agent-executor-adapter.js";
  * @param {string} [options.baseUrl] - The public URL (e.g., http://localhost:4000).
  */
 export async function startA2AServer(agent, { port = 4000, name, baseUrl = `http://localhost:${port}` } = {}) {
-    const { default: express } = await import('express');
+    const { AGENT_CARD_PATH } = await loadOptional('@a2a-js/sdk', 'A2A server', {
+        installCommand: A2A_INSTALL_CMD,
+        customMessage: A2A_CUSTOM_MSG,
+    });
+    const { DefaultRequestHandler, InMemoryTaskStore } = await loadOptional('@a2a-js/sdk/server', 'A2A server', {
+        installCommand: A2A_INSTALL_CMD,
+        customMessage: A2A_CUSTOM_MSG,
+    });
+    const {
+        agentCardHandler,
+        jsonRpcHandler,
+        restHandler,
+        UserBuilder
+    } = await loadOptional('@a2a-js/sdk/server/express', 'A2A server', {
+        installCommand: A2A_INSTALL_CMD,
+        customMessage: A2A_CUSTOM_MSG,
+    });
+    const expressModule = await loadOptional('express', 'A2A server', {
+        installCommand: A2A_INSTALL_CMD,
+        customMessage: A2A_CUSTOM_MSG,
+    });
+    const express = expressModule.default || expressModule;
 
     // 1. Generate Agent Card
     const tools = agent.toolLoader.getTools();

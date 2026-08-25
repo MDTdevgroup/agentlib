@@ -1,10 +1,8 @@
 import './instrumentation.js';
 import { Agent, LLMService, ToolLoader, PromptLoader } from "../../index.js";
-import { initDB, generatorTools, executorTools, mainAgentTools, getSalesForArtist, getTopTracksInGenre } from "./sqlTools.js";
+import { initDB, generatorTools, executorTools, mainAgentTools } from "./sqlTools.js";
 import readline from "readline";
 import { z } from 'zod';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
 import EventEmitter from 'events';
 import { DomainObservability } from "../../src/services/observability.js";
 

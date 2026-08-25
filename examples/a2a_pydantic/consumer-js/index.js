@@ -1,15 +1,5 @@
-
-import dotenv from 'dotenv';
-dotenv.config();
-
-import { Agent, ToolLoader, LLMService, createRemoteAgentTool } from '../../../index.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// Load env from root
-dotenv.config({ path: '../../../.env' });
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { Agent, ToolLoader, LLMService } from '../../../index.js';
+import { createRemoteAgentTool } from '../../../src/a2a/index.js';
 
 async function runClient() {
     console.log("Creating client connecting to http://localhost:8000...");
