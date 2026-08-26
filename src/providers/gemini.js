@@ -1,8 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { defaultGeminiModel } from "../config.js";
+import { getDefaultGeminiModel } from "../config.js";
 
-export const defaultModel = defaultGeminiModel;
+export const defaultModel = getDefaultGeminiModel();
 
 export function createClient(auth) {
     return new GoogleGenAI({ apiKey: auth.apiKey });
@@ -222,71 +222,66 @@ export function fromProvider(rawResponse) {
     return rawResponse.output;
 }
 
-export async function chat(client, input, { model = defaultGeminiModel, inputSchema, outputSchema, tools, ...options }) {
-    try {
-        let response, output;
+export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, tools, ...options }) {
+    let response, output;
 
-        if (inputSchema) {
-            input = inputSchema.parse(input);
-        }
-
-        const formattedInput = _convertInput(input);
-        // Separate custom tools (name/description/parameters) from native Gemini tools (e.g. { googleSearch: {} })
-        const customTools = tools ? tools.filter(t => t.name) : [];
-        const nativeTools = tools ? tools.filter(t => !t.name) : [];
-
-        const toolsConfig = [
-            ...(customTools.length > 0 ? [{
-                functionDeclarations: customTools.map(tool => ({
-                    name: tool.name,
-                    description: tool.description,
-                    parameters: tool.parameters,
-                }))
-            }] : []),
-            ...nativeTools
-        ];
-
-        const config = {
-            ...(formattedInput.systemParts && formattedInput.systemParts.length > 0 ? {
-                systemInstruction: {
-                    parts: formattedInput.systemParts
-                }
-            } : {}),
-            ...(toolsConfig.length > 0 ? { tools: toolsConfig } : {}),
-            ...options
-        };
-
-        if (outputSchema) {
-            response = await client.models.generateContent({
-                model,
-                contents: formattedInput.contents,
-                config: {
-                    ...config,
-                    responseMimeType: "application/json",
-                    responseJsonSchema: zodToJsonSchema(outputSchema),
-                }
-            });
-
-            const candidates = response?.candidates;
-            const hasFunctionCall = candidates && candidates[0] && candidates[0].content && candidates[0].content.parts.some(p => p.functionCall);
-
-            if (hasFunctionCall) {
-                output = null;
-            } else {
-                const text = response?.text ? (typeof response.text === 'function' ? response.text() : response.text) : null;
-                output = text ? outputSchema.parse(JSON.parse(text)) : null;
-            }
-        } else {
-            response = await client.models.generateContent({
-                model,
-                contents: formattedInput.contents,
-                config: config,
-            });
-            output = response?.text ? (typeof response.text === 'function' ? response.text() : response.text) : null;
-        }
-        return _convertResponse(response, output);
-    } catch (error) {
-        console.error(`Error during Gemini chat completion:`, error);
-        throw error;
+    if (inputSchema) {
+        input = inputSchema.parse(input);
     }
+
+    const formattedInput = _convertInput(input);
+    // Separate custom tools (name/description/parameters) from native Gemini tools (e.g. { googleSearch: {} })
+    const customTools = tools ? tools.filter(t => t.name) : [];
+    const nativeTools = tools ? tools.filter(t => !t.name) : [];
+
+    const toolsConfig = [
+        ...(customTools.length > 0 ? [{
+            functionDeclarations: customTools.map(tool => ({
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+            }))
+        }] : []),
+        ...nativeTools
+    ];
+
+    const config = {
+        ...(formattedInput.systemParts && formattedInput.systemParts.length > 0 ? {
+            systemInstruction: {
+                parts: formattedInput.systemParts
+            }
+        } : {}),
+        ...(toolsConfig.length > 0 ? { tools: toolsConfig } : {}),
+        ...options
+    };
+
+    if (outputSchema) {
+        response = await client.models.generateContent({
+            model,
+            contents: formattedInput.contents,
+            config: {
+                ...config,
+                responseMimeType: "application/json",
+                responseJsonSchema: zodToJsonSchema(outputSchema),
+            }
+        });
+
+        const candidates = response?.candidates;
+        const hasFunctionCall = candidates && candidates[0] && candidates[0].content && candidates[0].content.parts.some(p => p.functionCall);
+
+        if (hasFunctionCall) {
+            output = null;
+        } else {
+            const text = response?.text ? (typeof response.text === 'function' ? response.text() : response.text) : null;
+            output = text ? outputSchema.parse(JSON.parse(text)) : null;
+        }
+    } else {
+        response = await client.models.generateContent({
+            model,
+            contents: formattedInput.contents,
+            config: config,
+        });
+        output = response?.text ? (typeof response.text === 'function' ? response.text() : response.text) : null;
+    }
+    return _convertResponse(response, output);
 }

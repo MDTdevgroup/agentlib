@@ -1,4 +1,4 @@
-import { defaultMaxContextTokens, defaultTruncateToTokens } from '../config.js';
+import { getDefaultMaxContextTokens, getDefaultTruncateToTokens } from '../config.js';
 import { deepFreeze } from './message.js';
 
 /**
@@ -9,8 +9,8 @@ export class Context {
     constructor(messages = [], summary = null, options = {}) {
         this.messages = deepFreeze([...messages]);
         this.summary = summary;
-        this.maxTokens = options.maxTokens || defaultMaxContextTokens;
-        this.truncateToTokens = options.truncateToTokens || defaultTruncateToTokens;
+        this.maxTokens = options.maxTokens || getDefaultMaxContextTokens();
+        this.truncateToTokens = options.truncateToTokens || getDefaultTruncateToTokens();
     }
 
     addInput(input) {

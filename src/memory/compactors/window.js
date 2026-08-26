@@ -1,5 +1,5 @@
 import { BaseCompactor, estimateTokens, truncateToBudget, isSystemMessage, groupAtomicUnits } from './base.js';
-import { defaultMaxContextTokens, defaultTruncateToTokens } from '../../config.js';
+import { getDefaultMaxContextTokens, getDefaultTruncateToTokens } from '../../config.js';
 
 /**
  * Sliding Window Compactor.
@@ -17,8 +17,8 @@ export class WindowCompactor extends BaseCompactor {
     constructor(options = {}) {
         super();
         this.name = 'window_compactor';
-        this.maxTokens = options.maxTokens || defaultMaxContextTokens;
-        this.truncateToTokens = options.truncateToTokens || defaultTruncateToTokens;
+        this.maxTokens = options.maxTokens || getDefaultMaxContextTokens();
+        this.truncateToTokens = options.truncateToTokens || getDefaultTruncateToTokens();
         this.maxMessages = options.maxMessages || null;
         this.events = options.eventEmitter || null;
     }

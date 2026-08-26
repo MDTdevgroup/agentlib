@@ -8,7 +8,7 @@ import {
     messageText,
     makeTextMessage,
 } from '../message.js';
-import { defaultMaxContextTokens, defaultTruncateToTokens } from '../../config.js';
+import { getDefaultMaxContextTokens, getDefaultTruncateToTokens } from '../../config.js';
 
 /**
  * Summarizer Compactor.
@@ -30,8 +30,8 @@ export class SummarizerCompactor extends BaseCompactor {
         this.name = 'summarizer_compactor';
         this.llmService = options.llmService || null;
         this.model = options.model || undefined;
-        this.maxTokens = options.maxTokens || defaultMaxContextTokens;
-        this.truncateToTokens = options.truncateToTokens || defaultTruncateToTokens;
+        this.maxTokens = options.maxTokens || getDefaultMaxContextTokens();
+        this.truncateToTokens = options.truncateToTokens || getDefaultTruncateToTokens();
         this.maxMessages = options.maxMessages || null;
         this.events = options.eventEmitter || null;
     }

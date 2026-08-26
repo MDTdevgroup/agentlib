@@ -96,8 +96,6 @@ class PromptLoader {
             if (promptString) {
                 // Pass custom delimiters to the Prompt constructor
                 this.prompts.set(key, new Prompt(promptString, startDel, endDel));
-            } else {
-                console.warn(`No valid prompt string found for key: ${key}`);
             }
         }
     }
@@ -166,12 +164,7 @@ class PromptLoader {
      * @returns {Prompt | undefined} The Prompt object, or undefined if not found.
      */
     getPrompt(id) {
-        const prompt = this.prompts.get(id);
-        if (!prompt) {
-            console.error(`Prompt ID "${id}" does not exist.`);
-            return undefined;
-        }
-        return prompt;
+        return this.prompts.get(id);
     }
 
     /**

@@ -33,7 +33,7 @@ const response = await llm.chat(messages, {
 });
 
 // Access parsed structured data
-const data = response.output_parsed;
+const data = response.output;
 ```
 
 ## Standardized Syntax

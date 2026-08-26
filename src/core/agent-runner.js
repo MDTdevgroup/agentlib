@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { createTracer, DomainObservability } from "../services/observability.js";
-import { defaultMaxTurns } from "../config.js";
+import { getDefaultMaxTurns } from "../config.js";
 
 /**
  * A generalized Runner that orchestrates the outer multi-turn loop
@@ -23,7 +23,7 @@ export class AgentRunner {
         name = 'agent_runner',
         eventEmitter,
         logmode = 'none',
-        maxTurns = defaultMaxTurns,
+        maxTurns = getDefaultMaxTurns(),
         turnStrategy = null,
     } = {}) {
         if (typeof agents === 'object' && !Array.isArray(agents) && !(agents.run)) {
@@ -76,8 +76,9 @@ export class AgentRunner {
 
         this.name = name;
         this.sessionId = randomUUID();
+        this.traceId = this.name + "-" + randomUUID();
         this.events = eventEmitter || new EventEmitter();
-        this.tracer = createTracer(this.events, this.sessionId);
+        this.tracer = createTracer(this.events, this.sessionId, this.traceId);
         this.maxTurns = maxTurns;
 
         if (logmode !== 'none') {

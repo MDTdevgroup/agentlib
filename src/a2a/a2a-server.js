@@ -87,8 +87,13 @@ export async function startA2AServer(agent, { port = 4000, name, baseUrl = `http
 
     // Start Server
     const server = app.listen(port, () => {
-        console.log(`  A2A Server started on ${baseUrl}`);
-        console.log(`   Card: ${baseUrl}/${AGENT_CARD_PATH}`);
+        if (agent.events) {
+            agent.events.emit('a2a:start', {
+                baseUrl,
+                port,
+                cardUrl: `${baseUrl}/${AGENT_CARD_PATH}`,
+            });
+        }
     });
 
     return server;

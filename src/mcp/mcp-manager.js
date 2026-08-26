@@ -1,9 +1,10 @@
 import MCPClient from "./mcp-client.js";
 
 export class MCPManager {
-    constructor() {
+    constructor({ eventEmitter = null } = {}) {
         this.clients = new Map();
         this.serverConfigs = new Map();
+        this.events = eventEmitter;
     }
 
     async addServer(serverName, serverConfig) {
@@ -18,11 +19,24 @@ export class MCPManager {
             this.clients.set(serverName, client);
             this.serverConfigs.set(serverName, serverConfig);
 
-            console.log(`MCPManager: Connected to server '${serverName}' with ${tools.length} tools`);
+            if (this.events) {
+                this.events.emit('mcp:connect', {
+                    serverName,
+                    toolCount: tools.length,
+                    tools: tools.map(t => t.name),
+                });
+            }
+
             return { serverName, tools, toolCount: tools.length };
 
         } catch (error) {
-            console.error(`MCPManager: Failed to connect to server '${serverName}':`, error);
+            if (this.events) {
+                this.events.emit('mcp:error', {
+                    action: 'connect',
+                    serverName,
+                    error: error.message,
+                });
+            }
             throw error;
         }
     }
@@ -30,7 +44,6 @@ export class MCPManager {
     async removeServer(serverName) {
         const client = this.clients.get(serverName);
         if (!client) {
-            console.warn(`MCPManager: Server '${serverName}' not found`);
             return false;
         }
 
@@ -38,10 +51,19 @@ export class MCPManager {
             await client.disconnect();
             this.clients.delete(serverName);
             this.serverConfigs.delete(serverName);
-            console.log(`MCPManager: Disconnected from server '${serverName}'`);
+
+            if (this.events) {
+                this.events.emit('mcp:disconnect', { serverName });
+            }
             return true;
         } catch (error) {
-            console.error(`MCPManager: Error disconnecting from server '${serverName}':`, error);
+            if (this.events) {
+                this.events.emit('mcp:error', {
+                    action: 'disconnect',
+                    serverName,
+                    error: error.message,
+                });
+            }
             throw error;
         }
     }
@@ -59,11 +81,10 @@ export class MCPManager {
 
     // Execute a tool by finding the right server
     async executeTool(toolName, args) {
-        for (const [serverName, client] of this.clients) {
+        for (const [_serverName, client] of this.clients) {
             if (client.isServerConnected()) {
                 const availableTools = client.getAvailableTools();
                 if (availableTools.includes(toolName)) {
-                    console.log(`MCPManager: Executing '${toolName}' on server '${serverName}'`);
                     return await client.executeTool(toolName, args);
                 }
             }
@@ -118,7 +139,13 @@ export class MCPManager {
                 }
             } catch (error) {
                 results.servers[serverName] = 'unhealthy';
-                console.warn(`MCPManager: Health check failed for '${serverName}':`, error.message);
+                if (this.events) {
+                    this.events.emit('mcp:error', {
+                        action: 'healthCheck',
+                        serverName,
+                        error: error.message,
+                    });
+                }
             }
         }
 
@@ -197,22 +224,24 @@ export class MCPManager {
 
     // Cleanup all connections
     async cleanup() {
-        console.log(`MCPManager: Cleaning up ${this.clients.size} connections...`);
-
         const disconnectPromises = [];
         for (const [serverName, client] of this.clients) {
             disconnectPromises.push(
-                client.disconnect().catch(error =>
-                    console.error(`MCPManager: Error disconnecting '${serverName}':`, error)
-                )
+                client.disconnect().catch(error => {
+                    if (this.events) {
+                        this.events.emit('mcp:error', {
+                            action: 'cleanup_disconnect',
+                            serverName,
+                            error: error.message,
+                        });
+                    }
+                })
             );
         }
 
         await Promise.allSettled(disconnectPromises);
         this.clients.clear();
         this.serverConfigs.clear();
-
-        console.log('MCPManager: Cleanup completed');
     }
 
     // Iterator support for easy looping

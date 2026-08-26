@@ -44,6 +44,5 @@ export async function initTelemetry({
     });
 
     await sdk.start();
-    console.log(`[Instrumentation] OpenTelemetry SDK started with OTLP Exporter (${serviceName})`);
     return sdk;
 }

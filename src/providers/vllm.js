@@ -103,30 +103,25 @@ export async function chat(client, input, { model, inputSchema, outputSchema, ..
         input = inputSchema.parse(input);
     }
 
-    try {
-        let response, output;
-        const messages = toProvider(input);
+    let response, output;
+    const messages = toProvider(input);
 
-        // vLLM exposes the standard Chat Completions API instead of the new Responses API
-        if (outputSchema) {
-            // vLLM supports structured outputs via typical json_schema format
-            response = await client.chat.completions.create({
-                messages: messages,
-                response_format: zodResponseFormat(outputSchema, "output"),
-                ...finalOptions,
-            });
-            output = JSON.parse(response.choices[0].message.content);
-        } else {
-            response = await client.chat.completions.create({
-                messages: messages,
-                ...finalOptions,
-            });
-            output = response.choices[0].message.content;
-        }
-
-        return { output: output, rawResponse: _convertResponse(response) };
-    } catch (error) {
-        console.error(`Error during vLLM chat completions creation:`, error);
-        throw error;
+    // vLLM exposes the standard Chat Completions API instead of the new Responses API
+    if (outputSchema) {
+        // vLLM supports structured outputs via typical json_schema format
+        response = await client.chat.completions.create({
+            messages: messages,
+            response_format: zodResponseFormat(outputSchema, "output"),
+            ...finalOptions,
+        });
+        output = JSON.parse(response.choices[0].message.content);
+    } else {
+        response = await client.chat.completions.create({
+            messages: messages,
+            ...finalOptions,
+        });
+        output = response.choices[0].message.content;
     }
+
+    return { output: output, rawResponse: _convertResponse(response) };
 }

@@ -1,7 +1,7 @@
 import { BaseCompactor, estimateTokens, truncateToBudget, isSystemMessage, groupAtomicUnits } from './base.js';
 import { messageText, isToolCall, isToolResult, toolCallName, toolCallArgs } from '../message.js';
 import { asyncForceAll } from '../../util/async.js';
-import { defaultMaxContextTokens, defaultTruncateToTokens } from '../../config.js';
+import { getDefaultMaxContextTokens, getDefaultTruncateToTokens } from '../../config.js';
 
 /**
  * Semantic Pruning Compactor (Provence).
@@ -31,8 +31,8 @@ export class ProvenceCompactor extends BaseCompactor {
         this.name = 'provence_compactor';
         this.embeddingService = options.embeddingService || null;
         this.similarityThreshold = options.similarityThreshold ?? 0.75;
-        this.maxTokens = options.maxTokens || defaultMaxContextTokens;
-        this.truncateToTokens = options.truncateToTokens || defaultTruncateToTokens;
+        this.maxTokens = options.maxTokens || getDefaultMaxContextTokens();
+        this.truncateToTokens = options.truncateToTokens || getDefaultTruncateToTokens();
         this.concurrency = options.concurrency || 5;
         this.maxMessages = options.maxMessages || null;
         this.events = options.eventEmitter || null;

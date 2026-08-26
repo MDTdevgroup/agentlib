@@ -79,7 +79,6 @@ export class AgentExecutorAdapter {
             });
 
         } catch (error) {
-            console.error("Error executing agent:", error);
             eventBus.publish({
                 kind: 'status-update',
                 taskId,

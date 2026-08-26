@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultGeminiModel } from '../src/config.js';
+import { getDefaultGeminiModel } from '../src/config.js';
 import * as GeminiProvider from '../src/providers/gemini.js';
 import MCPClient from '../src/mcp/mcp-client.js';
 import { startA2AServer } from '../src/a2a/a2a-server.js';
@@ -12,7 +12,7 @@ import * as FakeProvider from './helpers/fake-provider.js';
 
 describe('Phase 1 Bug Fixes & Regressions', () => {
     test('1c: Gemini provider default model is defined and does not throw ReferenceError', () => {
-        assert.ok(defaultGeminiModel, 'defaultGeminiModel must be exported by config.js');
+        assert.ok(getDefaultGeminiModel(), 'getDefaultGeminiModel must be exported by config.js');
         assert.equal(typeof GeminiProvider.chat, 'function');
     });
 

@@ -1,8 +1,8 @@
 import OpenAI from 'openai';
 import { zodTextFormat } from "openai/helpers/zod";
-import { defaultOpenaiModel } from "../config.js";
+import { getDefaultOpenaiModel } from "../config.js";
 
-export const defaultModel = defaultOpenaiModel;
+export const defaultModel = getDefaultOpenaiModel();
 
 // Factory function to create client
 export function createClient(auth) {
@@ -128,36 +128,31 @@ export function fromProvider(rawResponse) {
     });
 }
 
-export async function chat(client, input, { model = defaultOpenaiModel, inputSchema, outputSchema, ...options }) {
+export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, ...options }) {
     const finalOptions = { model, ...options };
 
     if (inputSchema) {
         input = inputSchema.parse(input);
     }
 
-    try {
-        let response, output;
-        const convertedInput = toProvider(input);
+    let response, output;
+    const convertedInput = toProvider(input);
 
-        if (outputSchema) {
-            response = await client.responses.parse({
-                input: convertedInput,
-                text: {
-                    format: zodTextFormat(outputSchema, "output")
-                },
-                ...finalOptions,
-            });
-            output = response.output_parsed;
-        } else {
-            response = await client.responses.create({
-                input: convertedInput,
-                ...finalOptions,
-            });
-            output = response.output_text;
-        }
-        return { output: output, rawResponse: response };
-    } catch (error) {
-        console.error(`Error during OpenAI chat response creation:`, error);
-        throw error;
+    if (outputSchema) {
+        response = await client.responses.parse({
+            input: convertedInput,
+            text: {
+                format: zodTextFormat(outputSchema, "output")
+            },
+            ...finalOptions,
+        });
+        output = response.output_parsed;
+    } else {
+        response = await client.responses.create({
+            input: convertedInput,
+            ...finalOptions,
+        });
+        output = response.output_text;
     }
+    return { output: output, rawResponse: response };
 }

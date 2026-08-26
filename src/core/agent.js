@@ -1,5 +1,10 @@
-import { defaultMaxToolCalls, defaultToolConcurrency, defaultMaxContextTokens, defaultTruncateToTokens } from "../config.js";
-import { getDefaultModel } from "../providers/registry.js";
+import {
+    getDefaultMaxToolCalls,
+    getDefaultToolConcurrency,
+    getDefaultMaxContextTokens,
+    getDefaultTruncateToTokens,
+    getDefaultModel,
+} from "../config.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
@@ -47,8 +52,8 @@ export class Agent {
      * @param {string|object|null} [options.pruningStrategy=null] - Strategy ('window' | 'summarizer' | 'provence' | BaseCompactor instance) to compact wire context.
      * @param {object} [options.pruningOptions={}] - Configuration options for the compactor strategy.
      * @param {number|null} [options.maxRunTokens=null] - Maximum cumulative tokens budget across the run before terminating.
-     * @param {number} [options.maxContextTokens=8000] - Token threshold triggering compaction.
-     * @param {number} [options.truncateToTokens=6000] - Target token budget when compacting.
+     * @param {number} [options.maxContextTokens=64000] - Token threshold triggering compaction.
+     * @param {number} [options.truncateToTokens=48000] - Target token budget when compacting.
      * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
      */
     constructor(llmService, {
@@ -59,14 +64,14 @@ export class Agent {
         toolLoader = null,
         outputSchema = null,
         enableMCP = false,
-        toolConcurrency = defaultToolConcurrency,
+        toolConcurrency = getDefaultToolConcurrency(),
         onToolError = 'feedback',
-        maxToolCalls = defaultMaxToolCalls,
+        maxToolCalls = getDefaultMaxToolCalls(),
         pruningStrategy = null,
         pruningOptions = {},
         maxRunTokens = null,
-        maxContextTokens = defaultMaxContextTokens,
-        truncateToTokens = defaultTruncateToTokens,
+        maxContextTokens = getDefaultMaxContextTokens(),
+        truncateToTokens = getDefaultTruncateToTokens(),
         ...options } = {}) {
 
         this.name = name;
@@ -339,21 +344,16 @@ export class Agent {
      * @returns {Promise<object>} The final response object from the LLM, including execution details.
      */
     async run(externalContext = null) {
-        try {
-            let history = [];
-            let currentTurn = await this.start(externalContext);
+        let history = [];
+        let currentTurn = await this.start(externalContext);
+        history.push(currentTurn);
+
+        while (!currentTurn.isDone) {
+            currentTurn = await currentTurn.next();
             history.push(currentTurn);
-
-            while (!currentTurn.isDone) {
-                currentTurn = await currentTurn.next();
-                history.push(currentTurn);
-            }
-
-            return history;
-        } catch (error) {
-            console.error('Error running agent:', error);
-            throw error;
         }
+
+        return history;
     }
 
     /**
