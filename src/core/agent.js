@@ -1,4 +1,4 @@
-import { defaultMaxToolCalls, defaultToolConcurrency } from "../config.js";
+import { defaultMaxToolCalls, defaultToolConcurrency, defaultMaxContextTokens, defaultTruncateToTokens } from "../config.js";
 import { getDefaultModel } from "../providers/registry.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
 import { randomUUID } from 'node:crypto';
@@ -19,6 +19,13 @@ import {
     makeToolResult,
     makeReasoning,
 } from "../memory/message.js";
+import {
+    WindowCompactor,
+    SummarizerCompactor,
+    ProvenceCompactor,
+    truncateToBudget,
+    estimateTokens,
+} from "../memory/compactors/index.js";
 
 /**
  * Represents an LLM-based agent capable of tool calling.
@@ -36,7 +43,12 @@ export class Agent {
      * @param {boolean} [options.enableMCP=false] - Whether to enable MCP (Model Context Protocol) support for remote tools.
      * @param {number} [options.toolConcurrency=5] - Maximum concurrency limit for parallel tool executions in a single turn.
      * @param {'feedback'|'throw'} [options.onToolError='feedback'] - Policy for handling tool errors (feed back to LLM vs throw immediately).
-     * @param {number} [options.maxToolCalls=100] - Maximum allowable tool calling iterations before terminating.
+     * @param {number} [options.maxToolCalls=15] - Maximum allowable tool calling iterations before terminating.
+     * @param {string|object|null} [options.pruningStrategy=null] - Strategy ('window' | 'summarizer' | 'provence' | BaseCompactor instance) to compact wire context.
+     * @param {object} [options.pruningOptions={}] - Configuration options for the compactor strategy.
+     * @param {number|null} [options.maxRunTokens=null] - Maximum cumulative tokens budget across the run before terminating.
+     * @param {number} [options.maxContextTokens=8000] - Token threshold triggering compaction.
+     * @param {number} [options.truncateToTokens=6000] - Target token budget when compacting.
      * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
      */
     constructor(llmService, {
@@ -50,6 +62,11 @@ export class Agent {
         toolConcurrency = defaultToolConcurrency,
         onToolError = 'feedback',
         maxToolCalls = defaultMaxToolCalls,
+        pruningStrategy = null,
+        pruningOptions = {},
+        maxRunTokens = null,
+        maxContextTokens = defaultMaxContextTokens,
+        truncateToTokens = defaultTruncateToTokens,
         ...options } = {}) {
 
         this.name = name;
@@ -65,6 +82,11 @@ export class Agent {
         this.toolConcurrency = toolConcurrency;
         this.onToolError = onToolError;
         this.maxToolCalls = maxToolCalls;
+        this.pruningStrategy = pruningStrategy;
+        this.pruningOptions = pruningOptions;
+        this.maxRunTokens = maxRunTokens || options.budget || null;
+        this.maxContextTokens = maxContextTokens;
+        this.truncateToTokens = truncateToTokens;
 
         if (options.tools) {
             this.toolLoader.addTools(options.tools);
@@ -73,6 +95,32 @@ export class Agent {
 
         this.additionalOptions = options;
         this.context = new Context();
+
+        if (typeof pruningStrategy === 'string') {
+            const compactorOpts = {
+                maxTokens: this.maxContextTokens,
+                truncateToTokens: this.truncateToTokens,
+                eventEmitter: this.events,
+                ...pruningOptions,
+            };
+            if (pruningStrategy === 'window') {
+                this.compactor = new WindowCompactor(compactorOpts);
+            } else if (pruningStrategy === 'summarizer') {
+                this.compactor = new SummarizerCompactor({
+                    llmService: this.llmService,
+                    model: this.model,
+                    ...compactorOpts,
+                });
+            } else if (pruningStrategy === 'provence') {
+                this.compactor = new ProvenceCompactor(compactorOpts);
+            } else {
+                throw new Error(`Unknown pruning strategy: ${pruningStrategy}`);
+            }
+        } else if (pruningStrategy && typeof pruningStrategy.compact === 'function') {
+            this.compactor = pruningStrategy;
+        } else {
+            this.compactor = null;
+        }
 
         if (logmode !== 'none') {
             new DomainObservability(this.events, { mode: logmode });
@@ -283,7 +331,7 @@ export class Agent {
         });
 
         const isExternalContextNull = externalContext === null;
-        return this._executeTurn(1, activeContext, [], traceId, rootSpanId, isExternalContextNull);
+        return this._executeTurn(1, activeContext, [], traceId, rootSpanId, isExternalContextNull, 0);
     }
 
     /**
@@ -331,7 +379,7 @@ export class Agent {
     /**
      * Executes a single step of the agent's inner loop (LLM Call -> Tool Execution).
      */
-    async _executeTurn(stepNumber, currentContext, executedTools, traceId, rootSpanId, updateInternalContext) {
+    async _executeTurn(stepNumber, currentContext, executedTools, traceId, rootSpanId, updateInternalContext, totalRunTokens = 0) {
         if (stepNumber > this.maxToolCalls) {
             // Emit agent complete with step limit stop reason
             this._emitTrace('agent:complete', {
@@ -341,7 +389,8 @@ export class Agent {
                 attributes: {
                     success: false,
                     stop_reason: 'step_limit',
-                    total_tools_executed: executedTools.length
+                    total_tools_executed: executedTools.length,
+                    total_run_tokens: totalRunTokens,
                 }
             });
 
@@ -359,7 +408,54 @@ export class Agent {
             };
         }
 
+        if (this.maxRunTokens !== null && totalRunTokens >= this.maxRunTokens) {
+            // Emit agent complete with budget exhausted stop reason
+            this._emitTrace('agent:complete', {
+                traceId,
+                spanId: rootSpanId,
+                name: "agent_run",
+                attributes: {
+                    success: false,
+                    stop_reason: 'budget_exhausted',
+                    total_run_tokens: totalRunTokens,
+                    max_run_tokens: this.maxRunTokens,
+                    total_tools_executed: executedTools.length,
+                }
+            });
+
+            if (updateInternalContext) {
+                this.context = currentContext;
+            }
+
+            return {
+                output: '',
+                rawResponse: null,
+                executedTools,
+                context: currentContext,
+                isDone: true,
+                stopReason: 'budget_exhausted',
+            };
+        }
+
         const allTools = this.toolLoader.getTools() || [];
+
+        // Apply compactor strategy to wire messages if configured
+        let messagesToSend = currentContext.getMessages();
+        if (this.compactor) {
+            try {
+                messagesToSend = await this.compactor.compact(messagesToSend);
+            } catch (compactorErr) {
+                this._emitTrace('compactor:error', {
+                    traceId,
+                    spanId: rootSpanId,
+                    name: "compactor_error",
+                    attributes: {
+                        error: compactorErr.message,
+                    }
+                });
+                messagesToSend = truncateToBudget(messagesToSend, this.truncateToTokens);
+            }
+        }
 
         // 2. EMIT: LLM Call
         const llmSpanId = "llm_call_" + stepNumber + "-" + randomUUID();
@@ -371,17 +467,16 @@ export class Agent {
             attributes: {
                 llm_provider: this.llmService.provider,
                 model: this.model,
-                input: currentContext.getMessages(),
-                input_length: currentContext.getMessages().length,
+                input: messagesToSend,
+                input_length: messagesToSend.length,
                 tools_available: allTools.map(t => t.name),
                 tool_count: allTools.length,
                 step: stepNumber
             }
         });
 
-        let response = await this.llmService.chat(currentContext.getMessages(), {
+        let response = await this.llmService.chat(messagesToSend, {
             model: this.model,
-            pruningOptions: { enabled: true },
             outputSchema: this.outputSchema,
             tools: allTools,
             ...this.additionalOptions
@@ -401,6 +496,11 @@ export class Agent {
         });
 
         const { output, rawResponse } = response;
+        const usageTokens = response.rawResponse?.usage?.total_tokens
+            ?? response.rawResponse?.usage?.totalTokens
+            ?? (estimateTokens(messagesToSend) + (output ? estimateTokens(output) : 10));
+        const updatedRunTokens = totalRunTokens + usageTokens;
+
         let nextContext = currentContext;
         const rawItems = Array.isArray(rawResponse?.output) ? rawResponse.output : [];
 
@@ -479,7 +579,7 @@ export class Agent {
                 context: nextContext,
                 next: async (overrideContext = null, _options = {}) => {
                     const stateToPass = overrideContext || nextContext;
-                    return this._executeTurn(stepNumber + 1, stateToPass, newExecutedTools, traceId, rootSpanId, updateInternalContext);
+                    return this._executeTurn(stepNumber + 1, stateToPass, newExecutedTools, traceId, rootSpanId, updateInternalContext, updatedRunTokens);
                 }
             };
         } else {
@@ -490,7 +590,8 @@ export class Agent {
                 name: "agent_run",
                 attributes: {
                     success: true,
-                    total_tools_executed: newExecutedTools.length
+                    total_tools_executed: newExecutedTools.length,
+                    total_run_tokens: updatedRunTokens,
                 }
             });
 

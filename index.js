@@ -7,3 +7,9 @@ export { ToolLoader } from "./src/loaders/tool-loader.js";
 export { DomainObservability, createTracer } from "./src/services/observability.js";
 export { initTelemetry } from "./src/services/telemetry.js";
 export { loadOptional } from "./src/util/optional-dep.js";
+export {
+    BaseCompactor,
+    WindowCompactor,
+    SummarizerCompactor,
+    ProvenceCompactor,
+} from "./src/memory/compactors/index.js";

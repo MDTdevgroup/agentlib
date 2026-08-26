@@ -222,21 +222,12 @@ export function fromProvider(rawResponse) {
     return rawResponse.output;
 }
 
-async function _applySemanticPruning(messages) {
-    // TODO: Implement embedding-based cosine similarity filtering
-    return messages;
-}
-
-export async function chat(client, input, { model = defaultGeminiModel, pruningOptions, inputSchema, outputSchema, tools, ...options }) {
+export async function chat(client, input, { model = defaultGeminiModel, inputSchema, outputSchema, tools, ...options }) {
     try {
         let response, output;
 
         if (inputSchema) {
             input = inputSchema.parse(input);
-        }
-
-        if (pruningOptions?.enabled) {
-            input = await _applySemanticPruning(input);
         }
 
         const formattedInput = _convertInput(input);

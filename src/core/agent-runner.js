@@ -166,17 +166,7 @@ export class AgentRunner {
                     // If the user passes a NEW maxTurns, we reset the gauge (Refuel)
                     // Otherwise, we just decrement the current gauge
                     const nextRemaining = options.maxTurns || (remainingTurns - 1);
-
-                    const safeNextState = {};
-                    for (const [agentName, contextObj] of Object.entries(nextState)) {
-                        if (contextObj && typeof contextObj.clone === 'function') {
-                            safeNextState[agentName] = contextObj.clone();
-                        } else {
-                            safeNextState[agentName] = structuredClone(contextObj);
-                        }
-                    }
-
-                    return this._executeTurn(turnNumber + 1, safeNextState, nextRemaining);
+                    return this._executeTurn(turnNumber + 1, nextState, nextRemaining);
                 }
             };
         });
