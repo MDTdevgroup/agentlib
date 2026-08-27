@@ -23,8 +23,8 @@ import {
     groupAtomicUnits,
 } from '../src/memory/compactors/index.js';
 
-describe('Phase 6: Bound the Cost (Compaction & Run Budgeting)', () => {
-    describe('6a: Base Utilities & Atomic Tool Grouping', () => {
+describe('Context Compaction & Run Budgeting', () => {
+    describe('Base Utilities & Atomic Tool Grouping', () => {
         test('estimateTokens calculates reasonable token approximations for strings and canonical messages', () => {
             const shortMsg = makeTextMessage({ role: 'user', text: 'Hello world' }); // 11 chars + role + overhead
             const tokens = estimateTokens(shortMsg);
@@ -86,7 +86,7 @@ describe('Phase 6: Bound the Cost (Compaction & Run Budgeting)', () => {
         });
     });
 
-    describe('6b: WindowCompactor', () => {
+    describe('WindowCompactor', () => {
         test('WindowCompactor never splits a tool call from its result', async () => {
             const compactor = new WindowCompactor({
                 maxTokens: 100, // Small trigger threshold
@@ -143,7 +143,7 @@ describe('Phase 6: Bound the Cost (Compaction & Run Budgeting)', () => {
         });
     });
 
-    describe('6c: SummarizerCompactor', () => {
+    describe('SummarizerCompactor', () => {
         test('SummarizerCompactor shortens history and uses LLMService correctly', async () => {
             const fakeProvider = FakeProvider.createFakeProvider();
             registerProvider('fake-summarizer-test', fakeProvider, 'Fake Summarizer Provider');
@@ -260,7 +260,7 @@ describe('Phase 6: Bound the Cost (Compaction & Run Budgeting)', () => {
         });
     });
 
-    describe('6d: ProvenceCompactor (Semantic Pruning)', () => {
+    describe('ProvenceCompactor (Semantic Pruning)', () => {
         test('ProvenceCompactor caches embeddings and avoids re-embedding identical text across turns', async () => {
             let embedCallCount = 0;
             const fakeEmbeddingService = {
@@ -344,10 +344,10 @@ describe('Phase 6: Bound the Cost (Compaction & Run Budgeting)', () => {
         });
     });
 
-    describe('6e: End-to-End Agent Loop & Invariant Protection', () => {
+    describe('End-to-End Agent Loop & Invariant Protection', () => {
         test('Agent maintains full uncompacted history in Context while sending compacted payload to LLM', async () => {
             const fakeProvider = FakeProvider.createFakeProvider();
-            registerProvider('fake-phase6-agent-test', fakeProvider, 'Fake Phase 6 Provider');
+            registerProvider('fake-compaction-agent-test', fakeProvider, 'Fake Compaction Agent Provider');
 
             let receivedPayloadSizes = [];
             fakeProvider.setHandler((input) => {
@@ -355,7 +355,7 @@ describe('Phase 6: Bound the Cost (Compaction & Run Budgeting)', () => {
                 return FakeProvider.fakeTextResponse('Acknowledged step.');
             });
 
-            const llm = new LLMService({ provider: 'fake-phase6-agent-test' });
+            const llm = new LLMService({ provider: 'fake-compaction-agent-test' });
             const agent = new Agent(llm, {
                 name: 'CompactedAgent',
                 pruningStrategy: 'window',
@@ -438,12 +438,12 @@ describe('Phase 6: Bound the Cost (Compaction & Run Budgeting)', () => {
 
         test('AgentRunner executes multi-turn agents smoothly without defensive cloning bottlenecks', async () => {
             const fakeProvider = FakeProvider.createFakeProvider();
-            registerProvider('fake-runner-phase6', fakeProvider, 'Fake Runner Phase 6 Provider');
+            registerProvider('fake-runner-compaction-test', fakeProvider, 'Fake Runner Compaction Provider');
 
             fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Turn 1 complete'));
             fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Turn 2 complete'));
 
-            const llm = new LLMService({ provider: 'fake-runner-phase6' });
+            const llm = new LLMService({ provider: 'fake-runner-compaction-test' });
             const agent = new Agent(llm, { name: 'RunnerAgent' });
 
             const runner = new AgentRunner(agent, {

@@ -7,10 +7,10 @@ import { registerProvider } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
 import { isToolResult } from '../src/memory/message.js';
 
-describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
-    test('4a: Failing tool execution is captured in context without crashing agent', async () => {
+describe('Survivable Errors & Tool Concurrency', () => {
+    test('Failing tool execution is captured in context without crashing agent', async () => {
         const fakeProvider = FakeProvider.createFakeProvider();
-        registerProvider('fake-phase4-tool-fail', fakeProvider, 'Fake Phase 4 Provider');
+        registerProvider('fake-tool-fail', fakeProvider, 'Fake Tool Fail Provider');
 
         // Turn 1: Model calls crashing tool
         fakeProvider.enqueueResponse(FakeProvider.fakeToolCallResponse({
@@ -26,7 +26,7 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         const emittedErrors = [];
         events.on('tool:error', (evt) => emittedErrors.push(evt));
 
-        const llm = new LLMService({ provider: 'fake-phase4-tool-fail' });
+        const llm = new LLMService({ provider: 'fake-tool-fail' });
         const agent = new Agent(llm, {
             name: 'TestAgent',
             eventEmitter: events,
@@ -61,9 +61,9 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         assert.match(emittedErrors[0].attributes.error, /ECONNREFUSED/);
     });
 
-    test('4b: Missing tool is captured as a survivable error result', async () => {
+    test('Missing tool is captured as a survivable error result', async () => {
         const fakeProvider = FakeProvider.createFakeProvider();
-        registerProvider('fake-phase4-missing-tool', fakeProvider, 'Fake Phase 4 Provider');
+        registerProvider('fake-missing-tool', fakeProvider, 'Fake Missing Tool Provider');
 
         fakeProvider.enqueueResponse(FakeProvider.fakeToolCallResponse({
             name: 'ghost_tool',
@@ -72,7 +72,7 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         }));
         fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Ghost tool does not exist.'));
 
-        const llm = new LLMService({ provider: 'fake-phase4-missing-tool' });
+        const llm = new LLMService({ provider: 'fake-missing-tool' });
         const agent = new Agent(llm, {
             name: 'GhostAgent',
             tools: [], // No tools registered
@@ -93,9 +93,9 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         });
     });
 
-    test('4c: Invalid JSON argument string produces survivable error', async () => {
+    test('Invalid JSON argument string produces survivable error', async () => {
         const fakeProvider = FakeProvider.createFakeProvider();
-        registerProvider('fake-phase4-bad-args', fakeProvider, 'Fake Phase 4 Provider');
+        registerProvider('fake-bad-args', fakeProvider, 'Fake Bad Args Provider');
 
         // Malformed JSON arguments
         fakeProvider.enqueueResponse({
@@ -113,7 +113,7 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         });
         fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Arguments were invalid.'));
 
-        const llm = new LLMService({ provider: 'fake-phase4-bad-args' });
+        const llm = new LLMService({ provider: 'fake-bad-args' });
         const agent = new Agent(llm, {
             name: 'CalcAgent',
             tools: [
@@ -137,9 +137,9 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         assert.match(toolResultMsg.output.error, /Failed to parse tool arguments|not found|Tool/);
     });
 
-    test('4d: onToolError: "throw" policy immediately rethrows error', async () => {
+    test('onToolError: "throw" policy immediately rethrows error', async () => {
         const fakeProvider = FakeProvider.createFakeProvider();
-        registerProvider('fake-phase4-throw-policy', fakeProvider, 'Fake Phase 4 Provider');
+        registerProvider('fake-throw-policy', fakeProvider, 'Fake Throw Policy Provider');
 
         fakeProvider.enqueueResponse(FakeProvider.fakeToolCallResponse({
             name: 'strict_tool',
@@ -147,7 +147,7 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
             call_id: 'call_strict',
         }));
 
-        const llm = new LLMService({ provider: 'fake-phase4-throw-policy' });
+        const llm = new LLMService({ provider: 'fake-throw-policy' });
         const agent = new Agent(llm, {
             name: 'StrictAgent',
             onToolError: 'throw',
@@ -171,9 +171,9 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         );
     });
 
-    test('4e: Parallel tool execution respects concurrency limit and preserves submission order', async () => {
+    test('Parallel tool execution respects concurrency limit and preserves submission order', async () => {
         const fakeProvider = FakeProvider.createFakeProvider();
-        registerProvider('fake-phase4-concurrent-tools', fakeProvider, 'Fake Phase 4 Provider');
+        registerProvider('fake-concurrent-tools', fakeProvider, 'Fake Concurrent Tools Provider');
 
         // Turn 1: Model requests 3 parallel tool calls
         fakeProvider.enqueueResponse({
@@ -194,7 +194,7 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         let maxObservedConcurrency = 0;
         const executionOrder = [];
 
-        const llm = new LLMService({ provider: 'fake-phase4-concurrent-tools' });
+        const llm = new LLMService({ provider: 'fake-concurrent-tools' });
         const agent = new Agent(llm, {
             name: 'ParallelAgent',
             toolConcurrency: 2, // limit to 2
@@ -234,9 +234,9 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
         assert.deepEqual(toolResults[2].output, { id: 3, completed: true });
     });
 
-    test('4f: Exceeding maxToolCalls terminates loop gracefully with stopReason: "step_limit"', async () => {
+    test('Exceeding maxToolCalls terminates loop gracefully with stopReason: "step_limit"', async () => {
         const fakeProvider = FakeProvider.createFakeProvider();
-        registerProvider('fake-phase4-step-limit', fakeProvider, 'Fake Phase 4 Provider');
+        registerProvider('fake-step-limit', fakeProvider, 'Fake Step Limit Provider');
 
         // Enqueue 5 loop iterations of tool calls
         for (let i = 1; i <= 5; i++) {
@@ -247,7 +247,7 @@ describe('Phase 4: Survivable Errors & Tool Concurrency', () => {
             }));
         }
 
-        const llm = new LLMService({ provider: 'fake-phase4-step-limit' });
+        const llm = new LLMService({ provider: 'fake-step-limit' });
         const agent = new Agent(llm, {
             name: 'LoopAgent',
             maxToolCalls: 2, // Stop after 2 steps

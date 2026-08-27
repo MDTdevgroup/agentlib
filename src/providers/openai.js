@@ -1,12 +1,24 @@
 import OpenAI from 'openai';
 import { zodTextFormat } from "openai/helpers/zod";
 import { getDefaultOpenaiModel } from "../config.js";
+import {
+    getModelLimits as resolveModelLimits,
+    getModelContextLimit as resolveModelContextLimit,
+} from './model-limits.js';
 
 export const defaultModel = getDefaultOpenaiModel();
 
 // Factory function to create client
 export function createClient(auth) {
     return new OpenAI({ apiKey: auth.apiKey });
+}
+
+export function getModelContextLimit(model = defaultModel) {
+    return resolveModelContextLimit('openai', model);
+}
+
+export function getModelLimits(model = defaultModel) {
+    return resolveModelLimits('openai', model);
 }
 
 export function isRetryable(error) {

@@ -10,13 +10,13 @@ import { LLMService } from '../src/services/llm-service.js';
 import { registerProvider, validateProviderName } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
 
-describe('Phase 1 Bug Fixes & Regressions', () => {
-    test('1c: Gemini provider default model is defined and does not throw ReferenceError', () => {
+describe('Core Bug Fixes & Regressions', () => {
+    test('Gemini provider default model is defined and does not throw ReferenceError', () => {
         assert.ok(getDefaultGeminiModel(), 'getDefaultGeminiModel must be exported by config.js');
         assert.equal(typeof GeminiProvider.chat, 'function');
     });
 
-    test('1c: MCPClient handles SSE transport routing without ReferenceError', async () => {
+    test('MCPClient handles SSE transport routing without ReferenceError', async () => {
         const client = new MCPClient();
         // Connecting to a mock SSE server config will fail with connection error or url error,
         // but must NOT fail with "ReferenceError: SSEClientTransport is not defined"
@@ -27,11 +27,11 @@ describe('Phase 1 Bug Fixes & Regressions', () => {
         }
     });
 
-    test('1a: startA2AServer is an async function with dynamic express import', () => {
+    test('startA2AServer is an async function with dynamic express import', () => {
         assert.equal(startA2AServer.constructor.name, 'AsyncFunction', 'startA2AServer must be async');
     });
 
-    test('1d: Gemini chat does not replace or mutate global console.warn', async () => {
+    test('Gemini chat does not replace or mutate global console.warn', async () => {
         const originalWarn = console.warn;
         let fakeClient = {
             models: {
@@ -47,13 +47,13 @@ describe('Phase 1 Bug Fixes & Regressions', () => {
         assert.equal(console.warn, originalWarn, 'console.warn must not be monkey-patched');
     });
 
-    test('1e: Provider registry separates key from display name', () => {
+    test('Provider registry separates key from display name', () => {
         registerProvider('anthropic', { createClient: () => ({}), chat: async () => {} }, 'Anthropic Claude');
         assert.equal(validateProviderName('anthropic'), 'anthropic');
         assert.equal(validateProviderName('Anthropic Claude'), 'anthropic');
     });
 
-    test('1f: AgentExecutorAdapter accesses agent context without TypeError', async () => {
+    test('AgentExecutorAdapter accesses agent context without TypeError', async () => {
         const fakeProvider = FakeProvider.createFakeProvider();
         fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('A2A response'));
         registerProvider('fake', fakeProvider);
@@ -82,7 +82,7 @@ describe('Phase 1 Bug Fixes & Regressions', () => {
         assert.ok(messageEvent.parts[0].text.includes('A2A response'));
     });
 
-    test('1f: Agent trace metadata reads mcpInfo via toolLoader.getMCPInfo()', () => {
+    test('Agent trace metadata reads mcpInfo via toolLoader.getMCPInfo()', () => {
         const fakeProvider = FakeProvider.createFakeProvider();
         registerProvider('fake', fakeProvider);
         const llm = new LLMService({ provider: 'fake' });

@@ -1,11 +1,85 @@
 import { GoogleGenAI } from "@google/genai";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { getDefaultGeminiModel } from "../config.js";
+import {
+    getModelLimits as resolveModelLimits,
+    getModelContextLimit as resolveModelContextLimit,
+    registerModelLimit,
+    saveModelLimitsToFile,
+} from './model-limits.js';
 
 export const defaultModel = getDefaultGeminiModel();
 
 export function createClient(auth) {
     return new GoogleGenAI({ apiKey: auth.apiKey });
+}
+
+export function getModelContextLimit(model = defaultModel) {
+    return resolveModelContextLimit('gemini', model);
+}
+
+export function getModelLimits(model = defaultModel) {
+    return resolveModelLimits('gemini', model);
+}
+
+/**
+ * Private method: Fetches model context limits dynamically from Google Gemini models API.
+ * Updates in-memory registry and optionally persists to model-limits.json.
+ *
+ * @param {object} client - GoogleGenAI client instance
+ * @param {object} [options={}]
+ * @param {boolean} [options.updateFile=false] - Whether to write updated limits back to model-limits.json
+ * @returns {Promise<Record<string, { inputTokenLimit: number, outputTokenLimit: number }>>}
+ */
+export async function _fetchModelLimits(client, { updateFile = false } = {}) {
+    const discovered = {};
+    if (!client || !client.models) {
+        return discovered;
+    }
+
+    try {
+        let modelsList = [];
+        if (typeof client.models.list === 'function') {
+            const res = await client.models.list();
+            // Handle async iterable or array responses
+            if (res && typeof res[Symbol.asyncIterator] === 'function') {
+                for await (const m of res) {
+                    modelsList.push(m);
+                }
+            } else if (Array.isArray(res)) {
+                modelsList = res;
+            } else if (Array.isArray(res?.models)) {
+                modelsList = res.models;
+            }
+        }
+
+        for (const m of modelsList) {
+            const rawName = m.name || m.id || '';
+            const cleanName = rawName.replace(/^models\//, '');
+            if (!cleanName) continue;
+
+            const inputLimit = Number(m.inputTokenLimit) || 1048576;
+            const outputLimit = Number(m.outputTokenLimit) || 8192;
+
+            discovered[cleanName] = {
+                inputTokenLimit: inputLimit,
+                outputTokenLimit: outputLimit,
+            };
+
+            registerModelLimit('gemini', cleanName, {
+                inputTokenLimit: inputLimit,
+                outputTokenLimit: outputLimit,
+            });
+        }
+
+        if (updateFile && Object.keys(discovered).length > 0) {
+            await saveModelLimitsToFile();
+        }
+    } catch {
+        // Fall back gracefully if listing models fails
+    }
+
+    return discovered;
 }
 
 export function isRetryable(error) {

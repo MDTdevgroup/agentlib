@@ -1,10 +1,9 @@
 import {
     getDefaultMaxToolCalls,
     getDefaultToolConcurrency,
-    getDefaultMaxContextTokens,
-    getDefaultTruncateToTokens,
     getDefaultModel,
 } from "../config.js";
+import { getModelContextLimit } from "../providers/registry.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
@@ -52,8 +51,8 @@ export class Agent {
      * @param {string|object|null} [options.pruningStrategy=null] - Strategy ('window' | 'summarizer' | 'provence' | BaseCompactor instance) to compact wire context.
      * @param {object} [options.pruningOptions={}] - Configuration options for the compactor strategy.
      * @param {number|null} [options.maxRunTokens=null] - Maximum cumulative tokens budget across the run before terminating.
-     * @param {number} [options.maxContextTokens=64000] - Token threshold triggering compaction.
-     * @param {number} [options.truncateToTokens=48000] - Target token budget when compacting.
+     * @param {number} [options.maxContextTokens] - Token threshold triggering compaction (defaults to 75% of model context limit).
+     * @param {number} [options.truncateToTokens] - Target token budget when compacting (defaults to 50% of model context limit).
      * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
      */
     constructor(llmService, {
@@ -70,8 +69,8 @@ export class Agent {
         pruningStrategy = null,
         pruningOptions = {},
         maxRunTokens = null,
-        maxContextTokens = getDefaultMaxContextTokens(),
-        truncateToTokens = getDefaultTruncateToTokens(),
+        maxContextTokens,
+        truncateToTokens,
         ...options } = {}) {
 
         this.name = name;
@@ -90,8 +89,15 @@ export class Agent {
         this.pruningStrategy = pruningStrategy;
         this.pruningOptions = pruningOptions;
         this.maxRunTokens = maxRunTokens || options.budget || null;
-        this.maxContextTokens = maxContextTokens;
-        this.truncateToTokens = truncateToTokens;
+
+        // Dynamically resolve context limit from model specifications if not explicitly provided
+        const resolvedLimit = getModelContextLimit(this.llmService?.provider, this.model);
+        this.maxContextTokens = maxContextTokens !== undefined
+            ? maxContextTokens
+            : Math.floor(resolvedLimit * 0.75);
+        this.truncateToTokens = truncateToTokens !== undefined
+            ? truncateToTokens
+            : Math.floor(resolvedLimit * 0.50);
 
         if (options.tools) {
             this.toolLoader.addTools(options.tools);

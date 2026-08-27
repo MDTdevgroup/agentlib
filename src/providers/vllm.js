@@ -1,5 +1,10 @@
 import OpenAI from 'openai';
 import { zodResponseFormat } from "openai/helpers/zod";
+import {
+    getModelLimits as resolveModelLimits,
+    getModelContextLimit as resolveModelContextLimit,
+} from './model-limits.js';
+
 export const defaultModel = 'default';
 
 // Factory function to create client pointing to vLLM
@@ -10,6 +15,14 @@ export function createClient(auth) {
         apiKey: auth.apiKey || 'EMPTY',
         baseURL: auth.baseURL || 'http://localhost:8000/v1'
     });
+}
+
+export function getModelContextLimit(model = defaultModel) {
+    return resolveModelContextLimit('vllm', model);
+}
+
+export function getModelLimits(model = defaultModel) {
+    return resolveModelLimits('vllm', model);
 }
 
 export { isRetryable } from './openai.js';

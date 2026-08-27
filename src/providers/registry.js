@@ -1,6 +1,13 @@
 import * as OpenAIProvider from './openai.js';
 import * as GeminiProvider from './gemini.js';
 import * as VllmProvider from './vllm.js';
+import {
+    getModelLimits as resolveModelLimits,
+    getModelContextLimit as resolveModelContextLimit,
+    registerModelLimit as registerLimit,
+    loadModelLimitsFromFile,
+    saveModelLimitsToFile,
+} from './model-limits.js';
 
 const ALLOWED_PROVIDERS = {
     openai: { name: 'OpenAI', namespace: OpenAIProvider },
@@ -59,3 +66,34 @@ export function getDefaultModel(providerName) {
     }
     return 'default';
 }
+
+export function getModelContextLimit(providerName, modelName) {
+    if (!providerName) return 128000;
+    try {
+        const key = validateProviderName(providerName);
+        const provider = ALLOWED_PROVIDERS[key];
+        if (typeof provider?.namespace?.getModelContextLimit === 'function') {
+            return provider.namespace.getModelContextLimit(modelName);
+        }
+        return resolveModelContextLimit(key, modelName);
+    } catch {
+        return resolveModelContextLimit(providerName, modelName);
+    }
+}
+
+export function getModelLimits(providerName, modelName) {
+    if (!providerName) return { inputTokenLimit: 128000, outputTokenLimit: 4096 };
+    try {
+        const key = validateProviderName(providerName);
+        const provider = ALLOWED_PROVIDERS[key];
+        if (typeof provider?.namespace?.getModelLimits === 'function') {
+            return provider.namespace.getModelLimits(modelName);
+        }
+        return resolveModelLimits(key, modelName);
+    } catch {
+        return resolveModelLimits(providerName, modelName);
+    }
+}
+
+export const registerModelLimit = registerLimit;
+export { loadModelLimitsFromFile, saveModelLimitsToFile };

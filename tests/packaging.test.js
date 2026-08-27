@@ -11,9 +11,9 @@ import { LLMService } from '../src/services/llm-service.js';
 import { registerProvider } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
 
-describe('Phase 5: Shrink the Install to Near Zero', () => {
+describe('Optional Dependencies & Package Exports', () => {
 
-    describe('5a: loadOptional Error Formatting & Exceptions', () => {
+    describe('loadOptional Error Formatting & Exceptions', () => {
         test('throws MissingDependency Exception with default install command when package is not found', async () => {
             try {
                 await loadOptional('nonexistent-pkg-xyz-123', 'Sample Feature');
@@ -58,7 +58,7 @@ describe('Phase 5: Shrink the Install to Near Zero', () => {
         });
     });
 
-    describe('5b: Root Entry Point Isolation', () => {
+    describe('Root Entry Point Isolation', () => {
         test('index.js exports core functionality without peripheral A2A or import-time OTel bootstrap', () => {
             assert.ok(AgentLib.Agent, 'Agent should be exported');
             assert.ok(AgentLib.LLMService, 'LLMService should be exported');
@@ -76,7 +76,7 @@ describe('Phase 5: Shrink the Install to Near Zero', () => {
         });
     });
 
-    describe('5c: A2A Subpath Entry Point', () => {
+    describe('A2A Subpath Entry Point', () => {
         test('src/a2a/index.js exports A2A server, remote agent tool, and adapter', () => {
             assert.equal(typeof A2A.startA2AServer, 'function');
             assert.equal(typeof A2A.createRemoteAgentTool, 'function');
@@ -93,7 +93,7 @@ describe('Phase 5: Shrink the Install to Near Zero', () => {
         });
     });
 
-    describe('5d: SQLite Lazy Loading', () => {
+    describe('SQLite Lazy Loading', () => {
         test('loadStrategies.sqlite lazily attempts to load sqlite3', async () => {
             assert.equal(typeof loadStrategies.sqlite, 'function');
             // Testing SQLite load strategy returns a promise
@@ -113,7 +113,7 @@ describe('Phase 5: Shrink the Install to Near Zero', () => {
         });
     });
 
-    describe('5e: Telemetry Lazy Initialization', () => {
+    describe('Telemetry Lazy Initialization', () => {
         test('initTelemetry is a callable async function that loads OTel packages lazily', async () => {
             assert.equal(typeof initTelemetry, 'function');
             assert.equal(initTelemetry.constructor.name, 'AsyncFunction');

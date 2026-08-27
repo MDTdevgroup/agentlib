@@ -7,6 +7,14 @@ export const defaultModel = 'fake-model';
 export const toProvider = (input) => input;
 export const fromProvider = (raw) => (raw && Array.isArray(raw.output) ? raw.output : []);
 
+export function getModelContextLimit(_model) {
+    return 8000;
+}
+
+export function getModelLimits(_model) {
+    return { inputTokenLimit: 8000, outputTokenLimit: 2000 };
+}
+
 export function fakeTextResponse(text = '') {
     return {
         output: text,
@@ -218,6 +226,12 @@ export function createFakeProvider() {
         },
         isRetryable(error) {
             return isRetryable(error);
+        },
+        getModelContextLimit(_model) {
+            return 8000;
+        },
+        getModelLimits(_model) {
+            return { inputTokenLimit: 8000, outputTokenLimit: 2000 };
         },
         reset() {
             instanceResponses.length = 0;

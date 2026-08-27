@@ -18,7 +18,7 @@ import * as config from '../src/config.js';
 import * as FakeProvider from './helpers/fake-provider.js';
 import { registerProvider } from '../src/providers/registry.js';
 
-describe('Phase 7: Boundaries, Observability, Docs & Shipping 4.0.0', () => {
+describe('Observability, Config Accessors & Release Validation', () => {
     let fakeProvider;
     let originalLog, originalWarn, originalError;
     let consoleCalls = [];
@@ -43,7 +43,7 @@ describe('Phase 7: Boundaries, Observability, Docs & Shipping 4.0.0', () => {
         console.error = originalError;
     });
 
-    describe('7a: Configuration through Named Functions', () => {
+    describe('Configuration through Named Functions', () => {
         test('config exports named accessor functions with expected defaults', () => {
             assert.equal(typeof config.getDefaultProvider, 'function');
             assert.equal(config.getDefaultProvider(), 'openai');
@@ -72,7 +72,7 @@ describe('Phase 7: Boundaries, Observability, Docs & Shipping 4.0.0', () => {
         });
     });
 
-    describe('7b: AgentRunner Observability & Event Routing', () => {
+    describe('AgentRunner Observability & Event Routing', () => {
         test('AgentRunner emits agent_runner:* events with valid traceId and DomainObservability records them', async () => {
             fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Agent runner step done'));
 
@@ -115,7 +115,7 @@ describe('Phase 7: Boundaries, Observability, Docs & Shipping 4.0.0', () => {
         });
     });
 
-    describe('7c: Path Traversal Defense in FileHandler', () => {
+    describe('Path Traversal Defense in FileHandler', () => {
         test('FileHandler sanitizes malicious trace IDs and prevents path traversal escape', async () => {
             const tempTracesDir = path.join(process.cwd(), 'tests', 'scratch_traversal_' + Date.now());
             const events = new EventEmitter();
@@ -139,7 +139,7 @@ describe('Phase 7: Boundaries, Observability, Docs & Shipping 4.0.0', () => {
         });
     });
 
-    describe('7d: Zero Uninvited Console Side Effects', () => {
+    describe('Zero Uninvited Console Side Effects', () => {
         test('Standard AgentLib workflows produce 0 console.log/warn/error calls by default', async () => {
             fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Clean response'));
 
@@ -165,7 +165,7 @@ describe('Phase 7: Boundaries, Observability, Docs & Shipping 4.0.0', () => {
         });
     });
 
-    describe('7e: Release 4.0.0 Metadata & Exports Verification', () => {
+    describe('Release 4.0.0 Metadata & Exports Verification', () => {
         test('package.json specifies version 4.0.0 and correct engines', () => {
             const pkgPath = path.join(process.cwd(), 'package.json');
             const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));

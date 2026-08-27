@@ -25,7 +25,7 @@ import { toProvider as openAIToProvider, fromProvider as openAIFromProvider } fr
 import { toProvider as geminiToProvider, fromProvider as geminiFromProvider } from '../src/providers/gemini.js';
 import { toProvider as vllmToProvider, fromProvider as vllmFromProvider } from '../src/providers/vllm.js';
 
-describe('Phase 3: Canonical Message Format & Abstraction Barrier', () => {
+describe('Canonical Message Format & Abstraction Barrier', () => {
     describe('Constructors & Selectors', () => {
         test('makeTextMessage creates frozen canonical message with speaker', () => {
             const msg = makeTextMessage({ role: 'assistant', text: 'Hello world', speaker: 'AgentAlpha' });
@@ -216,7 +216,7 @@ describe('Phase 3: Canonical Message Format & Abstraction Barrier', () => {
     describe('Full Agent Loop with Canonical Messages', () => {
         test('Agent executes tool loop using canonical messages without double-encoding or in-place mutations', async () => {
             const fakeProvider = FakeProvider.createFakeProvider();
-            registerProvider('fake-phase3', fakeProvider, 'Fake Phase 3 Provider');
+            registerProvider('fake-canonical-test', fakeProvider, 'Fake Canonical Provider');
 
             // Turn 1: Model requests tool call
             fakeProvider.enqueueResponse(FakeProvider.fakeToolCallResponse({
@@ -228,7 +228,7 @@ describe('Phase 3: Canonical Message Format & Abstraction Barrier', () => {
             // Turn 2: Model gives final text response
             fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('User 42 is Alice'));
 
-            const llm = new LLMService({ provider: 'fake-phase3' });
+            const llm = new LLMService({ provider: 'fake-canonical-test' });
             const agent = new Agent(llm, {
                 name: 'AliceAgent',
                 tools: [

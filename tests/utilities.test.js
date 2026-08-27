@@ -8,8 +8,8 @@ import { LLMService } from '../src/services/llm-service.js';
 import { registerProvider } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
 
-describe('Phase 2: Concurrency, Retry & Exception Utilities', () => {
-    describe('2a: async.js', () => {
+describe('Concurrency, Retry & Exception Utilities', () => {
+    describe('Async Orchestration (async.js)', () => {
         test('sleep resolves immediately when ms is falsy or 0', async () => {
             const start = Date.now();
             await sleep(0);
@@ -80,7 +80,7 @@ describe('Phase 2: Concurrency, Retry & Exception Utilities', () => {
         });
     });
 
-    describe('2b: retry.js', () => {
+    describe('Retry Logic (retry.js)', () => {
         test('backoffDelay grows exponentially and never exceeds maxDelayMS', () => {
             const retry = { baseDelayMS: 100, exprDelayMS: 50, maxDelayMS: 500, jitterMaxMS: 0 };
             const d0 = backoffDelay(0, retry); // 2^0 * 50 + 100 = 150
@@ -211,7 +211,7 @@ describe('Phase 2: Concurrency, Retry & Exception Utilities', () => {
         });
     });
 
-    describe('2c: exception.js', () => {
+    describe('Exception Handling (exception.js)', () => {
         test('Exception carries type, payload, and cause', () => {
             const cause = new Error('root cause');
             const ex = makeException('ToolNotFound', { toolName: 'sql_query' }, { cause });
@@ -255,7 +255,7 @@ describe('Phase 2: Concurrency, Retry & Exception Utilities', () => {
         });
     });
 
-    describe('2e: LLMService & Provider Integration', () => {
+    describe('LLMService & Provider Integration', () => {
         test('LLMService uses withRetries and emits llm:retry events', async () => {
             const fakeProvider = FakeProvider.createFakeProvider();
             let callCount = 0;
