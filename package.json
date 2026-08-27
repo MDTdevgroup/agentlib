@@ -1,38 +1,66 @@
 {
   "name": "@peebles-group/agentlib-js",
-  "version": "2.3.1",
+  "version": "4.0.0",
   "description": "A minimal JavaScript library implementing concurrent async agents for illustrating multi-agent systems and other agentic design patterns including recursive ones purely through function calling loops.",
   "main": "index.js",
   "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./a2a": "./src/a2a/index.js",
+    "./telemetry": "./src/services/telemetry.js"
+  },
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "scripts": {
     "start": "node index.js",
-    "test": "cd tests && node test.js"
+    "test": "node --test tests/*.test.js",
+    "test:live": "node --env-file=.env --test tests/live/*.test.js",
+    "lint": "eslint src/ tests/"
   },
   "author": "Peebles Group",
   "license": "MIT",
   "dependencies": {
-    "@a2a-js/sdk": "^0.3.10",
     "@google/genai": "^1.16.0",
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/exporter-trace-otlp-proto": "^0.211.0",
     "js-yaml": "^4.1.0",
     "openai": "^6.0.0",
-    "path": "^0.12.7",
-    "sqlite3": "^5.1.7",
-    "uuid": "^13.0.0",
-    "dotenv": "^17.3.1",
-    "@opentelemetry/sdk-node": "^0.214.0",
-    "@opentelemetry/auto-instrumentations-node": "^0.72.0"
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.24.1"
+  },
+  "peerDependencies": {
+    "@a2a-js/sdk": "^0.3.10",
+    "@opentelemetry/auto-instrumentations-node": "^0.79.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.221.0",
+    "@opentelemetry/sdk-node": "^0.221.0",
+    "express": "^4.21.2",
+    "sqlite3": "^6.0.1"
+  },
+  "peerDependenciesMeta": {
+    "@a2a-js/sdk": {
+      "optional": true
+    },
+    "@opentelemetry/auto-instrumentations-node": {
+      "optional": true
+    },
+    "@opentelemetry/exporter-trace-otlp-proto": {
+      "optional": true
+    },
+    "@opentelemetry/sdk-node": {
+      "optional": true
+    },
+    "express": {
+      "optional": true
+    },
+    "sqlite3": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@opentelemetry/resources": "^2.5.0",
-    "@opentelemetry/semantic-conventions": "^1.39.0",
-    "mongodb": "^6.20.0",
-    "playwright": "^1.55.0",
-    "prompt-sync": "^4.2.0",
-    "sqlite": "^5.1.1",
-    "zod": "^3.25.76"
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "globals": "^15.15.0"
   },
   "files": [
     "index.js",

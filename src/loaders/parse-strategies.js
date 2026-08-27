@@ -45,11 +45,7 @@ export const parseStrategies = {
                     data[row.signature] = { prompt: row.prompt, output: row.output };
                 });
 
-                db.close((err) => {
-                    if (err) {
-                        console.error(`SQLite close error: ${err.message}`);
-                    }
-                });
+                db.close();
                 resolve(data);
             });
         });

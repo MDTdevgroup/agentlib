@@ -164,3 +164,6 @@ coverage.xml
 
 # System
 .DS_Store
+
+# AGENTS.md
+AGENTS.md

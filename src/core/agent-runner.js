@@ -1,12 +1,14 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { createTracer, DomainObservability } from "../services/observability.js";
-import { defaultMaxTurns } from "../config.js";
+import { getDefaultMaxTurns } from "../config.js";
 
 /**
  * A generalized Runner that orchestrates the outer multi-turn loop
  * and handles the Continuation-Passing Style (CPS) snapshotting automatically.
  */
+import { makeTextMessage } from '../memory/message.js';
+
 export class AgentRunner {
     /**
      * @param {Agent|Array<Agent>|Record<string, Agent>} agents - A configured Agent instance, Array, or dictionary of Agents.
@@ -21,7 +23,7 @@ export class AgentRunner {
         name = 'agent_runner',
         eventEmitter,
         logmode = 'none',
-        maxTurns = defaultMaxTurns,
+        maxTurns = getDefaultMaxTurns(),
         turnStrategy = null,
     } = {}) {
         if (typeof agents === 'object' && !Array.isArray(agents) && !(agents.run)) {
@@ -54,7 +56,7 @@ export class AgentRunner {
          * }>}
          */
         if (!turnStrategy) { // Run last agent in the dictionary by default
-            this.turnStrategy = async (agentDict, agentContexts, turnNumber) => {
+            this.turnStrategy = async (agentDict, agentContexts, _turnNumber) => {
                 const agent = Object.values(agentDict).at(-1);
                 const history = await agent.run(agentContexts[agent.name] || null);
                 const res = history[history.length - 1];
@@ -73,9 +75,10 @@ export class AgentRunner {
         }
 
         this.name = name;
-        this.sessionId = uuidv4();
+        this.sessionId = randomUUID();
+        this.traceId = this.name + "-" + randomUUID();
         this.events = eventEmitter || new EventEmitter();
-        this.tracer = createTracer(this.events, this.sessionId);
+        this.tracer = createTracer(this.events, this.sessionId, this.traceId);
         this.maxTurns = maxTurns;
 
         if (logmode !== 'none') {
@@ -132,8 +135,10 @@ export class AgentRunner {
     }
 
     _normalizeInput(input) {
-        if (typeof input === 'string') return { role: 'user', content: input };
-        if (input && typeof input === 'object' && input.role && input.content) return input;
+        if (typeof input === 'string') return makeTextMessage({ role: 'user', text: input });
+        if (input && typeof input === 'object' && input.role && (input.content !== undefined || input.text !== undefined)) {
+            return makeTextMessage({ role: input.role, text: input.text || input.content });
+        }
         throw new Error('AgentRunner.run() initialInput must be a string or an object with { role, content }.');
     }
 
@@ -162,17 +167,7 @@ export class AgentRunner {
                     // If the user passes a NEW maxTurns, we reset the gauge (Refuel)
                     // Otherwise, we just decrement the current gauge
                     const nextRemaining = options.maxTurns || (remainingTurns - 1);
-
-                    const safeNextState = {};
-                    for (const [agentName, contextObj] of Object.entries(nextState)) {
-                        if (contextObj && typeof contextObj.clone === 'function') {
-                            safeNextState[agentName] = contextObj.clone();
-                        } else {
-                            safeNextState[agentName] = structuredClone(contextObj);
-                        }
-                    }
-
-                    return this._executeTurn(turnNumber + 1, safeNextState, nextRemaining);
+                    return this._executeTurn(turnNumber + 1, nextState, nextRemaining);
                 }
             };
         });

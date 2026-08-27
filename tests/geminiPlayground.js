@@ -1,8 +1,5 @@
 // import { LLMService } from '@peebles-group/agentlib-js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../.env' });
 import { GoogleGenAI, Type } from '@google/genai';
-import fs from 'fs';
 
 // Define a function that the model can call to control smart lights
 const setLightValuesFunctionDeclaration = {
@@ -93,5 +90,6 @@ const final_response = await ai.models.generateContent({
     contents: contents,
     config: config
 });
+console.log(final_response.text);
 
 

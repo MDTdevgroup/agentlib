@@ -1,6 +1,6 @@
 import { loadStrategies } from './load-strategies.js';
 import { parseStrategies } from './parse-strategies.js';
-import path from 'path';
+import path from 'node:path';
 
 class Prompt {
     /**
@@ -14,8 +14,8 @@ class Prompt {
         this.delimiterEnd = endDel;
 
         // Escape special chars so user delimiters like '?' don't break regex logic.
-        const escapedStart = this.delimiterStart.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
-        const escapedEnd = this.delimiterEnd.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const escapedStart = this.delimiterStart.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const escapedEnd = this.delimiterEnd.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
 
         // Matches start delimiter, captures variable name (alphanumeric + dots), matches end.
         this.varRegex = new RegExp(`${escapedStart}\\s*([a-zA-Z0-9_.]+)\\s*${escapedEnd}`, 'g');
@@ -96,8 +96,6 @@ class PromptLoader {
             if (promptString) {
                 // Pass custom delimiters to the Prompt constructor
                 this.prompts.set(key, new Prompt(promptString, startDel, endDel));
-            } else {
-                console.warn(`No valid prompt string found for key: ${key}`);
             }
         }
     }
@@ -166,12 +164,7 @@ class PromptLoader {
      * @returns {Prompt | undefined} The Prompt object, or undefined if not found.
      */
     getPrompt(id) {
-        const prompt = this.prompts.get(id);
-        if (!prompt) {
-            console.error(`Prompt ID "${id}" does not exist.`);
-            return undefined;
-        }
-        return prompt;
+        return this.prompts.get(id);
     }
 
     /**

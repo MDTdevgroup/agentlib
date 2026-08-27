@@ -3,8 +3,6 @@ import { MONGODB_URI, DATABASE_NAME, COLLECTION_NAME, EMBEDDING_MODEL, NUM_CANDI
 import { Agent, LLMService, ToolLoader } from '../../index.js';
 import readline from "readline";
 import OpenAI from 'openai';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

@@ -1,24 +1,12 @@
 import { Agent, LLMService, PromptLoader } from '../../index.js';
 import { travelAgentToolLoader, grumpyTravelerToolLoader } from './tools.js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
 
 /**
- * CPS-based multi-agent conversation loop.
+ * Custom CPS-based multi-agent conversation loop demo.
  *
- * runTurn never returns a value — it passes a TurnResult into the
- * continuation `k`.  Each TurnResult carries a `resume(k2)` function
- * that re-runs from the *same* snapshot, letting the caller branch
- * into an alternate timeline by supplying a different continuation.
- *
- * TurnResult shape:
- *   {
- *     turn:              number,
- *     travelAgentReply:  string,
- *     grumpyReply:       string | null,
- *     isSatisfied:       boolean,
- *     resume:            (k: (result) => Promise<void>) => Promise<void>
- *   }
+ * Note: AgentLib's core Agent and AgentRunner primitives provide `next()` and `branch()`
+ * methods for turn stepping and time-travel branching. This example demonstrates how you
+ * can construct a custom Continuation-Passing Style (CPS) loop using snapshots.
  */
 
 /**

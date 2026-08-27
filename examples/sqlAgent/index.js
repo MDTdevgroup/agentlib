@@ -1,10 +1,8 @@
 import './instrumentation.js';
 import { Agent, LLMService, ToolLoader, PromptLoader } from "../../index.js";
-import { initDB, generatorTools, executorTools, mainAgentTools, getSalesForArtist, getTopTracksInGenre } from "./sqlTools.js";
+import { initDB, generatorTools, executorTools, mainAgentTools } from "./sqlTools.js";
 import readline from "readline";
 import { z } from 'zod';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
 import EventEmitter from 'events';
 import { DomainObservability } from "../../src/services/observability.js";
 
@@ -134,10 +132,9 @@ async function main() {
       turn = await turn.next();
     }
     
-    try {
-      const parsedOutput = turn.rawResponse.output_parsed;
-      console.log(parsedOutput.explanation_summary);
-    } catch (error) {
+    if (typeof turn.output === 'object' && turn.output?.explanation_summary) {
+      console.log(turn.output.explanation_summary);
+    } else {
       console.log(turn.output);
     }
   }

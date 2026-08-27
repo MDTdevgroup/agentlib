@@ -1,9 +1,11 @@
-import { getAllowedProviders, validateProviderName } from '../providers/registry.js';
-import { defaultOpenaiModel, defaultGeminiModel } from '../config.js';
+import { getAllowedProviders, validateProviderName, getDefaultModel } from '../providers/registry.js';
+import { getDefaultRetrySpec } from '../config.js';
+import { withRetries } from '../util/retry.js';
 
 export class LLMService {
-    constructor(auth = { provider, apiKey }) {
+    constructor(auth = {}, { eventEmitter = null } = {}) {
         this.auth = auth;
+        this.events = eventEmitter;
         this.provider = validateProviderName(auth.provider);
         this.providerNamespace = getAllowedProviders()[this.provider]?.namespace;
         this.client = this._getProviderClient();
@@ -15,27 +17,38 @@ export class LLMService {
         return this.providerNamespace.createClient(this.auth);
     }
 
-    async chat(input, { model = this.provider === 'openai' ? defaultOpenaiModel : defaultGeminiModel, inputSchema = null, outputSchema = null, maxRetries = 3, initialDelay = 1000, ...options } = {}) {
-        let attempt = 0;
-        let delay = initialDelay;
+    async chat(input, {
+        model = getDefaultModel(this.provider),
+        retry = getDefaultRetrySpec(),
+        signal,
+        ...options
+    } = {}) {
+        const retrySpec = { ...getDefaultRetrySpec(), ...(typeof retry === 'object' ? retry : {}) };
+        if (options.maxRetries !== undefined) retrySpec.maxRetries = options.maxRetries;
+        if (options.initialDelay !== undefined) retrySpec.baseDelayMS = options.initialDelay;
 
-        while (true) {
-            try {
-                return await this.providerNamespace.chat(this.client, input, {
+        const isRetryable = typeof this.providerNamespace?.isRetryable === 'function'
+            ? (err) => this.providerNamespace.isRetryable(err)
+            : undefined;
+
+        return withRetries(
+            retrySpec,
+            ({ signal: attemptSignal }) => {
+                return this.providerNamespace.chat(this.client, input, {
                     model,
-                    inputSchema,
-                    outputSchema,
-                    ...options
+                    signal: attemptSignal,
+                    ...options,
                 });
-            } catch (error) {
-                attempt++;
-                if (attempt > maxRetries) {
-                    throw error;
-                }
-                console.warn(`LLM call failed (attempt ${attempt}/${maxRetries}). Retrying in ${delay}ms... Error: ${error.message}`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-                delay *= 2; // Exponential backoff
+            },
+            isRetryable,
+            {
+                signal,
+                onEvent: (event) => {
+                    if (this.events) {
+                        this.events.emit('llm:retry', event);
+                    }
+                },
             }
-        }
+        );
     }
 }
