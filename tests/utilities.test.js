@@ -78,6 +78,43 @@ describe('Concurrency, Retry & Exception Utilities', () => {
             assert.equal(results[2].status, 'fulfilled');
             assert.equal(results[2].value, 'success-3');
         });
+
+        test('asyncForceAll schedules all tasks and rejects cleanly with error if a thunk fails', async () => {
+            const executed = [];
+            const thunks = [
+                async () => {
+                    await sleep(10);
+                    executed.push('task-1');
+                    throw new Error('fail-task-1');
+                },
+                async () => {
+                    await sleep(10);
+                    executed.push('task-2');
+                    return 'success-2';
+                },
+                async () => {
+                    await sleep(10);
+                    executed.push('task-3');
+                    return 'success-3';
+                },
+            ];
+
+            await assert.rejects(
+                async () => {
+                    await asyncForceAll(thunks, 2, 0);
+                },
+                (err) => {
+                    assert.equal(err.message, 'fail-task-1');
+                    return true;
+                }
+            );
+            
+            await sleep(30);
+            assert.equal(executed.length, 3);
+            assert.ok(executed.includes('task-1'));
+            assert.ok(executed.includes('task-2'));
+            assert.ok(executed.includes('task-3'));
+        });
     });
 
     describe('Retry Logic (retry.js)', () => {
@@ -209,6 +246,68 @@ describe('Concurrency, Retry & Exception Utilities', () => {
 
             assert.equal(signalAborted, true, 'AbortSignal must be triggered when timeout expires');
         });
+
+        test('withRetries aborts immediately on caller-initiated cancellation without retrying', async () => {
+            const callerController = new AbortController();
+            let attempts = 0;
+
+            await assert.rejects(
+                async () => {
+                    await withRetries(
+                        { maxRetries: 3, timeoutMS: 2000, baseDelayMS: 500, exprDelayMS: 500 },
+                        async ({ signal }) => {
+                            attempts++;
+                            setTimeout(() => {
+                                callerController.abort(new Error('Caller cancelled'));
+                            }, 5);
+                            return new Promise((_, reject) => {
+                                if (signal.aborted) {
+                                    reject(signal.reason);
+                                    return;
+                                }
+                                signal.addEventListener('abort', () => {
+                                    reject(signal.reason);
+                                });
+                            });
+                        },
+                        undefined,
+                        { signal: callerController.signal }
+                    );
+                },
+                (err) => {
+                    assert.match(err.message, /Caller cancelled/);
+                    return true;
+                }
+            );
+
+            assert.equal(attempts, 1, 'Caller cancellation must abort immediately without retry attempts');
+        });
+
+        test('withRetries aborts immediately if passed an already-aborted signal', async () => {
+            const callerController = new AbortController();
+            callerController.abort(new Error('Pre-aborted'));
+            let attempts = 0;
+
+            await assert.rejects(
+                async () => {
+                    await withRetries(
+                        { maxRetries: 3, timeoutMS: 1000 },
+                        async () => {
+                            attempts++;
+                            return 'ok';
+                        },
+                        undefined,
+                        { signal: callerController.signal }
+                    );
+                },
+                (err) => {
+                    assert.match(err.message, /Pre-aborted/);
+                    return true;
+                }
+            );
+
+            assert.equal(attempts, 0, 'Must not execute any attempt if signal was already aborted');
+        });
     });
 
     describe('Exception Handling (exception.js)', () => {
@@ -286,6 +385,38 @@ describe('Concurrency, Retry & Exception Utilities', () => {
             assert.equal(callCount, 2);
             assert.equal(retryEvents.length, 1);
             assert.equal(retryEvents[0].attempt, 1);
+        });
+
+        test('LLMService does not leak maxRetries, initialDelay, or internal options into provider options', async () => {
+            const fakeProvider = FakeProvider.createFakeProvider();
+            let receivedOptions = null;
+
+            fakeProvider.setHandler(async (_input, options) => {
+                receivedOptions = options;
+                return FakeProvider.fakeTextResponse('Options checked');
+            });
+
+            registerProvider('fake-clean-options', fakeProvider, 'Fake Clean Options');
+
+            const llm = new LLMService({ provider: 'fake-clean-options' });
+            await llm.chat([{ role: 'user', content: 'test' }], {
+                maxRetries: 2,
+                initialDelay: 10,
+                temperature: 0.7,
+            });
+
+            assert.ok(receivedOptions);
+            assert.equal(receivedOptions.maxRetries, undefined, 'maxRetries must not leak to provider');
+            assert.equal(receivedOptions.initialDelay, undefined, 'initialDelay must not leak to provider');
+            assert.equal(receivedOptions.temperature, 0.7, 'Allowed options pass through');
+            assert.ok(receivedOptions.signal instanceof AbortSignal, 'Attempt signal must be passed');
+        });
+
+        test('LLMService setEventEmitter attaches event emitter cleanly', () => {
+            const llm = new LLMService({ provider: 'fake-retry' });
+            const emitter = new EventEmitter();
+            llm.setEventEmitter(emitter);
+            assert.equal(llm.events, emitter);
         });
     });
 });

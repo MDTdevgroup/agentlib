@@ -171,8 +171,8 @@ describe('Canonical Message Format & Abstraction Barrier', () => {
 
             const wire = openAIToProvider(messages);
             assert.equal(wire[0].role, 'user');
-            assert.equal(wire[0].content, 'Hello');
-            assert.equal(wire[0].speaker, undefined); // Speaker stripped for OpenAI wire
+            assert.equal(wire[0].content, '[UserA]: Hello');
+            assert.equal(wire[0].speaker, undefined);
             assert.equal(wire[1].type, 'function_call');
             assert.equal(wire[1].call_id, 'call_calc_1');
             assert.equal(wire[2].type, 'function_call_output');
@@ -187,17 +187,28 @@ describe('Canonical Message Format & Abstraction Barrier', () => {
             assert.equal(messageText(fromWire[0]), 'Result is 20');
         });
 
-        test('vLLM toProvider and fromProvider handle chat completion message conversions', () => {
+        test('vLLM toProvider and fromProvider handle chat completion message conversions including tool calls and speaker', () => {
             const messages = [
-                makeTextMessage({ role: 'user', text: 'Run tool' }),
+                makeTextMessage({ role: 'user', text: 'Run tool', speaker: 'Alice' }),
+                makeToolCall({ name: 'calc', args: { x: 10 }, callId: 'call_calc_1' }),
                 makeToolResult({ callId: 'call_vllm_1', name: 'test', value: { ok: true } }),
             ];
 
             const vllmInput = vllmToProvider(messages);
             assert.equal(vllmInput[0].role, 'user');
-            assert.equal(vllmInput[1].role, 'tool');
-            assert.equal(vllmInput[1].tool_call_id, 'call_vllm_1');
-            assert.equal(vllmInput[1].content, '{"ok":true}');
+            assert.equal(vllmInput[0].content, '[Alice]: Run tool');
+            assert.equal(vllmInput[1].role, 'assistant');
+            assert.deepEqual(vllmInput[1].tool_calls, [{
+                id: 'call_calc_1',
+                type: 'function',
+                function: {
+                    name: 'calc',
+                    arguments: '{"x":10}',
+                },
+            }]);
+            assert.equal(vllmInput[2].role, 'tool');
+            assert.equal(vllmInput[2].tool_call_id, 'call_vllm_1');
+            assert.equal(vllmInput[2].content, '{"ok":true}');
 
             const vllmResponse = vllmFromProvider({
                 id: 'chatcmpl-123',

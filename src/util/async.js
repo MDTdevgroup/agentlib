@@ -69,10 +69,16 @@ export async function asyncForceAll(thunks, limit = Infinity, step = 0, options 
         // Defer start by one microtask and uniformize sync/async throws
         const promise = Promise.resolve().then(() => thunk());
         results.push(promise);
-        executing.add(promise);
 
-        promise.finally(() => {
-            executing.delete(promise);
+        // Guard the race tracker so a rejection does not break the scheduling loop or cause unhandled rejections
+        const settlement = promise.then(
+            () => { },
+            () => { }
+        );
+        executing.add(settlement);
+
+        settlement.finally(() => {
+            executing.delete(settlement);
             if (options.onEvent && label) {
                 options.onEvent({ type: 'job:end', label });
             }

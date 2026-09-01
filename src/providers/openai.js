@@ -84,7 +84,10 @@ export function toProvider(input) {
             return wireItem;
         }
         if (item.type === 'message' || item.role) {
-            const textContent = item.content !== undefined ? item.content : (item.text || '');
+            let textContent = item.content !== undefined ? item.content : (item.text || '');
+            if (item.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${item.speaker}]:`)) {
+                textContent = `[${item.speaker}]: ${textContent}`;
+            }
             const wireItem = {
                 type: 'message',
                 role: item.role || 'user',
@@ -140,30 +143,31 @@ export function fromProvider(rawResponse) {
     });
 }
 
-export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, ...options }) {
-    const finalOptions = { model, ...options };
-
+export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, signal, ...options } = {}) {
     if (inputSchema) {
         input = inputSchema.parse(input);
     }
 
     let response, output;
     const convertedInput = toProvider(input);
+    const requestOptions = signal ? { signal } : undefined;
 
     if (outputSchema) {
         response = await client.responses.parse({
             input: convertedInput,
+            model,
             text: {
                 format: zodTextFormat(outputSchema, "output")
             },
-            ...finalOptions,
-        });
+            ...options,
+        }, requestOptions);
         output = response.output_parsed;
     } else {
         response = await client.responses.create({
             input: convertedInput,
-            ...finalOptions,
-        });
+            model,
+            ...options,
+        }, requestOptions);
         output = response.output_text;
     }
     return { output: output, rawResponse: response };

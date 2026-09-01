@@ -80,6 +80,10 @@ export async function withRetries(retrySpec = {}, thunk, isRetryableClassifier =
         if (options.signal) {
             if (options.signal.aborted) {
                 controller.abort(options.signal.reason);
+                if (typeof options.signal.throwIfAborted === 'function') {
+                    options.signal.throwIfAborted();
+                }
+                throw options.signal.reason || makeException('AbortError', 'Operation aborted by caller');
             } else {
                 options.signal.addEventListener('abort', onParentAbort, { once: true });
             }
@@ -88,6 +92,10 @@ export async function withRetries(retrySpec = {}, thunk, isRetryableClassifier =
         try {
             return await thunk({ signal: controller.signal, attempt: attempts });
         } catch (e) {
+            if (options.signal?.aborted) {
+                throw e;
+            }
+
             const isTimeout = e.name === 'AbortError' || e.type === 'Timeout' || controller.signal.aborted;
 
             let retryInfo;

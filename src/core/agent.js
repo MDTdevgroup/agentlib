@@ -78,7 +78,11 @@ export class Agent {
         this.llmService = llmService;
         this.events = eventEmitter || new EventEmitter();
         if (this.llmService && !this.llmService.events) {
-            this.llmService.events = this.events;
+            if (typeof this.llmService.setEventEmitter === 'function') {
+                this.llmService.setEventEmitter(this.events);
+            } else {
+                this.llmService.events = this.events;
+            }
         }
         this.model = model;
         this.toolLoader = toolLoader || new ToolLoader(enableMCP);

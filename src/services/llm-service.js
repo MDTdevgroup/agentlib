@@ -17,15 +17,21 @@ export class LLMService {
         return this.providerNamespace.createClient(this.auth);
     }
 
+    setEventEmitter(eventEmitter) {
+        this.events = eventEmitter;
+    }
+
     async chat(input, {
         model = getDefaultModel(this.provider),
         retry = getDefaultRetrySpec(),
         signal,
+        maxRetries,
+        initialDelay,
         ...options
     } = {}) {
         const retrySpec = { ...getDefaultRetrySpec(), ...(typeof retry === 'object' ? retry : {}) };
-        if (options.maxRetries !== undefined) retrySpec.maxRetries = options.maxRetries;
-        if (options.initialDelay !== undefined) retrySpec.baseDelayMS = options.initialDelay;
+        if (maxRetries !== undefined) retrySpec.maxRetries = maxRetries;
+        if (initialDelay !== undefined) retrySpec.baseDelayMS = initialDelay;
 
         const isRetryable = typeof this.providerNamespace?.isRetryable === 'function'
             ? (err) => this.providerNamespace.isRetryable(err)

@@ -179,7 +179,10 @@ function _convertInput(input) {
                 parts: [{ functionResponse: funcResponse }]
             });
         } else if (object.role === 'assistant' || object.role === 'model') {
-            const textContent = object.content !== undefined ? object.content : (object.text || '');
+            let textContent = object.content !== undefined ? object.content : (object.text || '');
+            if (object.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${object.speaker}]:`)) {
+                textContent = `[${object.speaker}]: ${textContent}`;
+            }
             if (typeof textContent === 'string') {
                 contents.push({
                     role: 'model',
@@ -187,7 +190,10 @@ function _convertInput(input) {
                 });
             }
         } else if (object.role === 'user' || (!object.role && (object.content !== undefined || object.text !== undefined))) {
-            const textContent = object.content !== undefined ? object.content : (object.text || '');
+            let textContent = object.content !== undefined ? object.content : (object.text || '');
+            if (object.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${object.speaker}]:`)) {
+                textContent = `[${object.speaker}]: ${textContent}`;
+            }
             if (typeof textContent === 'string') {
                 contents.push({
                     role: 'user',
@@ -296,7 +302,7 @@ export function fromProvider(rawResponse) {
     return rawResponse.output;
 }
 
-export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, tools, ...options }) {
+export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, tools, signal, ...options } = {}) {
     let response, output;
 
     if (inputSchema) {
@@ -326,6 +332,7 @@ export async function chat(client, input, { model = defaultModel, inputSchema, o
             }
         } : {}),
         ...(toolsConfig.length > 0 ? { tools: toolsConfig } : {}),
+        ...(signal ? { abortSignal: signal } : {}),
         ...options
     };
 

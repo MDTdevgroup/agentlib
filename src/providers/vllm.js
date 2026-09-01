@@ -30,22 +30,23 @@ export { isRetryable } from './openai.js';
 export function toProvider(input) {
     // Map your agentlib structured inputs onto the standard Chat Completions `messages` format
     return input.map((item) => {
+        if (!item || typeof item !== 'object') return item;
         if (item.type === 'function_call_output') {
             const out = typeof item.output === 'string' ? item.output : JSON.stringify(item.output ?? null);
             return {
                 role: 'tool',
-                tool_call_id: item.call_id,
+                tool_call_id: item.call_id || item.id,
                 content: out,
             };
-        } else if (item.role === 'assistant' && item.type === 'function_call') {
+        } else if (item.type === 'function_call') {
             return {
                 role: 'assistant',
                 tool_calls: [{
-                    id: item.call_id,
+                    id: item.call_id || item.id,
                     type: 'function',
                     function: {
                         name: item.name,
-                        arguments: typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments)
+                        arguments: typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments ?? {})
                     }
                 }]
             };
@@ -53,7 +54,11 @@ export function toProvider(input) {
 
         // Ensure only standardized properties are sent for regular messages
         const cleanItem = { role: item.role || 'user' };
-        if (item.content !== undefined) cleanItem.content = item.content;
+        let textContent = item.content !== undefined ? item.content : (item.text || '');
+        if (item.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${item.speaker}]:`)) {
+            textContent = `[${item.speaker}]: ${textContent}`;
+        }
+        if (textContent !== undefined) cleanItem.content = textContent;
         if (item.name) cleanItem.name = item.name;
 
         return cleanItem;
@@ -109,30 +114,31 @@ function _convertResponse(response) {
 
 export const fromProvider = _convertResponse;
 
-export async function chat(client, input, { model, inputSchema, outputSchema, ...options }) {
-    const finalOptions = { model, ...options };
-
+export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, signal, ...options } = {}) {
     if (inputSchema) {
         input = inputSchema.parse(input);
     }
 
     let response, output;
     const messages = toProvider(input);
+    const requestOptions = signal ? { signal } : undefined;
 
     // vLLM exposes the standard Chat Completions API instead of the new Responses API
     if (outputSchema) {
         // vLLM supports structured outputs via typical json_schema format
         response = await client.chat.completions.create({
             messages: messages,
+            model,
             response_format: zodResponseFormat(outputSchema, "output"),
-            ...finalOptions,
-        });
+            ...options,
+        }, requestOptions);
         output = JSON.parse(response.choices[0].message.content);
     } else {
         response = await client.chat.completions.create({
             messages: messages,
-            ...finalOptions,
-        });
+            model,
+            ...options,
+        }, requestOptions);
         output = response.choices[0].message.content;
     }
 
