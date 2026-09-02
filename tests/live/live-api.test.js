@@ -11,7 +11,7 @@ describe('Live API Smoke Tests', () => {
         }
 
         const llm = new LLMService({ provider: 'openai', apiKey });
-        const agent = new Agent(llm, { model: 'gpt-4o-mini' });
+        const agent = new Agent(llm, { model: 'gpt-5' });
         agent.addInput({ role: 'user', content: 'Say "hello" and nothing else.' });
 
         const history = await agent.run();
@@ -27,7 +27,7 @@ describe('Live API Smoke Tests', () => {
         }
 
         const llm = new LLMService({ provider: 'gemini', apiKey });
-        const agent = new Agent(llm);
+        const agent = new Agent(llm, { model: 'gemini-3.1-pro-preview' });
         agent.addInput({ role: 'user', content: 'Say "hello" and nothing else.' });
 
         const history = await agent.run();

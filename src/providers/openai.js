@@ -84,14 +84,36 @@ export function toProvider(input) {
             return wireItem;
         }
         if (item.type === 'message' || item.role) {
-            let textContent = item.content !== undefined ? item.content : (item.text || '');
-            if (item.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${item.speaker}]:`)) {
-                textContent = `[${item.speaker}]: ${textContent}`;
+            let content = item.content !== undefined ? item.content : (item.text || '');
+            if (typeof content === 'string') {
+                if (item.speaker && !content.startsWith(`[${item.speaker}]:`)) {
+                    content = `[${item.speaker}]: ${content}`;
+                }
+            } else if (Array.isArray(content)) {
+                content = content.map((part) => {
+                    if (!part || typeof part !== 'object') return part;
+                    if (part.type === 'input_image' || part.type === 'input_text' || part.type === 'input_file') {
+                        return part;
+                    }
+                    if (part.type === 'image_url' && part.image_url) {
+                        return {
+                            type: 'input_image',
+                            image_url: typeof part.image_url === 'string' ? part.image_url : part.image_url.url,
+                        };
+                    }
+                    if (part.type === 'text') {
+                        return {
+                            type: 'input_text',
+                            text: part.text || '',
+                        };
+                    }
+                    return part;
+                });
             }
             const wireItem = {
                 type: 'message',
                 role: item.role || 'user',
-                content: textContent,
+                content,
             };
             if (item.phase) wireItem.phase = item.phase;
             if (item.id) wireItem.id = item.id;
@@ -143,7 +165,7 @@ export function fromProvider(rawResponse) {
     });
 }
 
-export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, signal, ...options } = {}) {
+export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, tools, signal, ...options } = {}) {
     if (inputSchema) {
         input = inputSchema.parse(input);
     }
@@ -152,23 +174,40 @@ export async function chat(client, input, { model = defaultModel, inputSchema, o
     const convertedInput = toProvider(input);
     const requestOptions = signal ? { signal } : undefined;
 
+    let formattedTools = undefined;
+    if (Array.isArray(tools) && tools.length > 0) {
+        formattedTools = tools.map((tool) => {
+            if (tool.type && tool.type !== 'function') {
+                return tool;
+            }
+            return {
+                type: 'function',
+                name: tool.name,
+                description: tool.description,
+                parameters: tool.parameters,
+                ...(tool.strict !== undefined ? { strict: tool.strict } : {}),
+            };
+        });
+    }
+
+    const payload = {
+        input: convertedInput,
+        model,
+        ...(formattedTools ? { tools: formattedTools } : {}),
+        ...options,
+    };
+
     if (outputSchema) {
         response = await client.responses.parse({
-            input: convertedInput,
-            model,
+            ...payload,
             text: {
                 format: zodTextFormat(outputSchema, "output")
             },
-            ...options,
         }, requestOptions);
-        output = response.output_parsed;
+        output = response.output_parsed ?? null;
     } else {
-        response = await client.responses.create({
-            input: convertedInput,
-            model,
-            ...options,
-        }, requestOptions);
-        output = response.output_text;
+        response = await client.responses.create(payload, requestOptions);
+        output = response.output_text ?? null;
     }
     return { output: output, rawResponse: response };
 }

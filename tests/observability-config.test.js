@@ -52,11 +52,11 @@ describe('Observability, Config Accessors & Release Validation', () => {
             assert.equal(config.getDefaultOpenaiModel(), 'gpt-5');
 
             assert.equal(typeof config.getDefaultGeminiModel, 'function');
-            assert.equal(config.getDefaultGeminiModel(), 'gemini-3-pro-preview');
+            assert.equal(config.getDefaultGeminiModel(), 'gemini-3.1-pro-preview');
 
             assert.equal(typeof config.getDefaultModel, 'function');
             assert.equal(config.getDefaultModel('openai'), 'gpt-5');
-            assert.equal(config.getDefaultModel('gemini'), 'gemini-3-pro-preview');
+            assert.equal(config.getDefaultModel('gemini'), 'gemini-3.1-pro-preview');
             assert.equal(config.getDefaultModel('vllm'), 'gpt-5');
 
             assert.equal(config.getDefaultMaxToolCalls(), 15);

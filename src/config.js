@@ -7,7 +7,7 @@ export function getDefaultOpenaiModel() {
 }
 
 export function getDefaultGeminiModel() {
-    return 'gemini-3-pro-preview';
+    return 'gemini-3.1-pro-preview';
 }
 
 export function getDefaultModel(provider = getDefaultProvider()) {

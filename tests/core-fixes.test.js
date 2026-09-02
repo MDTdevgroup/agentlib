@@ -34,12 +34,12 @@ describe('Core Bug Fixes & Regressions', () => {
     test('Gemini chat does not replace or mutate global console.warn', async () => {
         const originalWarn = console.warn;
         let fakeClient = {
-            models: {
-                generateContent: async () => ({
-                    candidates: [{ content: { parts: [{ text: 'response' }] } }],
-                    text: () => 'response'
-                })
-            }
+            interactions: {
+                create: async () => ({
+                    steps: [{ type: 'model_output', content: [{ type: 'text', text: 'response' }] }],
+                    text: 'response',
+                }),
+            },
         };
 
         await GeminiProvider.chat(fakeClient, [{ role: 'user', content: 'hello' }], {});

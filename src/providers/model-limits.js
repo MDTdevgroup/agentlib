@@ -25,6 +25,11 @@ const DEFAULT_LIMITS = {
         default: { inputTokenLimit: 256000, outputTokenLimit: 16384 },
     },
     gemini: {
+        'gemini-3.7-flash': { inputTokenLimit: 1048576, outputTokenLimit: 8192 },
+        'gemini-3.1-pro-preview': { inputTokenLimit: 2097152, outputTokenLimit: 8192 },
+        'gemini-2.5-flash': { inputTokenLimit: 1048576, outputTokenLimit: 8192 },
+        'gemini-2.5-flash-lite': { inputTokenLimit: 1048576, outputTokenLimit: 8192 },
+        'gemini-2.5-pro': { inputTokenLimit: 2097152, outputTokenLimit: 8192 },
         'gemini-2.0-flash': { inputTokenLimit: 1048576, outputTokenLimit: 8192 },
         'gemini-2.0-flash-lite': { inputTokenLimit: 1048576, outputTokenLimit: 8192 },
         'gemini-2.0-pro-exp': { inputTokenLimit: 2097152, outputTokenLimit: 8192 },

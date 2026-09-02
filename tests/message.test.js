@@ -21,9 +21,10 @@ import { Agent } from '../src/core/agent.js';
 import { LLMService } from '../src/services/llm-service.js';
 import { registerProvider, getDefaultModel } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
-import { toProvider as openAIToProvider, fromProvider as openAIFromProvider } from '../src/providers/openai.js';
-import { toProvider as geminiToProvider, fromProvider as geminiFromProvider } from '../src/providers/gemini.js';
+import { toProvider as openAIToProvider, fromProvider as openAIFromProvider, chat as openAIChat } from '../src/providers/openai.js';
+import { toProvider as geminiToProvider, fromProvider as geminiFromProvider, chat as geminiChat } from '../src/providers/gemini.js';
 import { toProvider as vllmToProvider, fromProvider as vllmFromProvider } from '../src/providers/vllm.js';
+import { z } from 'zod';
 
 describe('Canonical Message Format & Abstraction Barrier', () => {
     describe('Constructors & Selectors', () => {
@@ -92,13 +93,13 @@ describe('Canonical Message Format & Abstraction Barrier', () => {
     describe('Default Model Resolution', () => {
         test('getDefaultModel queries provider namespaces cleanly', () => {
             assert.equal(getDefaultModel('openai'), 'gpt-5');
-            assert.equal(getDefaultModel('gemini'), 'gemini-3-pro-preview');
+            assert.equal(getDefaultModel('gemini'), 'gemini-3.1-pro-preview');
             assert.equal(getDefaultModel('vllm'), 'default');
         });
     });
 
     describe('Provider Adapters Format Conversion', () => {
-        test('Gemini toProvider formats multi-turn messages, function calls, and function responses per Gemini API spec', () => {
+        test('Gemini toProvider formats multi-turn messages, function calls, and function responses per Gemini Interactions API spec', () => {
             const messages = [
                 makeTextMessage({ role: 'system', text: 'You are an astronomer.' }),
                 makeTextMessage({ role: 'user', text: 'Where is Mars?' }),
@@ -108,47 +109,46 @@ describe('Canonical Message Format & Abstraction Barrier', () => {
             ];
 
             const geminiInput = geminiToProvider(messages);
-            assert.deepEqual(geminiInput.systemParts, [{ text: 'You are an astronomer.' }]);
-            assert.equal(geminiInput.contents.length, 4);
+            assert.equal(geminiInput.system_instruction, 'You are an astronomer.');
+            assert.equal(geminiInput.steps.length, 4);
 
             // User turn
-            assert.equal(geminiInput.contents[0].role, 'user');
-            assert.deepEqual(geminiInput.contents[0].parts, [{ text: 'Where is Mars?' }]);
+            assert.equal(geminiInput.steps[0].type, 'user_input');
+            assert.deepEqual(geminiInput.steps[0].content, [{ type: 'text', text: 'Where is Mars?' }]);
 
             // Model tool call turn
-            assert.equal(geminiInput.contents[1].role, 'model');
-            assert.equal(geminiInput.contents[1].parts[0].functionCall.name, 'lookup_planet');
-            assert.deepEqual(geminiInput.contents[1].parts[0].functionCall.args, { planet: 'Mars' });
-            assert.equal(geminiInput.contents[1].parts[0].functionCall.id, 'call_gemini_1');
+            assert.equal(geminiInput.steps[1].type, 'function_call');
+            assert.equal(geminiInput.steps[1].name, 'lookup_planet');
+            assert.deepEqual(geminiInput.steps[1].arguments, { planet: 'Mars' });
+            assert.equal(geminiInput.steps[1].id, 'call_gemini_1');
 
             // User function response turn
-            assert.equal(geminiInput.contents[2].role, 'user');
-            assert.equal(geminiInput.contents[2].parts[0].functionResponse.name, 'lookup_planet');
-            assert.deepEqual(geminiInput.contents[2].parts[0].functionResponse.response, { distance_au: 1.52 });
-            assert.equal(geminiInput.contents[2].parts[0].functionResponse.id, 'call_gemini_1');
+            assert.equal(geminiInput.steps[2].type, 'function_result');
+            assert.equal(geminiInput.steps[2].name, 'lookup_planet');
+            assert.deepEqual(geminiInput.steps[2].result, { distance_au: 1.52 });
+            assert.equal(geminiInput.steps[2].call_id, 'call_gemini_1');
 
             // Model assistant turn
-            assert.equal(geminiInput.contents[3].role, 'model');
-            assert.deepEqual(geminiInput.contents[3].parts, [{ text: 'Mars is 1.52 AU away.' }]);
+            assert.equal(geminiInput.steps[3].type, 'model_output');
+            assert.deepEqual(geminiInput.steps[3].content, [{ type: 'text', text: 'Mars is 1.52 AU away.' }]);
         });
 
-        test('Gemini fromProvider handles function calls, thoughts, and text parts', () => {
+        test('Gemini fromProvider handles function calls, thoughts, and text parts from steps', () => {
             const raw = {
-                output: [
+                steps: [
                     {
-                        type: 'reasoning',
-                        content: 'Calculating orbit...',
+                        type: 'thought',
+                        summary: [{ type: 'text', text: 'Calculating orbit...' }],
                     },
                     {
                         type: 'function_call',
-                        call_id: 'call_123',
+                        id: 'call_123',
                         name: 'orbit_calc',
-                        arguments: '{"step":1}',
+                        arguments: { step: 1 },
                     },
                     {
-                        type: 'message',
-                        role: 'assistant',
-                        content: 'Ready to calculate.',
+                        type: 'model_output',
+                        content: [{ type: 'text', text: 'Ready to calculate.' }],
                     },
                 ],
             };
@@ -274,6 +274,179 @@ describe('Canonical Message Format & Abstraction Barrier', () => {
             assert.equal(messageSpeaker(finalMsg), 'AliceAgent');
             // Clean text without bracket prefix
             assert.equal(finalMsg.content, 'User 42 is Alice');
+        });
+    });
+
+    describe('OpenAI Responses API & Gemini Interactions API Chat Methods', () => {
+        test('openAIChat formats tools, calls client.responses.create and normalizes rawResponse', async () => {
+            let capturedPayload = null;
+            const fakeClient = {
+                responses: {
+                    create: async (payload) => {
+                        capturedPayload = payload;
+                        return {
+                            id: 'resp_123',
+                            model: 'gpt-4o-mini',
+                            output_text: 'Paris is the capital of France.',
+                            output: [
+                                {
+                                    type: 'message',
+                                    role: 'assistant',
+                                    content: 'Paris is the capital of France.',
+                                },
+                            ],
+                            usage: {
+                                input_tokens: 12,
+                                output_tokens: 8,
+                                total_tokens: 20,
+                            },
+                        };
+                    },
+                },
+            };
+
+            const tools = [
+                {
+                    name: 'lookup_city',
+                    description: 'Lookup city details',
+                    parameters: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+                },
+            ];
+
+            const result = await openAIChat(fakeClient, [{ role: 'user', content: 'What is the capital of France?' }], {
+                model: 'gpt-4o-mini',
+                tools,
+            });
+
+            assert.equal(result.output, 'Paris is the capital of France.');
+            assert.equal(capturedPayload.model, 'gpt-4o-mini');
+            assert.equal(capturedPayload.tools[0].type, 'function');
+            assert.equal(capturedPayload.tools[0].name, 'lookup_city');
+            assert.equal(result.rawResponse.id, 'resp_123');
+            assert.equal(result.rawResponse.usage.total_tokens, 20);
+        });
+
+        test('openAIChat with outputSchema calls client.responses.parse with zodTextFormat', async () => {
+            let capturedPayload = null;
+            const fakeClient = {
+                responses: {
+                    parse: async (payload) => {
+                        capturedPayload = payload;
+                        return {
+                            id: 'resp_456',
+                            output_parsed: { answer: 'Mercury', confidence: 0.99 },
+                            output: [],
+                        };
+                    },
+                },
+            };
+
+            const schema = z.object({
+                answer: z.string(),
+                confidence: z.number(),
+            });
+
+            const result = await openAIChat(fakeClient, [{ role: 'user', content: 'Closest planet to Sun?' }], {
+                outputSchema: schema,
+            });
+
+            assert.deepEqual(result.output, { answer: 'Mercury', confidence: 0.99 });
+            assert.ok(capturedPayload.text.format);
+        });
+
+        test('geminiChat formats tools, calls client.interactions.create with steps and normalizes rawResponse', async () => {
+            let capturedPayload = null;
+            const fakeClient = {
+                interactions: {
+                    create: async (payload) => {
+                        capturedPayload = payload;
+                        return {
+                            id: 'interaction_abc',
+                            model: 'gemini-2.5-flash',
+                            status: 'completed',
+                            steps: [
+                                {
+                                    type: 'thought',
+                                    signature: 'sig_123',
+                                    summary: [{ type: 'text', text: 'Locating Tokyo coordinates...' }],
+                                },
+                                {
+                                    type: 'model_output',
+                                    content: [{ type: 'text', text: 'Tokyo is in Japan.' }],
+                                },
+                            ],
+                            usage: {
+                                total_input_tokens: 15,
+                                total_output_tokens: 10,
+                                total_tokens: 25,
+                            },
+                        };
+                    },
+                },
+            };
+
+            const tools = [
+                {
+                    name: 'get_geo',
+                    description: 'Get geo info',
+                    parameters: { type: 'object', properties: { place: { type: 'string' } } },
+                },
+            ];
+
+            const result = await geminiChat(fakeClient, [
+                { role: 'system', text: 'Be concise.' },
+                { role: 'user', text: 'Where is Tokyo?' },
+            ], {
+                model: 'gemini-2.5-flash',
+                tools,
+            });
+
+            assert.equal(result.output, 'Tokyo is in Japan.');
+            assert.equal(capturedPayload.model, 'gemini-2.5-flash');
+            assert.equal(capturedPayload.system_instruction, 'Be concise.');
+            assert.equal(capturedPayload.input.length, 1);
+            assert.equal(capturedPayload.input[0].type, 'user_input');
+            assert.equal(capturedPayload.tools[0].type, 'function');
+            assert.equal(capturedPayload.tools[0].name, 'get_geo');
+
+            assert.equal(result.rawResponse.id, 'interaction_abc');
+            assert.equal(result.rawResponse.output.length, 2);
+            assert.equal(result.rawResponse.output[0].type, 'reasoning');
+            assert.equal(result.rawResponse.output[0].thoughtSignature, 'sig_123');
+            assert.equal(result.rawResponse.output[1].type, 'message');
+            assert.equal(result.rawResponse.output[1].content, 'Tokyo is in Japan.');
+        });
+
+        test('geminiChat with outputSchema enforces response_format and parses structured output', async () => {
+            let capturedPayload = null;
+            const fakeClient = {
+                interactions: {
+                    create: async (payload) => {
+                        capturedPayload = payload;
+                        return {
+                            id: 'interaction_schema',
+                            steps: [
+                                {
+                                    type: 'model_output',
+                                    content: [{ type: 'text', text: JSON.stringify({ score: 98, passed: true }) }],
+                                },
+                            ],
+                        };
+                    },
+                },
+            };
+
+            const schema = z.object({
+                score: z.number(),
+                passed: z.boolean(),
+            });
+
+            const result = await geminiChat(fakeClient, [{ role: 'user', content: 'Grade the exam' }], {
+                outputSchema: schema,
+            });
+
+            assert.deepEqual(result.output, { score: 98, passed: true });
+            assert.ok(capturedPayload.response_format);
         });
     });
 });

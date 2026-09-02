@@ -35,6 +35,9 @@ describe('Model Context Limits Resolution & Dynamic Fetching', () => {
             assert.equal(getModelContextLimit('gemini', 'gemini-1.5-pro-002'), 2097152);
             assert.equal(getModelContextLimit('gemini', 'gemini-1.5-flash'), 1048576);
             assert.equal(getModelContextLimit('gemini', 'gemini-2.0-flash'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-2.5-flash'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3.7-flash'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3.1-pro-preview'), 2097152);
             assert.equal(getModelContextLimit('gemini', 'gemini-3-pro-preview'), 2097152);
             assert.equal(getModelContextLimit('gemini', 'gemini-1.0-pro'), 32768);
         });
