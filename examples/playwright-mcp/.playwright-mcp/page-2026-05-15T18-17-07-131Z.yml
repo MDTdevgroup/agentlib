@@ -1,0 +1,250 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e6]:
+      - generic [ref=e9]:
+        - generic [ref=e11]: ▸
+        - generic [ref=e12]: HOME
+      - generic [ref=e15]:
+        - heading [level=4]
+        - list [ref=e16]:
+          - listitem [ref=e17] [cursor=pointer]:
+            - link "What’s New" [ref=e18]:
+              - /url: "#whatsnew"
+          - listitem [ref=e19] [cursor=pointer]:
+            - link "About" [ref=e20]:
+              - /url: "#about"
+          - listitem [ref=e21] [cursor=pointer]:
+            - link "Location" [ref=e22]:
+              - /url: "#location"
+          - listitem [ref=e23] [cursor=pointer]:
+            - link "Our Menu" [ref=e24]:
+              - /url: "#ourmenu"
+          - listitem [ref=e25] [cursor=pointer]:
+            - link "recruit" [ref=e26]:
+              - /url: aboutus/#udRecruit
+          - listitem [ref=e27] [cursor=pointer]:
+            - link "RAMEN BLOG" [ref=e28]:
+              - /url: https://ramenraijin.com/ramen_blog/
+  - list:
+    - list:
+      - link [ref=e31] [cursor=pointer]:
+        - /url: https://ramenraijin.com
+      - generic [ref=e32]:
+        - generic:
+          - list:
+            - listitem:
+              - link "ABOUT US" [ref=e33] [cursor=pointer]:
+                - /url: https://ramenraijin.com/aboutus
+                - generic [ref=e35]: ABOUT US
+            - listitem:
+              - link "WHAT’S NEW" [ref=e36] [cursor=pointer]:
+                - /url: https://ramenraijin.com/whats-new
+                - generic [ref=e38]: WHAT’S NEW
+            - listitem:
+              - link "RECRUIT" [ref=e39] [cursor=pointer]:
+                - /url: https://ramenraijin.com/aboutus/#udRecruit
+                - generic [ref=e41]: RECRUIT
+            - listitem:
+              - link "RAMEN BLOG" [ref=e42] [cursor=pointer]:
+                - /url: https://ramenraijin.com/ramen_blog/
+                - generic [ref=e44]: RAMEN BLOG
+            - listitem:
+              - link "CONTACT" [ref=e45] [cursor=pointer]:
+                - /url: https://ramenraijin.com/contact
+                - generic [ref=e47]: CONTACT
+            - listitem:
+              - link "POLICIES" [ref=e48] [cursor=pointer]:
+                - /url: https://ramenraijin.com/policies
+                - generic [ref=e50]: POLICIES
+          - generic:
+            - link "RESERVE NOW" [ref=e51] [cursor=pointer]:
+              - /url: https://ramenraijin.com/contact/?reservenow=true
+              - generic [ref=e52]: RESERVE NOW
+            - link "ONLINE ORDER" [ref=e53] [cursor=pointer]:
+              - /url: https://ramenraijin.com/online-order/
+              - generic [ref=e54]: ONLINE ORDER
+    - listitem:
+      - paragraph [ref=e56] [cursor=pointer]: Our Menu
+    - listitem:
+      - paragraph [ref=e58] [cursor=pointer]: Location
+    - listitem:
+      - link "Reserve Now":
+        - /url: https://ramenraijin.com/contact/?reservenow=true
+        - paragraph [ref=e60] [cursor=pointer]:
+          - text: Reserve
+          - text: Now
+    - listitem:
+      - link "Online Order":
+        - /url: https://ramenraijin.com/online-order/
+        - paragraph [ref=e62] [cursor=pointer]:
+          - text: Online
+          - text: Order
+    - listitem [ref=e63] [cursor=pointer]:
+      - paragraph [ref=e69]: Menu
+  - paragraph [ref=e73]:
+    - generic [ref=e74]: Aiming beyond ”Oishii“
+  - generic [ref=e75]:
+    - generic [ref=e78]:
+      - heading "JAPANESE NOODLE BAR / FROZEN RAMEN" [level=2] [ref=e79]
+      - heading "ramen RAIJIN" [level=1] [ref=e80]
+      - heading "24 Wellesley St. West Rear, Toronto, ON" [level=3] [ref=e81]:
+        - link "24 Wellesley St. West Rear, Toronto, ON" [ref=e82] [cursor=pointer]:
+          - /url: https://g.page/ramenRAIJIN?share
+      - link "VIEW STORE MENU" [ref=e83] [cursor=pointer]:
+        - /url: https://ramenraijin.com/wellesley/menu/
+        - generic [ref=e84]: VIEW STORE MENU
+      - link "VIEW FROZEN RAMEN ONLINE SHOP" [ref=e85] [cursor=pointer]:
+        - /url: https://shop.ramenraijin.com/
+        - generic [ref=e86]: VIEW FROZEN RAMEN ONLINE SHOP
+      - link "VIEW MERCHINEDISE ONLINE SHOP" [ref=e87] [cursor=pointer]:
+        - /url: " https://merch.ramenraijin.com/"
+        - generic [ref=e88]: VIEW MERCHINEDISE ONLINE SHOP
+      - generic [ref=e89]:
+        - generic [ref=e93] [cursor=pointer]: RESERVE NOW
+        - generic [ref=e97] [cursor=pointer]: ONLINE ORDER
+    - generic [ref=e99]:
+      - heading "WHAT'S NEW" [level=3] [ref=e100]:
+        - generic [ref=e101]: WHAT'S NEW
+      - generic [ref=e102]:
+        - article [ref=e103]:
+          - link "May 11, 2026 New Spicy Shio Tanmen Is Here — Machi-Chuka Style Ramen at ramen RAIJIN Toronto" [ref=e104] [cursor=pointer]:
+            - /url: https://ramenraijin.com/spicy-shio-tanmen-machi-chuka-ramen-toronto/
+            - generic [ref=e106]:
+              - time [ref=e107]: May 11, 2026
+              - heading "New Spicy Shio Tanmen Is Here — Machi-Chuka Style Ramen at ramen RAIJIN Toronto" [level=5] [ref=e108]
+        - article [ref=e109]:
+          - link "May 8, 2026 RAMEN RAIJIN Online Store Relaunches | Frozen Ramen Hub for North America" [ref=e110] [cursor=pointer]:
+            - /url: https://ramenraijin.com/ramen-raijin-online-store-frozen-ramen-north-america/
+            - generic [ref=e112]:
+              - time [ref=e113]: May 8, 2026
+              - heading "RAMEN RAIJIN Online Store Relaunches | Frozen Ramen Hub for North America" [level=5] [ref=e114]
+        - article [ref=e115]:
+          - 'link "May 1, 2026 Mother’s Day Food Gift in Toronto: RAIJIRO Frozen Ramen Returns May 1" [ref=e116] [cursor=pointer]':
+            - /url: https://ramenraijin.com/mothers-day-food-gift-in-toronto-raijiro-frozen-ramen-returns-may-1/
+            - generic [ref=e118]:
+              - time [ref=e119]: May 1, 2026
+              - 'heading "Mother’s Day Food Gift in Toronto: RAIJIRO Frozen Ramen Returns May 1" [level=5] [ref=e120]'
+        - article [ref=e121]:
+          - link "April 30, 2026 RAMEN RAIJIN Frozen Ramen Is Now Available on Weee! in California" [ref=e122] [cursor=pointer]:
+            - /url: https://ramenraijin.com/ramen-raijin-frozen-ramen-now-available-weee-california/
+            - generic [ref=e124]:
+              - time [ref=e125]: April 30, 2026
+              - heading "RAMEN RAIJIN Frozen Ramen Is Now Available on Weee! in California" [level=5] [ref=e126]
+        - article [ref=e127]:
+          - link "April 17, 2026 RAMEN RAIJIN Announces U.S. Launch of Frozen Ramen Starting in California This Spring" [ref=e128] [cursor=pointer]:
+            - /url: https://ramenraijin.com/ramen-raijin-frozen-ramen-usa-california-launch/
+            - generic [ref=e130]:
+              - time [ref=e131]: April 17, 2026
+              - heading "RAMEN RAIJIN Announces U.S. Launch of Frozen Ramen Starting in California This Spring" [level=5] [ref=e132]
+      - link "View More What's New" [ref=e134] [cursor=pointer]:
+        - /url: https://ramenraijin.com/whats-new/
+        - generic [ref=e135]: View More What's New
+    - generic [ref=e140]:
+      - img "logo" [ref=e142]
+      - generic [ref=e143]:
+        - generic [ref=e145]:
+          - heading "About" [level=3] [ref=e146]
+          - paragraph [ref=e147]: It is a ramen restaurant with an open atmosphere featuring white wood decorations that resemble thunderclouds and lighting that imitates lightning.
+          - paragraph [ref=e148]
+          - paragraph [ref=e149]: We offer ramen based on two types of soup, tonkotsu soup cooked at high temperature using a pressure pot and clear chicken soup that has been slowly boiled under strict temperature control.
+          - paragraph [ref=e150]
+          - paragraph [ref=e151]: It has a wide variety of menus that you will never get tired of discovering new things no matter how many times you go.
+        - link "View RAIJIN Mission and Vision" [ref=e153] [cursor=pointer]:
+          - /url: aboutus
+          - generic [ref=e154]: View RAIJIN Mission and Vision
+    - generic [ref=e161]:
+      - heading "Location" [level=3] [ref=e162]
+      - generic [ref=e163]:
+        - generic [ref=e164]:
+          - heading "Japanese Noodle Bar / Frozen Ramen" [level=5] [ref=e165]
+          - heading "ramen RAIJIN" [level=4] [ref=e166]
+          - link "Address Icon 24 Wellesley St. West Rear Toronto ON Address Icon" [ref=e167] [cursor=pointer]:
+            - /url: https://g.page/ramenRAIJIN?share
+            - img "Address Icon" [ref=e169]
+            - text: 24 Wellesley St. West Rear Toronto ON
+            - img "Address Icon" [ref=e171]
+          - link "Phone Icon 647-348-0667" [ref=e172] [cursor=pointer]:
+            - /url: tel:647-348-0667
+            - img "Phone Icon" [ref=e174]
+            - text: 647-348-0667
+          - generic [ref=e175]:
+            - paragraph [ref=e176]: SNS
+            - link "SNS Icon" [ref=e177] [cursor=pointer]:
+              - /url: https://www.facebook.com/ramenraijinonwellesley/
+              - img "SNS Icon" [ref=e178]
+            - link "SNS Icon" [ref=e179] [cursor=pointer]:
+              - /url: https://www.instagram.com/ramen.raijin/
+              - img "SNS Icon" [ref=e180]
+            - link "SNS Icon" [ref=e181] [cursor=pointer]:
+              - /url: https://www.tiktok.com/@ramen.raijin
+              - img "SNS Icon" [ref=e182]
+            - link "SNS Icon" [ref=e183] [cursor=pointer]:
+              - /url: https://www.youtube.com/channel/UC7cchhr8SccU1XD7kmaX8Cw
+              - img "SNS Icon" [ref=e184]
+          - generic [ref=e185]:
+            - paragraph
+            - paragraph [ref=e186]: Enter the road next to Rabba Fine Foods and go straight and it will be on the left.
+            - paragraph
+          - heading "Business Hours" [level=6] [ref=e187] [cursor=pointer]
+          - generic [ref=e188]:
+            - generic [ref=e189]: Sunday - Thursday
+            - generic [ref=e190]:
+              - text: 11:30〜21:30
+              - paragraph [ref=e191]: (Last Call 21:30 / Close 22:00)
+          - generic [ref=e192]:
+            - generic [ref=e193]: Friday - Saturday
+            - generic [ref=e194]:
+              - text: 11:30〜22:00
+              - paragraph [ref=e195]: (Last Call 22:00 / Close 22:30)
+        - generic [ref=e196]:
+          - generic [ref=e198]:
+            - generic [ref=e202] [cursor=pointer]: RESERVE NOW
+            - generic [ref=e206] [cursor=pointer]: ONLINE ORDER
+          - heading "Restaurant Features" [level=6] [ref=e207] [cursor=pointer]
+          - generic [ref=e208]:
+            - generic [ref=e209]: Dine-In
+            - generic [ref=e210]: Take Out
+            - generic [ref=e211]: Delivery
+            - generic [ref=e212]: Reservations
+          - iframe [ref=e215]:
+            
+    - generic [ref=e217]:
+      - heading "Our Menu" [level=3] [ref=e218]
+      - generic [ref=e219]:
+        - generic [ref=e220]:
+          - paragraph [ref=e221]: We have a wide range of popular foods that remind us of Japan to seasonal special foods, as well as alcoholic beverages.
+          - link "VIEW FULL MENU" [ref=e223] [cursor=pointer]:
+            - /url: https://ramenraijin.com/wellesley/menu/
+            - generic [ref=e224]: VIEW FULL MENU
+        - generic [ref=e227]:
+          - group "1 / 4" [ref=e228]:
+            - heading "Gyokai Tonkotsu Shoyu Ramen" [level=4] [ref=e229]
+          - group "2 / 4" [ref=e230]:
+            - heading "Spicy Tonkotsu Ramen" [level=4] [ref=e231]
+          - group "3 / 4" [ref=e232]:
+            - heading "Vegan Spicy Miso Ramen" [level=4] [ref=e233]
+  - contentinfo [ref=e235]:
+    - generic [ref=e238]:
+      - list [ref=e239]:
+        - listitem [ref=e240]:
+          - link "Policies" [ref=e241] [cursor=pointer]:
+            - /url: https://ramenraijin.com/policies/
+        - listitem [ref=e242]:
+          - link "Contact us" [ref=e243] [cursor=pointer]:
+            - /url: https://ramenraijin.com/contact/
+        - listitem [ref=e244]:
+          - link [ref=e245] [cursor=pointer]:
+            - /url: https://zakkushi.com/
+        - listitem [ref=e246]:
+          - link [ref=e247] [cursor=pointer]:
+            - /url: https://www.facebook.com/ramenraijinonwellesley/
+        - listitem [ref=e248]:
+          - link [ref=e249] [cursor=pointer]:
+            - /url: https://www.instagram.com/ramen.raijin/
+        - listitem [ref=e250]:
+          - link [ref=e251] [cursor=pointer]:
+            - /url: https://www.tiktok.com/@ramen.raijin
+        - listitem [ref=e252]:
+          - link [ref=e253] [cursor=pointer]:
+            - /url: https://www.youtube.com/channel/UC7cchhr8SccU1XD7kmaX8Cw
+      - paragraph [ref=e255]: Copyright © ramenraijin.com. All Rights Reserved.

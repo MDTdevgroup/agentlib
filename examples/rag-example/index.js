@@ -1,12 +1,8 @@
 import { MongoClient } from 'mongodb';
 import { MONGODB_URI, DATABASE_NAME, COLLECTION_NAME, EMBEDDING_MODEL, NUM_CANDIDATES, LIMIT } from './config.js';
-import { Agent } from '../../src/Agent.js';
-import { LLMService } from '../../src/llmService.js';
-import { ToolLoader } from '../../src/ToolLoader.js';
+import { Agent, LLMService, ToolLoader } from '../../index.js';
 import readline from "readline";
 import OpenAI from 'openai';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -138,7 +134,8 @@ async function runRAGExample() {
             rl.question("User: ", answer => resolve(answer));
          });
          agent.addInput({ role: "user", content: userInput });
-         const response = await agent.run();
+         const history = await agent.run();
+         const response = history[history.length - 1];
          console.log("Agent:", response.output);
       }
    } finally {

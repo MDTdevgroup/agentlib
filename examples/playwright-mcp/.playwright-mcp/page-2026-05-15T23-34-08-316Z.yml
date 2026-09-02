@@ -1,0 +1,297 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e6]:
+      - generic [ref=e9]:
+        - link "Home" [ref=e10] [cursor=pointer]:
+          - /url: https://ramenraijin.com
+        - generic [ref=e12]: ▸
+        - generic [ref=e13]: MENU
+      - generic [ref=e16]:
+        - heading [level=4]
+        - generic [ref=e17]:
+          - generic [ref=e18] [cursor=pointer]: FOOD
+          - generic [ref=e19] [cursor=pointer]: DRINKS
+          - generic [ref=e20] [cursor=pointer]: FROZEN
+          - generic [ref=e21] [cursor=pointer]: GIFT
+  - list:
+    - list:
+      - link [ref=e24] [cursor=pointer]:
+        - /url: https://ramenraijin.com
+      - generic [ref=e25]:
+        - generic:
+          - list:
+            - listitem:
+              - link "ABOUT US" [ref=e26] [cursor=pointer]:
+                - /url: https://ramenraijin.com/aboutus
+                - generic [ref=e28]: ABOUT US
+            - listitem:
+              - link "WHAT’S NEW" [ref=e29] [cursor=pointer]:
+                - /url: https://ramenraijin.com/whats-new
+                - generic [ref=e31]: WHAT’S NEW
+            - listitem:
+              - link "RECRUIT" [ref=e32] [cursor=pointer]:
+                - /url: https://ramenraijin.com/aboutus/#udRecruit
+                - generic [ref=e34]: RECRUIT
+            - listitem:
+              - link "RAMEN BLOG" [ref=e35] [cursor=pointer]:
+                - /url: https://ramenraijin.com/ramen_blog/
+                - generic [ref=e37]: RAMEN BLOG
+            - listitem:
+              - link "CONTACT" [ref=e38] [cursor=pointer]:
+                - /url: https://ramenraijin.com/contact
+                - generic [ref=e40]: CONTACT
+            - listitem:
+              - link "POLICIES" [ref=e41] [cursor=pointer]:
+                - /url: https://ramenraijin.com/policies
+                - generic [ref=e43]: POLICIES
+          - generic:
+            - link "RESERVE NOW" [ref=e44] [cursor=pointer]:
+              - /url: https://ramenraijin.com/contact/?reservenow=true
+              - generic [ref=e45]: RESERVE NOW
+            - link "ONLINE ORDER" [ref=e46] [cursor=pointer]:
+              - /url: https://ramenraijin.com/online-order/
+              - generic [ref=e47]: ONLINE ORDER
+    - listitem:
+      - paragraph [ref=e49] [cursor=pointer]: Our Menu
+    - listitem:
+      - paragraph [ref=e51] [cursor=pointer]: Location
+    - listitem:
+      - link "Reserve Now":
+        - /url: https://ramenraijin.com/contact/?reservenow=true
+        - paragraph [ref=e53] [cursor=pointer]:
+          - text: Reserve
+          - text: Now
+    - listitem:
+      - link "Online Order":
+        - /url: https://ramenraijin.com/online-order/
+        - paragraph [ref=e55] [cursor=pointer]:
+          - text: Online
+          - text: Order
+    - listitem [ref=e56] [cursor=pointer]:
+      - paragraph [ref=e62]: Menu
+  - generic [ref=e64]:
+    - link "GO BACK" [ref=e66] [cursor=pointer]:
+      - /url: "#"
+      - generic [ref=e67]: GO BACK
+    - generic [ref=e69]:
+      - heading "Allergy Alert" [level=3] [ref=e71] [cursor=pointer]: Allergy Alert
+      - generic [ref=e73]:
+        - img "Vegetarian Friendly" [ref=e74]
+        - generic [ref=e75]: Vegetarian Friendly
+    - generic [ref=e76]:
+      - generic [ref=e78] [cursor=pointer]: FOOD
+      - generic [ref=e80] [cursor=pointer]: DRINKS
+      - generic [ref=e82] [cursor=pointer]: FROZEN
+      - generic [ref=e84] [cursor=pointer]: GIFT
+    - generic [ref=e85]:
+      - generic [ref=e1029]:
+        - generic [ref=e1030]:
+          - img "icon" [ref=e1033] [cursor=pointer]
+          - img "icon" [ref=e1035] [cursor=pointer]
+          - generic [ref=e1037]:
+            - link "POP or Juice" [ref=e1039] [cursor=pointer]:
+              - /url: "#pop-or-juice"
+            - link "Beer" [ref=e1041] [cursor=pointer]:
+              - /url: "#draft-beer"
+            - link "Sake・Fruit Wine" [ref=e1043] [cursor=pointer]:
+              - /url: "#fruits-wine"
+            - link "Cocktails" [ref=e1045] [cursor=pointer]:
+              - /url: "#cocktails"
+          - img "icon" [ref=e1047] [cursor=pointer]
+        - generic [ref=e1049]:
+          - heading "POP or Juice" [level=4] [ref=e1050]: POP or Juice
+          - generic [ref=e1051]:
+            - generic [ref=e1053]:
+              - generic [ref=e1057]:
+                - heading "Shirley Temple" [level=5] [ref=e1058]:
+                  - generic [ref=e1059]: Shirley Temple
+                - generic [ref=e1062]: $3.8
+              - img "test" [ref=e1065]
+            - generic [ref=e1066]:
+              - generic [ref=e1067]:
+                - generic [ref=e1071]:
+                  - heading "Calpico Orange Soda" [level=5] [ref=e1072]:
+                    - generic [ref=e1073]: Calpico Orange Soda
+                  - generic [ref=e1076]: $3.8
+                - img "test" [ref=e1079]
+              - paragraph [ref=e1080]: Calpico with Orange Juice and Soda
+            - generic [ref=e1085]:
+              - generic [ref=e1086]:
+                - heading "Yuzu Soda Hot Yuzu Available" [level=5] [ref=e1087]:
+                  - generic [ref=e1088]: Yuzu Soda
+                  - generic [ref=e1089]: Hot Yuzu Available
+                - generic [ref=e1092]: $3.8
+              - img "test" [ref=e1095]
+            - generic [ref=e1096]:
+              - generic [ref=e1097]:
+                - generic [ref=e1098]:
+                  - heading "Calpico Cran Grape" [level=5] [ref=e1099]:
+                    - generic [ref=e1100]: Calpico Cran Grape
+                  - generic [ref=e1103]: $3.8
+                - img "test" [ref=e1106]
+              - paragraph [ref=e1107]: Calpico with Cranberry Grape Juice
+            - generic [ref=e1114]:
+              - heading "Ramune" [level=5] [ref=e1115]:
+                - generic [ref=e1116]: Ramune
+              - generic [ref=e1120]: $3.2
+            - generic [ref=e1121]:
+              - generic [ref=e1124]:
+                - heading "Calpico" [level=5] [ref=e1125]:
+                  - generic [ref=e1126]: Calpico
+                - generic [ref=e1130]: $3.8
+              - paragraph [ref=e1131]: w/ Water or Soda
+            - generic [ref=e1138]:
+              - heading "Coke" [level=5] [ref=e1139]:
+                - generic [ref=e1140]: Coke
+              - generic [ref=e1144]: $2
+            - generic [ref=e1148]:
+              - heading "Diet Coke" [level=5] [ref=e1149]:
+                - generic [ref=e1150]: Diet Coke
+              - generic [ref=e1154]: $2
+            - generic [ref=e1158]:
+              - heading "Sprite" [level=5] [ref=e1159]:
+                - generic [ref=e1160]: Sprite
+              - generic [ref=e1164]: $2
+            - generic [ref=e1168]:
+              - heading "Ginger Ale" [level=5] [ref=e1169]:
+                - generic [ref=e1170]: Ginger Ale
+              - generic [ref=e1174]: $2
+            - generic [ref=e1178]:
+              - heading "Orange Juice" [level=5] [ref=e1179]:
+                - generic [ref=e1180]: Orange Juice
+              - generic [ref=e1184]: $3.5
+            - generic [ref=e1188]:
+              - heading "Fuze" [level=5] [ref=e1189]:
+                - generic [ref=e1190]: Fuze
+              - generic [ref=e1194]: $2
+            - generic [ref=e1198]:
+              - heading "Cold Oolong Tea" [level=5] [ref=e1199]:
+                - generic [ref=e1200]: Cold Oolong Tea
+              - generic [ref=e1204]: $2
+            - generic [ref=e1208]:
+              - heading "Hot Green Tea" [level=5] [ref=e1209]:
+                - generic [ref=e1210]: Hot Green Tea
+              - generic [ref=e1214]: $1.5
+      - generic [ref=e1216]:
+        - heading "Beer" [level=4] [ref=e1217]: Beer
+        - generic [ref=e1218]:
+          - generic [ref=e1222]:
+            - heading "Draft Sapporo Beer" [level=5] [ref=e1223]:
+              - generic [ref=e1224]: Draft Sapporo Beer
+            - generic [ref=e1225]:
+              - generic [ref=e1227]:
+                - generic [ref=e1228]: Mini glass 236ml
+                - generic [ref=e1229]: $3
+              - generic [ref=e1231]:
+                - generic [ref=e1232]: Pint 473ml
+                - generic [ref=e1233]: $5
+              - generic [ref=e1235]:
+                - generic [ref=e1236]: Pitcher 1800ml
+                - generic [ref=e1237]: $18
+          - generic [ref=e1243]:
+            - heading "Sapporo Alcohole Free Can 355ml" [level=5] [ref=e1244]:
+              - generic [ref=e1245]: Sapporo Alcohole Free
+              - generic [ref=e1246]: Can 355ml
+            - generic [ref=e1250]: $5
+      - generic [ref=e1252]:
+        - heading "Sake・Fruit Wine" [level=4] [ref=e1253]: Sake・Fruit Wine
+        - generic [ref=e1254]:
+          - generic [ref=e1255]:
+            - generic [ref=e1256]:
+              - generic [ref=e1260]:
+                - heading "Hakushika Chokara" [level=5] [ref=e1261]:
+                  - generic [ref=e1262]: Hakushika Chokara
+                - generic [ref=e1263]:
+                  - generic [ref=e1264]:
+                    - generic [ref=e1265]: Glass-120ml-
+                    - generic [ref=e1266]: $7
+                  - generic [ref=e1267]:
+                    - generic [ref=e1268]: Tokkuri-190ml-
+                    - generic [ref=e1269]: $12
+              - img "test" [ref=e1272]
+            - paragraph [ref=e1273]: A distinctly dry sake with a sharp and refreshing finish. Light, well-balanced and smooth with aromas of lemons and green plums on the palate. Great as chilled, room temperature or warmed.
+          - generic [ref=e1274]:
+            - generic [ref=e1275]:
+              - generic [ref=e1276]:
+                - heading "Plum Sake" [level=5] [ref=e1277]:
+                  - generic [ref=e1278]: Plum Sake
+                - generic [ref=e1279]:
+                  - generic [ref=e1280]:
+                    - generic [ref=e1281]: Glass 90ml
+                    - generic [ref=e1282]: $10
+                  - generic [ref=e1283]:
+                    - generic [ref=e1284]: Bottle
+                    - generic [ref=e1285]: $29
+              - img "test" [ref=e1288]
+            - paragraph [ref=e1289]:
+              - generic [ref=e1290]: "*Choose from Straight, On the Rocks or With Soda"
+      - generic [ref=e1292]:
+        - heading "Cocktails" [level=4] [ref=e1293]: Cocktails
+        - generic [ref=e1294]:
+          - generic [ref=e1295]:
+            - generic [ref=e1296]:
+              - generic [ref=e1300]:
+                - heading "Ginger Mojito" [level=5] [ref=e1301]:
+                  - generic [ref=e1302]: Ginger Mojito
+                - generic [ref=e1305]: $7.5
+              - img "test" [ref=e1308]
+            - paragraph [ref=e1309]: 1oz Rum, Lemon juice, Ginger Ale and Mint
+          - generic [ref=e1310]:
+            - generic [ref=e1311]:
+              - generic [ref=e1315]:
+                - heading "Pink Mojito" [level=5] [ref=e1316]:
+                  - generic [ref=e1317]: Pink Mojito
+                - generic [ref=e1320]: $7.5
+              - img "test" [ref=e1323]
+            - paragraph [ref=e1324]: 1oz Rum, Grenadine Sytrup, Sprite, Mix Berries and Mint
+          - generic [ref=e1325]:
+            - generic [ref=e1326]:
+              - generic [ref=e1327]:
+                - heading "Ume Blossom" [level=5] [ref=e1328]:
+                  - generic [ref=e1329]: Ume Blossom
+                - generic [ref=e1332]: $6
+              - img "test" [ref=e1335]
+            - paragraph [ref=e1336]: Ume Shu 1oz, Calpico and Cran Grape Juice
+          - generic [ref=e1340]:
+            - generic [ref=e1343]:
+              - heading "Yuzu High" [level=5] [ref=e1344]:
+                - generic [ref=e1345]: Yuzu High
+              - generic [ref=e1349]: $7.5
+            - paragraph [ref=e1350]: 1oz Vodka + Yuzu Jam + Sprite
+          - generic [ref=e1351]:
+            - generic [ref=e1354]:
+              - heading "Calpico High" [level=5] [ref=e1355]:
+                - generic [ref=e1356]: Calpico High
+              - generic [ref=e1360]: $7.5
+            - paragraph [ref=e1361]: 1oz Vodka + Calpico + Soda
+          - generic [ref=e1365]:
+            - generic [ref=e1368]:
+              - heading "Whisky Highball" [level=5] [ref=e1369]:
+                - generic [ref=e1370]: Whisky Highball
+              - generic [ref=e1374]: $7.5
+            - paragraph [ref=e1375]: 1.5oz Whisky + Soda
+  - contentinfo [ref=e88]:
+    - generic [ref=e91]:
+      - list [ref=e92]:
+        - listitem [ref=e93]:
+          - link "Policies" [ref=e94] [cursor=pointer]:
+            - /url: https://ramenraijin.com/policies/
+        - listitem [ref=e95]:
+          - link "Contact us" [ref=e96] [cursor=pointer]:
+            - /url: https://ramenraijin.com/contact/
+        - listitem [ref=e97]:
+          - link [ref=e98] [cursor=pointer]:
+            - /url: https://zakkushi.com/
+        - listitem [ref=e99]:
+          - link [ref=e100] [cursor=pointer]:
+            - /url: https://www.facebook.com/ramenraijinonwellesley/
+        - listitem [ref=e101]:
+          - link [ref=e102] [cursor=pointer]:
+            - /url: https://www.instagram.com/ramen.raijin/
+        - listitem [ref=e103]:
+          - link [ref=e104] [cursor=pointer]:
+            - /url: https://www.tiktok.com/@ramen.raijin
+        - listitem [ref=e105]:
+          - link [ref=e106] [cursor=pointer]:
+            - /url: https://www.youtube.com/channel/UC7cchhr8SccU1XD7kmaX8Cw
+      - paragraph [ref=e108]: Copyright © ramenraijin.com. All Rights Reserved.

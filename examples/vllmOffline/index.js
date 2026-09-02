@@ -1,5 +1,4 @@
-import { Agent } from '../../src/Agent.js';
-import { LLMService } from '../../src/llmService.js';
+import { Agent, LLMService } from '../../index.js';
 
 /*
 This example demonstrates how to use `agentlib` with a local, offline vLLM server.
@@ -40,7 +39,8 @@ async function main() {
     agent.addInput(input);
 
     try {
-        const response = await agent.run();
+        const history = await agent.run();
+        const response = history[history.length - 1];
         console.log(response.output);
     } catch (error) {
         console.error("\nERROR: Could not connect to the vLLM server.");

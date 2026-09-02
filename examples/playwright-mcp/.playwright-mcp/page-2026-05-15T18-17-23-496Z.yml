@@ -1,0 +1,111 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e6]:
+      - generic [ref=e9]:
+        - link "Home" [ref=e10] [cursor=pointer]:
+          - /url: https://ramenraijin.com
+        - generic [ref=e12]: ▸
+        - generic [ref=e13]: MENU
+      - generic [ref=e16]:
+        - heading [level=4]
+        - generic [ref=e17]:
+          - generic [ref=e18] [cursor=pointer]: FOOD
+          - generic [ref=e19] [cursor=pointer]: DRINKS
+          - generic [ref=e20] [cursor=pointer]: FROZEN
+          - generic [ref=e21] [cursor=pointer]: GIFT
+  - list:
+    - list:
+      - link [ref=e24] [cursor=pointer]:
+        - /url: https://ramenraijin.com
+      - generic [ref=e25]:
+        - generic:
+          - list:
+            - listitem:
+              - link "ABOUT US" [ref=e26] [cursor=pointer]:
+                - /url: https://ramenraijin.com/aboutus
+                - generic [ref=e28]: ABOUT US
+            - listitem:
+              - link "WHAT’S NEW" [ref=e29] [cursor=pointer]:
+                - /url: https://ramenraijin.com/whats-new
+                - generic [ref=e31]: WHAT’S NEW
+            - listitem:
+              - link "RECRUIT" [ref=e32] [cursor=pointer]:
+                - /url: https://ramenraijin.com/aboutus/#udRecruit
+                - generic [ref=e34]: RECRUIT
+            - listitem:
+              - link "RAMEN BLOG" [ref=e35] [cursor=pointer]:
+                - /url: https://ramenraijin.com/ramen_blog/
+                - generic [ref=e37]: RAMEN BLOG
+            - listitem:
+              - link "CONTACT" [ref=e38] [cursor=pointer]:
+                - /url: https://ramenraijin.com/contact
+                - generic [ref=e40]: CONTACT
+            - listitem:
+              - link "POLICIES" [ref=e41] [cursor=pointer]:
+                - /url: https://ramenraijin.com/policies
+                - generic [ref=e43]: POLICIES
+          - generic:
+            - link "RESERVE NOW" [ref=e44] [cursor=pointer]:
+              - /url: https://ramenraijin.com/contact/?reservenow=true
+              - generic [ref=e45]: RESERVE NOW
+            - link "ONLINE ORDER" [ref=e46] [cursor=pointer]:
+              - /url: https://ramenraijin.com/online-order/
+              - generic [ref=e47]: ONLINE ORDER
+    - listitem:
+      - paragraph [ref=e49] [cursor=pointer]: Our Menu
+    - listitem:
+      - paragraph [ref=e51] [cursor=pointer]: Location
+    - listitem:
+      - link "Reserve Now":
+        - /url: https://ramenraijin.com/contact/?reservenow=true
+        - paragraph [ref=e53] [cursor=pointer]:
+          - text: Reserve
+          - text: Now
+    - listitem:
+      - link "Online Order":
+        - /url: https://ramenraijin.com/online-order/
+        - paragraph [ref=e55] [cursor=pointer]:
+          - text: Online
+          - text: Order
+    - listitem [ref=e56] [cursor=pointer]:
+      - paragraph [ref=e62]: Menu
+  - generic [ref=e64]:
+    - link "GO BACK" [ref=e66] [cursor=pointer]:
+      - /url: "#"
+      - generic [ref=e67]: GO BACK
+    - generic [ref=e69]:
+      - heading "Allergy Alert" [level=3] [ref=e71] [cursor=pointer]: Allergy Alert
+      - generic [ref=e73]:
+        - img "Vegetarian Friendly" [ref=e74]
+        - generic [ref=e75]: Vegetarian Friendly
+    - generic [ref=e76]:
+      - generic [ref=e78] [cursor=pointer]: FOOD
+      - generic [ref=e80] [cursor=pointer]: DRINKS
+      - generic [ref=e82] [cursor=pointer]: FROZEN
+      - generic [ref=e84] [cursor=pointer]: GIFT
+    - generic [ref=e87]: <>/div
+  - contentinfo [ref=e88]:
+    - generic [ref=e91]:
+      - list [ref=e92]:
+        - listitem [ref=e93]:
+          - link "Policies" [ref=e94] [cursor=pointer]:
+            - /url: https://ramenraijin.com/policies/
+        - listitem [ref=e95]:
+          - link "Contact us" [ref=e96] [cursor=pointer]:
+            - /url: https://ramenraijin.com/contact/
+        - listitem [ref=e97]:
+          - link [ref=e98] [cursor=pointer]:
+            - /url: https://zakkushi.com/
+        - listitem [ref=e99]:
+          - link [ref=e100] [cursor=pointer]:
+            - /url: https://www.facebook.com/ramenraijinonwellesley/
+        - listitem [ref=e101]:
+          - link [ref=e102] [cursor=pointer]:
+            - /url: https://www.instagram.com/ramen.raijin/
+        - listitem [ref=e103]:
+          - link [ref=e104] [cursor=pointer]:
+            - /url: https://www.tiktok.com/@ramen.raijin
+        - listitem [ref=e105]:
+          - link [ref=e106] [cursor=pointer]:
+            - /url: https://www.youtube.com/channel/UC7cchhr8SccU1XD7kmaX8Cw
+      - paragraph [ref=e108]: Copyright © ramenraijin.com. All Rights Reserved.

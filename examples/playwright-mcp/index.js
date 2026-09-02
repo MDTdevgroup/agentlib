@@ -1,8 +1,4 @@
-import { Agent } from '../../src/Agent.js';
-import { LLMService } from '../../src/llmService.js';
-import { PromptLoader } from '../../src/prompt-loader/promptLoader.js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
+import { Agent, AgentRunner, LLMService, PromptLoader } from '../../index.js';
 
 const server = {
   command: 'npx',
@@ -12,18 +8,22 @@ const server = {
 };
 
 // openai
-// const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
+const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 
 // gemini
-const llm = new LLMService({ provider: 'gemini', apiKey: process.env.GEMINI_API_KEY });
+// const llm = new LLMService({ provider: 'gemini', apiKey: process.env.GEMINI_API_KEY });
 
 async function run() {
   try {
     const promptLoader = await PromptLoader.create('./agentPrompts.md');
     // Set up an agent with multiple MCP servers
     const agent = new Agent(llm, {
-      enableMCP: true
+      enableMCP: true,
+      name: 'ScraperAgent'
     });
+
+    const systemPrompt = promptLoader.getPrompt('instruction').format();
+    agent.addInput({ role: 'system', content: systemPrompt });
 
     console.log('Adding MCP servers...');
 
@@ -36,23 +36,11 @@ async function run() {
       console.log('✗ Playwright server failed:', error.message);
     }
 
-    // Comprehensive example task
-    agent.addInput({
-      role: 'user',
-      content: promptLoader.getPrompt('instruction').format()
-    });
-    while (true) {
-      const result = await agent.run();
-      for (const out of result.rawResponse.output) {
-        if (out.type === 'function_call') {
-          console.log(`Function call: ${out.name}`);
-          console.log(`Arguments: ${out.arguments}`);
-        }
-      }
-      console.log('\n=== Agent Response ===');
-      console.log(result.output);
-      console.log("result type: ", typeof result.output);
-    }
+    const runner = new AgentRunner(agent);
+    let history = await runner.run();
+
+    console.log('\n=== Agent Response ===');
+    console.log(history[history.length - 1].output);
 
     await agent.cleanup();
 

@@ -1,7 +1,15 @@
-import './src/instrumentation.js';
-export { LLMService } from './src/llmService.js';
-export { Agent } from './src/Agent.js';
-export { PromptLoader } from './src/prompt-loader/promptLoader.js';
-export { ToolLoader } from "./src/ToolLoader.js";
-export { startA2AServer } from "./src/a2a/A2AServer.js";
-export { createRemoteAgentTool } from "./src/a2a/RemoteAgentTool.js";
+export { LLMService } from './src/services/llm-service.js';
+export { Context } from './src/memory/context.js';
+export { AgentRunner } from './src/core/agent-runner.js';
+export { Agent } from './src/core/agent.js';
+export { PromptLoader, Prompt } from './src/loaders/prompt-loader.js';
+export { ToolLoader } from "./src/loaders/tool-loader.js";
+export { DomainObservability, createTracer } from "./src/services/observability.js";
+export { initTelemetry } from "./src/services/telemetry.js";
+export { loadOptional } from "./src/util/optional-dep.js";
+export {
+    BaseCompactor,
+    WindowCompactor,
+    SummarizerCompactor,
+    ProvenceCompactor,
+} from "./src/memory/compactors/index.js";

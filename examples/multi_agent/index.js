@@ -1,10 +1,91 @@
 import { Agent, LLMService, PromptLoader } from '../../index.js';
 import { travelAgentToolLoader, grumpyTravelerToolLoader } from './tools.js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
+
+/**
+ * Custom CPS-based multi-agent conversation loop demo.
+ *
+ * Note: AgentLib's core Agent and AgentRunner primitives provide `next()` and `branch()`
+ * methods for turn stepping and time-travel branching. This example demonstrates how you
+ * can construct a custom Continuation-Passing Style (CPS) loop using snapshots.
+ */
+
+/**
+ * @param {number}   turn
+ * @param {Agent}    travelAgent
+ * @param {Agent}    grumpyTraveler
+ * @param {number}   maxTurns
+ * @param {Function} k  – the continuation: (TurnResult) => Promise<void>
+ */
+async function runTurn(turn, travelAgent, grumpyTraveler, maxTurns, k) {
+    // ── snapshot both agents' contexts before anything mutates ──
+    const taSnapshot = travelAgent.context;
+    const gtSnapshot = grumpyTraveler.context;
+
+    // ── Travel Agent responds ──
+    console.log(`\n--- Turn ${turn} ---`);
+    console.log("Travel Agent is thinking...");
+    const taHistory = await travelAgent.run();
+    const TAResponse = taHistory[taHistory.length - 1];
+    const travelAgentReply = TAResponse.output || '(No text response)';
+    console.log(`\nTravel Agent: ${travelAgentReply}`);
+
+    // ── Grumpy Traveler responds ──
+    grumpyTraveler.addInput({ role: 'user', content: travelAgentReply });
+    console.log("\nGrumpy Traveler is thinking...");
+    const gtHistory = await grumpyTraveler.run();
+    const GTResponse = gtHistory[gtHistory.length - 1];
+
+    const isSatisfied = GTResponse.executedTools?.some(t => t.name === 'exit_loop') ?? false;
+    const grumpyReply = isSatisfied ? null : (GTResponse.output || '(No text response)');
+
+    if (!isSatisfied) {
+        console.log(`\nGrumpy Traveler: ${grumpyReply}`);
+        travelAgent.addInput({ role: 'user', content: grumpyReply });
+    }
+
+    // ── Pass result into the continuation ──
+    await k({
+        turn,
+        travelAgentReply,
+        grumpyReply,
+        isSatisfied,
+
+        /**
+         * Resume from this turn's starting state with a new continuation.
+         * Restores the snapshots, then re-enters runTurn in CPS.
+         *
+         * @param {Function} k2 – new continuation for the replayed turn
+         */
+        resume: async (k2) => {
+            travelAgent.context = taSnapshot;
+            grumpyTraveler.context = gtSnapshot;
+            await runTurn(turn, travelAgent, grumpyTraveler, maxTurns, k2);
+        },
+    });
+}
+
+/**
+ * Drives the CPS loop: each continuation decides whether to keep going.
+ */
+async function loop(turn, travelAgent, grumpyTraveler, maxTurns, history) {
+    await runTurn(turn, travelAgent, grumpyTraveler, maxTurns, async (result) => {
+        history.push(result);
+
+        if (result.isSatisfied) {
+            console.log("\nInteraction successful! The grumpy traveler booked the trip.");
+            return;
+        }
+        if (turn >= maxTurns) {
+            console.log("\nInteraction limit reached. The grumpy traveler walked out.");
+            return;
+        }
+
+        await loop(turn + 1, travelAgent, grumpyTraveler, maxTurns, history);
+    });
+}
 
 async function runMultiAgent() {
-    let isSatisfied = false;
+    const maxTurns = 5;
     const llmService = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 
     const travelAgent = new Agent(llmService, {
@@ -31,46 +112,31 @@ async function runMultiAgent() {
         content: promptLoader.getPrompt('grumpy_traveler_system_instruction').format(),
     });
 
-    console.log("Starting Multi-Agent Conversation...");
+    console.log("Starting Multi-Agent Conversation...\n");
 
-    let initialMessage = "Give me a vacation plan.";
-    console.log(`\nGrumpy Traveler: ${initialMessage}`);
-
+    const initialMessage = "Give me a vacation plan.";
+    console.log(`Grumpy Traveler: ${initialMessage}`);
     travelAgent.addInput({ role: 'user', content: initialMessage });
 
-    let turnCount = 0;
-    while (!isSatisfied && turnCount < 5) {
-        turnCount++;
+    // ── Run the conversation in CPS, collecting every turn result ──
+    const history = [];
+    await loop(1, travelAgent, grumpyTraveler, maxTurns, history);
 
-        console.log(`\n--- Turn ${turnCount} ---`);
-        console.log("Travel Agent is thinking...");
-        const TAResponse = await travelAgent.run();
-        const travelAgentReply = TAResponse.output || '(No text response)';
+    // ── Branching demo: resume from Turn 1 with a fresh continuation ──
+    console.log("\n\n========== BRANCHING DEMO ==========");
+    console.log("Resuming from Turn 1 to explore an alternative branch...\n");
 
-        console.log(`\n%cTravel Agent: ${travelAgentReply}`, "color: blue; font-size: 20px;");
+    await history[0].resume(async (branch) => {
+        console.log(`\n[Branch] Turn ${branch.turn} — Travel Agent (alternate):`);
+        console.log(branch.travelAgentReply);
 
-
-        grumpyTraveler.addInput({ role: 'user', content: travelAgentReply });
-
-        console.log("\nGrumpy Traveler is thinking...");
-        const GTResponse = await grumpyTraveler.run();
-
-        if (GTResponse.executed && GTResponse.executed.some(t => t.name === 'exit_loop')) {
-            isSatisfied = true;
-            break;
+        if (branch.grumpyReply) {
+            console.log(`[Branch] Grumpy Traveler (alternate):`);
+            console.log(branch.grumpyReply);
         }
 
-        const grumpyReply = GTResponse.output || '(No text response)';
-        console.log(`\n%cGrumpy Traveler: ${grumpyReply}`, "color: red; font-size: 20px;");
-
-        travelAgent.addInput({ role: 'user', content: grumpyReply });
-    }
-
-    if (!isSatisfied) {
-        console.log("\nInteraction limit reached. The grumpy traveler walked out.");
-    } else {
-        console.log("\nInteraction successful! The grumpy traveler booked the trip.");
-    }
+        // Could keep going: await branch.resume(async (b2) => { ... });
+    });
 }
 
 runMultiAgent().catch(console.error);

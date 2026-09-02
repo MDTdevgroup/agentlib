@@ -1,13 +1,5 @@
-
-import dotenv from 'dotenv';
-dotenv.config();
-
-import { Agent, ToolLoader, createRemoteAgentTool, LLMService } from '../../index.js';
-import path from 'path';
-import { fileURLToPath } from 'url';
-dotenv.config({ path: '../../.env' });
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { Agent, ToolLoader, LLMService } from '../../index.js';
+import { createRemoteAgentTool } from '../../src/a2a/index.js';
 
 async function runClient() {
     // Create a tool that talks to the remote agent
@@ -21,19 +13,14 @@ async function runClient() {
     const agent = new Agent(llmService, {
         toolLoader,
         model: 'gpt-5',
-        redundantToolInfo: true
     });
 
     console.log("User: What is 123 + 456?");
     agent.addInput({ role: 'user', content: 'What is 123 + 456?' });
 
-    const response = await agent.run();
-
-    if (response.rawResponse && response.rawResponse.content) {
-        console.log("Agent Response:", response.rawResponse.content);
-    } else {
-        console.log("Agent Response (Full Object):", JSON.stringify(response, null, 2));
-    }
+    const history = await agent.run();
+    const response = history[history.length - 1];
+    console.log("CLIENT:", response.output);
 }
 
 runClient();
