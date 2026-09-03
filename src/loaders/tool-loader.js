@@ -6,10 +6,24 @@ import { MCPManager } from "../mcp/mcp-manager.js";
 export class ToolLoader {
     /**
      * @param {boolean} [enableMCP=false] - Whether to initialize the MCP manager.
+     * @param {object} [options={}]
+     * @param {EventEmitter} [options.eventEmitter=null] - Event emitter for MCP events.
      */
-    constructor(enableMCP = false) {
+    constructor(enableMCP = false, { eventEmitter = null } = {}) {
         this.nativeTools = new Map();
-        this.mcpManager = enableMCP ? new MCPManager() : null;
+        this.events = eventEmitter;
+        this.mcpManager = enableMCP ? new MCPManager({ eventEmitter: this.events }) : null;
+    }
+
+    /**
+     * Sets or updates the event emitter for telemetry and observability.
+     * @param {EventEmitter} eventEmitter
+     */
+    setEventEmitter(eventEmitter) {
+        this.events = eventEmitter;
+        if (this.mcpManager) {
+            this.mcpManager.events = eventEmitter;
+        }
     }
 
     /**

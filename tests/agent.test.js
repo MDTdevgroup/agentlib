@@ -172,4 +172,37 @@ describe('Agent Core Loop (Offline)', () => {
             }
         );
     });
+
+    test('Agent trace metadata reads mcpInfo via toolLoader.getMCPInfo()', () => {
+        const llm = new LLMService({ provider: 'fake' });
+
+        const traces = [];
+        const eventEmitter = {
+            emit: (name, payload) => traces.push({ name, payload }),
+        };
+
+        const agent = new Agent(llm, { name: 'mcp-trace-agent', eventEmitter, enableMCP: false });
+        agent.addInput({ role: 'user', content: 'hi' });
+
+        // Trigger start
+        agent.start();
+
+        const startTrace = traces.find(t => t.name === 'agent:start');
+        assert.ok(startTrace, 'agent:start trace must be emitted');
+        assert.equal(startTrace.payload.attributes.mcp_enabled, false);
+    });
+
+    test('Agent aborts immediately when passed an aborted signal', async () => {
+        const controller = new AbortController();
+        controller.abort(new Error('Agent run aborted'));
+
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, { name: 'cancellable-agent' });
+        agent.addInput({ role: 'user', content: 'Hello' });
+
+        await assert.rejects(
+            () => agent.run(null, { signal: controller.signal }),
+            /Agent run aborted/
+        );
+    });
 });

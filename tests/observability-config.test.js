@@ -113,6 +113,22 @@ describe('Observability, Config Accessors & Release Validation', () => {
             // Cleanup temp traces
             await fs.rm(tempTracesDir, { recursive: true, force: true });
         });
+
+        test('DomainObservability listens to and dispatches a2a:start, complete, and error', () => {
+            const emitter = new EventEmitter();
+            const obs = new DomainObservability(emitter, { mode: 'none' });
+            let dispatched = [];
+            obs.dispatch = async (type, payload) => { dispatched.push({ type, payload }); };
+
+            emitter.emit('a2a:start', { name: 'server_start' });
+            emitter.emit('a2a:complete', { name: 'server_start' });
+            emitter.emit('a2a:error', { name: 'server_start', error: 'port in use' });
+
+            assert.equal(dispatched.length, 3);
+            assert.equal(dispatched[0].type, 'start');
+            assert.equal(dispatched[1].type, 'complete');
+            assert.equal(dispatched[2].type, 'error');
+        });
     });
 
     describe('Path Traversal Defense in FileHandler', () => {

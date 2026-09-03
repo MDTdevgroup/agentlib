@@ -85,7 +85,10 @@ export class Agent {
             }
         }
         this.model = model;
-        this.toolLoader = toolLoader || new ToolLoader(enableMCP);
+        this.toolLoader = toolLoader || new ToolLoader(enableMCP, { eventEmitter: this.events });
+        if (this.toolLoader && typeof this.toolLoader.setEventEmitter === 'function' && !this.toolLoader.events) {
+            this.toolLoader.setEventEmitter(this.events);
+        }
         this.outputSchema = outputSchema;
         this.toolConcurrency = toolConcurrency;
         this.onToolError = onToolError;
@@ -109,6 +112,7 @@ export class Agent {
         }
 
         this.additionalOptions = options;
+        this.signal = options.signal || null;
         this.context = new Context();
 
         if (typeof pruningStrategy === 'string') {
@@ -199,7 +203,8 @@ export class Agent {
     /**
      * Executes a single tool call, handling errors, missing tools, and telemetry.
      */
-    async _executeSingleTool(call, traceId, rootSpanId) {
+    async _executeSingleTool(call, traceId, rootSpanId, signal = null) {
+        signal?.throwIfAborted?.();
         const name = toolCallName(call);
         const callId = toolCallId(call);
         const toolSpanId = "tool_call:" + name + "-" + randomUUID();
@@ -265,7 +270,7 @@ export class Agent {
         });
 
         try {
-            const result = await tool.func(args);
+            const result = await tool.func(args, { signal });
             this._emitTrace('tool:complete', {
                 traceId,
                 spanId: toolSpanId,
@@ -310,7 +315,7 @@ export class Agent {
      * @param {Context|null} [externalContext=null] - Optional external context to execute turn against.
      * @returns {Promise<object>} The first turn object in CPS format.
      */
-    async start(externalContext = null) {
+    async start(externalContext = null, options = {}) {
         let activeContext;
         if (externalContext !== null) {
             activeContext = externalContext;
@@ -346,20 +351,22 @@ export class Agent {
         });
 
         const isExternalContextNull = externalContext === null;
-        return this._executeTurn(1, activeContext, [], traceId, rootSpanId, isExternalContextNull, 0);
+        return this._executeTurn(1, activeContext, [], traceId, rootSpanId, isExternalContextNull, 0, options);
     }
 
     /**
      * Runs the agent for a single conversational turn, driving the CPS loop to completion automatically.
-     * @returns {Promise<object>} The final response object from the LLM, including execution details.
+     * @param {Context|Array<object>} [externalContext=null] - Optional external context to execute turn against.
+     * @param {object} [options={}] - Execution options, including { signal }.
+     * @returns {Promise<Array<object>>} The list of turn objects representing the execution history.
      */
-    async run(externalContext = null) {
+    async run(externalContext = null, options = {}) {
         let history = [];
-        let currentTurn = await this.start(externalContext);
+        let currentTurn = await this.start(externalContext, options);
         history.push(currentTurn);
 
         while (!currentTurn.isDone) {
-            currentTurn = await currentTurn.next();
+            currentTurn = await currentTurn.next(null, options);
             history.push(currentTurn);
         }
 
@@ -389,7 +396,10 @@ export class Agent {
     /**
      * Executes a single step of the agent's inner loop (LLM Call -> Tool Execution).
      */
-    async _executeTurn(stepNumber, currentContext, executedTools, traceId, rootSpanId, updateInternalContext, totalRunTokens = 0) {
+    async _executeTurn(stepNumber, currentContext, executedTools, traceId, rootSpanId, updateInternalContext, totalRunTokens = 0, options = {}) {
+        const signal = options.signal || this.signal;
+        signal?.throwIfAborted?.();
+
         if (stepNumber > this.maxToolCalls) {
             // Emit agent complete with step limit stop reason
             this._emitTrace('agent:complete', {
@@ -451,9 +461,14 @@ export class Agent {
 
         // Apply compactor strategy to wire messages if configured
         let messagesToSend = currentContext.getMessages();
+        let compactionTokens = 0;
         if (this.compactor) {
             try {
                 messagesToSend = await this.compactor.compact(messagesToSend);
+                if (this.compactor.lastCompactionTokens) {
+                    compactionTokens = this.compactor.lastCompactionTokens;
+                    this.compactor.lastCompactionTokens = 0;
+                }
             } catch (compactorErr) {
                 this._emitTrace('compactor:error', {
                     traceId,
@@ -489,6 +504,7 @@ export class Agent {
             model: this.model,
             outputSchema: this.outputSchema,
             tools: allTools,
+            signal,
             ...this.additionalOptions
         });
 
@@ -509,10 +525,12 @@ export class Agent {
         const usageTokens = response.rawResponse?.usage?.total_tokens
             ?? response.rawResponse?.usage?.totalTokens
             ?? (estimateTokens(messagesToSend) + (output ? estimateTokens(output) : 10));
-        const updatedRunTokens = totalRunTokens + usageTokens;
+        const updatedRunTokens = totalRunTokens + usageTokens + compactionTokens;
 
         let nextContext = currentContext;
-        const rawItems = Array.isArray(rawResponse?.output) ? rawResponse.output : [];
+        const rawItems = typeof this.llmService?.fromProvider === 'function'
+            ? this.llmService.fromProvider(rawResponse)
+            : (Array.isArray(rawResponse?.output) ? rawResponse.output : []);
 
         rawItems.forEach(item => {
             if (isToolCall(item)) {
@@ -548,7 +566,7 @@ export class Agent {
         let newExecutedTools = [...executedTools];
 
         if (!isDone) {
-            const thunks = functionCalls.map(call => () => this._executeSingleTool(call, traceId, rootSpanId));
+            const thunks = functionCalls.map(call => () => this._executeSingleTool(call, traceId, rootSpanId, signal));
             const toolSettled = await asyncSettleAll(thunks, this.toolConcurrency, 0);
 
             for (let i = 0; i < toolSettled.length; i++) {
@@ -587,9 +605,10 @@ export class Agent {
                 rawResponse: rawResponse,
                 executedTools: newExecutedTools,
                 context: nextContext,
-                next: async (overrideContext = null, _options = {}) => {
+                next: async (overrideContext = null, nextOptions = {}) => {
                     const stateToPass = overrideContext || nextContext;
-                    return this._executeTurn(stepNumber + 1, stateToPass, newExecutedTools, traceId, rootSpanId, updateInternalContext, updatedRunTokens);
+                    const mergedOpts = { ...options, ...nextOptions };
+                    return this._executeTurn(stepNumber + 1, stateToPass, newExecutedTools, traceId, rootSpanId, updateInternalContext, updatedRunTokens, mergedOpts);
                 }
             };
         } else {

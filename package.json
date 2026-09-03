@@ -10,12 +10,12 @@
     "./telemetry": "./src/services/telemetry.js"
   },
   "engines": {
-    "node": ">=20.12.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "start": "node index.js",
-    "test": "node --test tests/*.test.js",
-    "test:live": "node --env-file=.env --test tests/live/*.test.js",
+    "test": "node --test 'tests/*.test.js'",
+    "test:live": "node --env-file=.env --test 'tests/live/*.test.js'",
     "lint": "eslint src/ tests/"
   },
   "author": "Peebles Group",
@@ -58,9 +58,17 @@
     }
   },
   "devDependencies": {
+    "@a2a-js/sdk": "^1.1.0",
     "@eslint/js": "^9.39.5",
+    "@opentelemetry/auto-instrumentations-node": "^0.80.0",
+    "@opentelemetry/exporter-trace-otlp-proto": "^0.222.0",
+    "@opentelemetry/sdk-node": "^0.222.0",
     "eslint": "^9.39.5",
-    "globals": "^15.15.0"
+    "express": "^5.2.1",
+    "globals": "^15.15.0",
+    "mongodb": "^7.6.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^6.0.1"
   },
   "files": [
     "index.js",

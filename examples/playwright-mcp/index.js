@@ -1,4 +1,5 @@
 import { Agent, AgentRunner, LLMService, PromptLoader } from '../../index.js';
+import { fileURLToPath } from 'node:url';
 
 const server = {
   command: 'npx',
@@ -15,7 +16,8 @@ const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_
 
 async function run() {
   try {
-    const promptLoader = await PromptLoader.create('./agentPrompts.md');
+    const promptsPath = fileURLToPath(new URL('./agentPrompts.md', import.meta.url));
+    const promptLoader = await PromptLoader.create(promptsPath);
     // Set up an agent with multiple MCP servers
     const agent = new Agent(llm, {
       enableMCP: true,

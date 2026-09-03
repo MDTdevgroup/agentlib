@@ -62,6 +62,11 @@ export async function withRetries(retrySpec = {}, thunk, isRetryableClassifier =
     let attempts = 0;
 
     while (attempts <= retry.maxRetries) {
+        options.signal?.throwIfAborted?.();
+        if (options.signal?.aborted) {
+            throw options.signal.reason || makeException('AbortError', 'Operation aborted by caller');
+        }
+
         const controller = new AbortController();
         let timeoutId = undefined;
 
@@ -78,15 +83,7 @@ export async function withRetries(retrySpec = {}, thunk, isRetryableClassifier =
         };
 
         if (options.signal) {
-            if (options.signal.aborted) {
-                controller.abort(options.signal.reason);
-                if (typeof options.signal.throwIfAborted === 'function') {
-                    options.signal.throwIfAborted();
-                }
-                throw options.signal.reason || makeException('AbortError', 'Operation aborted by caller');
-            } else {
-                options.signal.addEventListener('abort', onParentAbort, { once: true });
-            }
+            options.signal.addEventListener('abort', onParentAbort, { once: true });
         }
 
         try {
@@ -115,12 +112,14 @@ export async function withRetries(retrySpec = {}, thunk, isRetryableClassifier =
 
             const nextDelay = retryInfo.retryAfterMs ?? backoffDelay(attempts, retry);
 
-            // Last failure: wait before throwing so caller doesn't immediately slam service
+            // Last failure: once max retries are exhausted, fail immediately without a terminal sleep.
+            // Attach retryAfterMs to exception payload so caller or circuit breaker can observe it.
             if (attempts >= retry.maxRetries) {
-                if (nextDelay > 0) {
-                    await sleep(nextDelay);
-                }
-                throw makeException('RetryExhausted', `Exhausted all ${retry.maxRetries} retries`, { cause: e });
+                throw makeException(
+                    'RetryExhausted',
+                    { message: `Exhausted all ${retry.maxRetries} retries`, attempts, retryAfterMs: nextDelay },
+                    { cause: e }
+                );
             }
 
             attempts += 1;
@@ -136,7 +135,7 @@ export async function withRetries(retrySpec = {}, thunk, isRetryableClassifier =
             }
 
             if (nextDelay > 0) {
-                await sleep(nextDelay);
+                await sleep(nextDelay, options.signal);
             }
         } finally {
             if (timeoutId !== undefined) {

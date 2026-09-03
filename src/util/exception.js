@@ -9,7 +9,9 @@ export class Exception extends Error {
      * @param {ErrorOptions} [options] - Native error options (e.g. { cause: error })
      */
     constructor(type, payload = null, options = undefined) {
-        const message = typeof payload === 'string' ? `${type}: ${payload}` : `${type}`;
+        const message = typeof payload === 'string'
+            ? `${type}: ${payload}`
+            : (payload?.message ? `${type}: ${payload.message}` : `${type}`);
         super(message, options);
         this.name = 'Exception';
         this.type = type;

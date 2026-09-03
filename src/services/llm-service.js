@@ -21,6 +21,13 @@ export class LLMService {
         this.events = eventEmitter;
     }
 
+    fromProvider(rawResponse) {
+        if (typeof this.providerNamespace?.fromProvider === 'function') {
+            return this.providerNamespace.fromProvider(rawResponse);
+        }
+        return Array.isArray(rawResponse?.output) ? rawResponse.output : [];
+    }
+
     async chat(input, {
         model = getDefaultModel(this.provider),
         retry = getDefaultRetrySpec(),
