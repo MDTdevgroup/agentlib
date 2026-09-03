@@ -4,11 +4,15 @@ import { Agent } from '../src/core/agent.js';
 import { LLMService } from '../src/services/llm-service.js';
 import { registerProvider } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { rm } from 'node:fs/promises';
 import {
     getModelLimits,
     getModelContextLimit,
     registerModelLimit,
     loadModelLimitsFromFile,
+    saveModelLimitsToFile,
 } from '../src/providers/model-limits.js';
 import { _fetchModelLimits } from '../src/providers/gemini.js';
 
@@ -57,12 +61,33 @@ describe('Model Context Limits Resolution & Dynamic Fetching', () => {
             assert.equal(getModelContextLimit('openai', 'gpt-5-preview'), 500000);
         });
 
-        test('loadModelLimitsFromFile reads canonical model-limits.json', async () => {
+        test('loadModelLimitsFromFile returns active limits when called without path', async () => {
             const table = await loadModelLimitsFromFile();
             assert.ok(table.openai);
             assert.ok(table.gemini);
             assert.ok(table.vllm);
             assert.equal(table.gemini['gemini-1.5-pro'].inputTokenLimit, 2097152);
+        });
+
+        test('saveModelLimitsToFile and loadModelLimitsFromFile work with custom path', async () => {
+            const tempFile = join(tmpdir(), `limits-${Date.now()}.json`);
+            try {
+                registerModelLimit('openai', 'custom-temp-model', { inputTokenLimit: 99999, outputTokenLimit: 8888 });
+                await saveModelLimitsToFile(tempFile);
+                const loaded = await loadModelLimitsFromFile(tempFile);
+                assert.equal(loaded.openai['custom-temp-model'].inputTokenLimit, 99999);
+            } finally {
+                await rm(tempFile, { force: true }).catch(() => {});
+            }
+        });
+
+        test('saveModelLimitsToFile throws when filePath is missing to protect package install directory', async () => {
+            await assert.rejects(
+                async () => {
+                    await saveModelLimitsToFile();
+                },
+                /requires an explicit target filePath/
+            );
         });
     });
 

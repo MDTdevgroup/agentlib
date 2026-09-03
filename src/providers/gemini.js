@@ -28,10 +28,11 @@ export function getModelLimits(model = defaultModel) {
  *
  * @param {object} client - GoogleGenAI client instance
  * @param {object} [options={}]
- * @param {boolean} [options.updateFile=false] - Whether to write updated limits back to model-limits.json
+ * @param {boolean} [options.updateFile=false] - Whether to write updated limits back to a file
+ * @param {string} [options.filePath=null] - Target file path for persisting model limits
  * @returns {Promise<Record<string, { inputTokenLimit: number, outputTokenLimit: number }>>}
  */
-export async function _fetchModelLimits(client, { updateFile = false } = {}) {
+export async function _fetchModelLimits(client, { updateFile = false, filePath = null } = {}) {
     const discovered = {};
     if (!client || !client.models) {
         return discovered;
@@ -72,8 +73,8 @@ export async function _fetchModelLimits(client, { updateFile = false } = {}) {
             });
         }
 
-        if (updateFile && Object.keys(discovered).length > 0) {
-            await saveModelLimitsToFile();
+        if (updateFile && filePath && Object.keys(discovered).length > 0) {
+            await saveModelLimitsToFile(filePath);
         }
     } catch {
         // Fall back gracefully if listing models fails
@@ -299,7 +300,9 @@ export function fromProvider(rawResponse) {
     if (!rawResponse || !Array.isArray(rawResponse.output)) {
         return [];
     }
-    return rawResponse.output;
+    const items = rawResponse.output;
+    items.output = items;
+    return items;
 }
 
 export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, tools, signal, ...options } = {}) {

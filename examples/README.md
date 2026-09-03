@@ -43,7 +43,14 @@ node --env-file=.env examples/sqlAgent/index.js
 ```
 
 ### 4. Playwright MCP
-Requires `@modelcontextprotocol/sdk` (Tier 1):
+Uses MCP with Playwright (npx `@playwright/mcp`):
 ```bash
 node --env-file=.env examples/playwright-mcp/index.js
+```
+
+### 5. RAG Example
+Requires local or remote MongoDB and `mongodb`:
+```bash
+npm install mongodb
+node --env-file=.env examples/rag-example/index.js
 ```

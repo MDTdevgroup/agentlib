@@ -222,6 +222,22 @@ describe('Canonical Message Format & Abstraction Barrier', () => {
             assert.equal(isTextMessage(vllmResponse.output[0]), true);
             assert.equal(messageText(vllmResponse.output[0]), 'vLLM done');
         });
+
+        test('LLMService fromProvider normalizes provider responses into canonical arrays', () => {
+            const fakeProvider = FakeProvider.createFakeProvider();
+            registerProvider('fake-norm-msg', fakeProvider);
+            const llm = new LLMService({ provider: 'fake-norm-msg' });
+
+            const raw = {
+                output: [
+                    { type: 'message', role: 'assistant', content: 'Hello' },
+                    { type: 'function_call', call_id: 'c1', name: 't1', arguments: '{}' },
+                ],
+            };
+            const items = llm.fromProvider(raw);
+            assert.ok(Array.isArray(items));
+            assert.equal(items.length, 2);
+        });
     });
 
     describe('Full Agent Loop with Canonical Messages', () => {

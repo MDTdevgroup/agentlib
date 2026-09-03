@@ -215,11 +215,13 @@ export class DomainObservability {
         emitter.on('tool:start', (p) => this.dispatch('start', p));
         emitter.on('llm:start', (p) => this.dispatch('start', p));
         emitter.on('agent_runner:start', (p) => this.dispatch('start', p));
+        emitter.on('a2a:start', (p) => this.dispatch('start', p));
 
         // COMPLETE events
         emitter.on('agent:complete', (p) => this.dispatch('complete', p));
         emitter.on('tool:complete', (p) => this.dispatch('complete', p));
         emitter.on('agent_runner:complete', (p) => this.dispatch('complete', p));
+        emitter.on('a2a:complete', (p) => this.dispatch('complete', p));
         emitter.on('llm:complete', (p) => {
             if (p.attributes && p.attributes.usage) {
                 p.attributes.usage = this.normalizeUsage(p.attributes.usage);
@@ -232,6 +234,7 @@ export class DomainObservability {
         emitter.on('tool:error', (p) => this.dispatch('error', p));
         emitter.on('llm:error', (p) => this.dispatch('error', p));
         emitter.on('agent_runner:error', (p) => this.dispatch('error', p));
+        emitter.on('a2a:error', (p) => this.dispatch('error', p));
     }
 
     /**

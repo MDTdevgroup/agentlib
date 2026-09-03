@@ -12,4 +12,7 @@ export {
     WindowCompactor,
     SummarizerCompactor,
     ProvenceCompactor,
+    groupAtomicUnits,
+    truncateToBudget,
+    estimateTokens,
 } from "./src/memory/compactors/index.js";

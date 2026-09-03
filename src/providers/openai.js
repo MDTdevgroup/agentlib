@@ -105,7 +105,7 @@ export function fromProvider(rawResponse) {
     if (!rawResponse || !Array.isArray(rawResponse.output)) {
         return [];
     }
-    return rawResponse.output.map((item) => {
+    const items = rawResponse.output.map((item) => {
         if (item.type === 'function_call') {
             return {
                 type: 'function_call',
@@ -141,6 +141,8 @@ export function fromProvider(rawResponse) {
         }
         return item;
     });
+    items.output = items;
+    return items;
 }
 
 export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, signal, ...options } = {}) {

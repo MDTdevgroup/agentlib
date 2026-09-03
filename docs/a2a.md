@@ -50,11 +50,11 @@ You can connect to a remote A2A agent and expose it as a local callable tool to 
 import { Agent, LLMService } from '@peebles-group/agentlib-js';
 import { createRemoteAgentTool } from '@peebles-group/agentlib-js/a2a';
 
-const remoteAgentTool = createRemoteAgentTool({
-    name: 'remote_calculator',
-    description: 'Executes mathematical computations on a remote calculator agent',
-    url: 'http://localhost:4000/a2a/jsonrpc'
-});
+const remoteAgentTool = await createRemoteAgentTool(
+    'http://localhost:4000/a2a/jsonrpc',
+    'remote_calculator',
+    'Executes mathematical computations on a remote calculator agent'
+);
 
 const orchestratorLlm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 const orchestratorAgent = new Agent(orchestratorLlm, {

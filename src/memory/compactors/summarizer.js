@@ -165,11 +165,49 @@ export class SummarizerCompactor extends BaseCompactor {
         ];
 
         let summaryText = '';
+        let summarizerUsageTokens = 0;
+        const compactorSpanId = 'llm_compactor_' + Date.now();
+
+        if (this.events) {
+            this.events.emit('llm:start', {
+                spanId: compactorSpanId,
+                name: 'llm_summarizer_compact',
+                attributes: {
+                    llm_provider: this.llmService.provider,
+                    model: this.model,
+                    input: summaryPrompt,
+                    input_length: summaryPrompt.length,
+                    purpose: 'compaction_summary',
+                },
+            });
+        }
+
         try {
             const response = await this.llmService.chat(summaryPrompt, { model: this.model });
             summaryText = messageText(response) || (typeof response.output === 'string' ? response.output : '');
+            summarizerUsageTokens = response.rawResponse?.usage?.total_tokens
+                ?? response.rawResponse?.usage?.totalTokens
+                ?? (estimateTokens(summaryPrompt) + estimateTokens(summaryText));
+            this.lastCompactionTokens = (this.lastCompactionTokens || 0) + summarizerUsageTokens;
+
+            if (this.events) {
+                this.events.emit('llm:complete', {
+                    spanId: compactorSpanId,
+                    name: 'llm_summarizer_compact',
+                    attributes: {
+                        model: this.model,
+                        usage: response.rawResponse?.usage || { total_tokens: summarizerUsageTokens },
+                        response,
+                    },
+                });
+            }
         } catch (err) {
             if (this.events) {
+                this.events.emit('llm:error', {
+                    spanId: compactorSpanId,
+                    name: 'llm_summarizer_compact',
+                    error: err.message,
+                });
                 this.events.emit('compactor:error', {
                     strategy: 'summarizer',
                     error: `LLM summarization failed: ${err.message}. Falling back to sliding window truncation.`,

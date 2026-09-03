@@ -1,6 +1,7 @@
 import {
     isToolCall,
     isToolResult,
+    isTextMessage,
     toolCallId,
 } from '../message.js';
 
@@ -133,10 +134,57 @@ export function groupAtomicUnits(messages) {
 }
 
 /**
+ * Clamps an oversized atomic unit down to fit within a maximum token budget.
+ * Applies character-level truncation to tool outputs and large text content as a last resort.
+ *
+ * @param {Array<object>} unit - Atomic unit of messages
+ * @param {number} maxTokens - Token budget for this unit
+ * @returns {Array<object>}
+ */
+export function clampUnitToBudget(unit, maxTokens) {
+    if (!Array.isArray(unit) || unit.length === 0) return unit;
+    const maxChars = Math.max(100, Math.floor((maxTokens - (unit.length * 4)) * 4));
+
+    return unit.map((msg) => {
+        if (!msg || typeof msg !== 'object') return msg;
+
+        if (isToolResult(msg)) {
+            const rawOutput = typeof msg.output === 'string' ? msg.output : JSON.stringify(msg.output ?? null);
+            if (rawOutput && rawOutput.length > maxChars) {
+                const truncatedText = rawOutput.slice(0, Math.max(20, maxChars - 25)) + '... [truncated]';
+                let parsedOutput = truncatedText;
+                if (typeof msg.output === 'object' && msg.output !== null) {
+                    parsedOutput = {
+                        _truncated: true,
+                        preview: truncatedText,
+                    };
+                }
+                return {
+                    ...msg,
+                    output: parsedOutput,
+                };
+            }
+        } else if (isTextMessage(msg)) {
+            const rawContent = typeof msg.content === 'string' ? msg.content : (msg.text || '');
+            if (rawContent && rawContent.length > maxChars) {
+                const truncatedText = rawContent.slice(0, Math.max(20, maxChars - 25)) + '... [truncated]';
+                return {
+                    ...msg,
+                    content: truncatedText,
+                    text: truncatedText,
+                };
+            }
+        }
+        return msg;
+    });
+}
+
+/**
  * Truncates an array of messages to fit within a token budget while:
  * 1. Preserving all system messages at the start.
  * 2. Keeping the most recent atomic units intact.
  * 3. Never splitting a tool call from its result.
+ * 4. Clamping oversized individual units as a hard ceiling floor.
  *
  * @param {Array<object>} messages
  * @param {number} budgetTokens
@@ -168,9 +216,17 @@ export function truncateToBudget(messages, budgetTokens) {
         const unit = atomicUnits[i];
         const unitTokens = estimateTokens(unit);
 
-        if (accumulatedTokens + unitTokens <= availableForNonSystem || keptUnits.length === 0) {
+        if (accumulatedTokens + unitTokens <= availableForNonSystem) {
             keptUnits.unshift(unit);
             accumulatedTokens += unitTokens;
+        } else if (keptUnits.length === 0) {
+            // Hard clamp floor: even the single most recent atomic unit exceeds available budget.
+            // Rather than blowing past the model limits with an oversized payload (e.g. 200k-token tool output),
+            // clamp individual payloads within this unit to fit the available budget.
+            const clamped = clampUnitToBudget(unit, availableForNonSystem);
+            keptUnits.unshift(clamped);
+            accumulatedTokens += estimateTokens(clamped);
+            break;
         } else {
             break;
         }

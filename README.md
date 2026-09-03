@@ -5,7 +5,7 @@ A lightweight Node.js library for building immutable, functional AI agents with 
 ## Installation
 
 ### Core Install (Default)
-Gets you agents, tools, hosted providers (OpenAI, Gemini), vLLM, MCP, and YAML prompts:
+Gets you agents, tools, hosted providers (OpenAI, Gemini), vLLM, MCP, YAML prompts, and structured outputs (Zod):
 
 ```bash
 npm install @peebles-group/agentlib-js
@@ -20,9 +20,6 @@ npm install @a2a-js/sdk express
 
 # Load prompts from a SQLite prompt store
 npm install sqlite3
-
-# Structured outputs via Zod schemas
-npm install zod zod-to-json-schema
 
 # Export traces to an OTLP collector (Jaeger, Honeycomb, ...)
 npm install @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-proto @opentelemetry/auto-instrumentations-node

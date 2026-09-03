@@ -112,7 +112,17 @@ function _convertResponse(response) {
     };
 }
 
-export const fromProvider = _convertResponse;
+export function fromProvider(rawResponse) {
+    if (!rawResponse) return [];
+    let items = [];
+    if (Array.isArray(rawResponse.output)) {
+        items = rawResponse.output;
+    } else if (Array.isArray(rawResponse.choices)) {
+        items = _convertResponse(rawResponse).output;
+    }
+    items.output = items;
+    return items;
+}
 
 export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, signal, ...options } = {}) {
     if (inputSchema) {

@@ -85,7 +85,10 @@ export class Agent {
             }
         }
         this.model = model;
-        this.toolLoader = toolLoader || new ToolLoader(enableMCP);
+        this.toolLoader = toolLoader || new ToolLoader(enableMCP, { eventEmitter: this.events });
+        if (this.toolLoader && typeof this.toolLoader.setEventEmitter === 'function' && !this.toolLoader.events) {
+            this.toolLoader.setEventEmitter(this.events);
+        }
         this.outputSchema = outputSchema;
         this.toolConcurrency = toolConcurrency;
         this.onToolError = onToolError;
@@ -451,9 +454,14 @@ export class Agent {
 
         // Apply compactor strategy to wire messages if configured
         let messagesToSend = currentContext.getMessages();
+        let compactionTokens = 0;
         if (this.compactor) {
             try {
                 messagesToSend = await this.compactor.compact(messagesToSend);
+                if (this.compactor.lastCompactionTokens) {
+                    compactionTokens = this.compactor.lastCompactionTokens;
+                    this.compactor.lastCompactionTokens = 0;
+                }
             } catch (compactorErr) {
                 this._emitTrace('compactor:error', {
                     traceId,
@@ -509,10 +517,12 @@ export class Agent {
         const usageTokens = response.rawResponse?.usage?.total_tokens
             ?? response.rawResponse?.usage?.totalTokens
             ?? (estimateTokens(messagesToSend) + (output ? estimateTokens(output) : 10));
-        const updatedRunTokens = totalRunTokens + usageTokens;
+        const updatedRunTokens = totalRunTokens + usageTokens + compactionTokens;
 
         let nextContext = currentContext;
-        const rawItems = Array.isArray(rawResponse?.output) ? rawResponse.output : [];
+        const rawItems = typeof this.llmService?.fromProvider === 'function'
+            ? this.llmService.fromProvider(rawResponse)
+            : (Array.isArray(rawResponse?.output) ? rawResponse.output : []);
 
         rawItems.forEach(item => {
             if (isToolCall(item)) {

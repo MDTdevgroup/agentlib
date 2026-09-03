@@ -1,10 +1,4 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const DEFAULT_LIMITS_FILE = join(__dirname, 'model-limits.json');
 
 // Built-in baseline model limits table
 const DEFAULT_LIMITS = {
@@ -46,10 +40,13 @@ let activeLimits = JSON.parse(JSON.stringify(DEFAULT_LIMITS));
 /**
  * Loads model limits from a JSON file into the active registry.
  *
- * @param {string} [filePath] - Optional path to JSON file.
+ * @param {string} filePath - Path to JSON file.
  * @returns {Promise<object>} Active limits
  */
-export async function loadModelLimitsFromFile(filePath = DEFAULT_LIMITS_FILE) {
+export async function loadModelLimitsFromFile(filePath) {
+    if (!filePath) {
+        return activeLimits;
+    }
     try {
         const content = await readFile(filePath, 'utf-8');
         const parsed = JSON.parse(content);
@@ -62,11 +59,15 @@ export async function loadModelLimitsFromFile(filePath = DEFAULT_LIMITS_FILE) {
 
 /**
  * Saves current active model limits to a JSON file.
+ * Requires an explicit filePath to prevent mutating internal package files.
  *
- * @param {string} [filePath] - Optional path to JSON file.
+ * @param {string} filePath - Path to JSON file.
  * @returns {Promise<void>}
  */
-export async function saveModelLimitsToFile(filePath = DEFAULT_LIMITS_FILE) {
+export async function saveModelLimitsToFile(filePath) {
+    if (!filePath) {
+        throw new Error('saveModelLimitsToFile requires an explicit target filePath to prevent mutating package contents.');
+    }
     await writeFile(filePath, JSON.stringify(activeLimits, null, 2), 'utf-8');
 }
 

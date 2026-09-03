@@ -31,7 +31,6 @@ To keep the default install lightweight and eliminate platform-specific native b
 |---|---|---|
 | **A2A Server** | `@a2a-js/sdk`, `express` | `npm install @a2a-js/sdk express` |
 | **SQLite Prompt Store** | `sqlite3` | `npm install sqlite3` |
-| **Zod Schema Parsing** | `zod`, `zod-to-json-schema` | `npm install zod zod-to-json-schema` |
 | **OTLP Trace Exporter** | `@opentelemetry/sdk-node`, `@opentelemetry/exporter-trace-otlp-proto`, `@opentelemetry/auto-instrumentations-node` | `npm install @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-proto @opentelemetry/auto-instrumentations-node` |
 
 If you invoke a feature without its required package installed, AgentLib throws a structured `MissingDependency` exception specifying the exact install command.

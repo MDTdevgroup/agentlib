@@ -2,6 +2,8 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { getAllowedProviders, validateProviderName, registerProvider } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
+import { getDefaultGeminiModel } from '../src/config.js';
+import * as GeminiProvider from '../src/providers/gemini.js';
 
 describe('Provider Registry', () => {
     test('getAllowedProviders returns standard built-in providers', () => {
@@ -45,5 +47,32 @@ describe('Provider Registry', () => {
     test('validateProviderName throws for invalid or unsupported providers', () => {
         assert.throws(() => validateProviderName(123), TypeError);
         assert.throws(() => validateProviderName('unsupported-provider-xyz'), /Unsupported provider/);
+    });
+
+    test('Provider registry separates key from display name', () => {
+        registerProvider('anthropic', { createClient: () => ({}), chat: async () => {} }, 'Anthropic Claude');
+        assert.equal(validateProviderName('anthropic'), 'anthropic');
+        assert.equal(validateProviderName('Anthropic Claude'), 'anthropic');
+    });
+
+    test('Gemini provider default model is defined and does not throw ReferenceError', () => {
+        assert.ok(getDefaultGeminiModel(), 'getDefaultGeminiModel must be exported by config.js');
+        assert.equal(typeof GeminiProvider.chat, 'function');
+    });
+
+    test('Gemini chat does not replace or mutate global console.warn', async () => {
+        const originalWarn = console.warn;
+        let fakeClient = {
+            models: {
+                generateContent: async () => ({
+                    candidates: [{ content: { parts: [{ text: 'response' }] } }],
+                    text: () => 'response',
+                }),
+            },
+        };
+
+        await GeminiProvider.chat(fakeClient, [{ role: 'user', content: 'hello' }], {});
+
+        assert.equal(console.warn, originalWarn, 'console.warn must not be monkey-patched');
     });
 });

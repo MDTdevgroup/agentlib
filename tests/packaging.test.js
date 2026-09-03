@@ -91,6 +91,35 @@ describe('Optional Dependencies & Package Exports', () => {
 
             assert.equal(A2A.startA2AServer.constructor.name, 'AsyncFunction');
         });
+
+        test('AgentExecutorAdapter accesses agent context without TypeError', async () => {
+            const fakeProvider = FakeProvider.createFakeProvider();
+            fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('A2A response'));
+            registerProvider('fake-a2a', fakeProvider);
+
+            const llm = new LLMService({ provider: 'fake-a2a' });
+            const agent = new Agent(llm, { name: 'a2a-test-agent' });
+            const adapter = new A2A.AgentExecutorAdapter(agent);
+
+            const publishedEvents = [];
+            const mockEventBus = {
+                publish: (event) => publishedEvents.push(event),
+                finished: () => {},
+            };
+
+            const mockRequestContext = {
+                taskId: 'task-1',
+                contextId: 'ctx-1',
+                userMessage: { parts: [{ kind: 'text', text: 'Hello A2A' }] },
+                task: null,
+            };
+
+            await adapter.execute(mockRequestContext, mockEventBus);
+
+            const messageEvent = publishedEvents.find(e => e.kind === 'message');
+            assert.ok(messageEvent, 'Should publish message event');
+            assert.ok(messageEvent.parts[0].text.includes('A2A response'));
+        });
     });
 
     describe('SQLite Lazy Loading', () => {

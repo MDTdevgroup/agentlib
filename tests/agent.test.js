@@ -172,4 +172,23 @@ describe('Agent Core Loop (Offline)', () => {
             }
         );
     });
+
+    test('Agent trace metadata reads mcpInfo via toolLoader.getMCPInfo()', () => {
+        const llm = new LLMService({ provider: 'fake' });
+
+        const traces = [];
+        const eventEmitter = {
+            emit: (name, payload) => traces.push({ name, payload }),
+        };
+
+        const agent = new Agent(llm, { name: 'mcp-trace-agent', eventEmitter, enableMCP: false });
+        agent.addInput({ role: 'user', content: 'hi' });
+
+        // Trigger start
+        agent.start();
+
+        const startTrace = traces.find(t => t.name === 'agent:start');
+        assert.ok(startTrace, 'agent:start trace must be emitted');
+        assert.equal(startTrace.payload.attributes.mcp_enabled, false);
+    });
 });

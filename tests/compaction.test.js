@@ -84,6 +84,22 @@ describe('Context Compaction & Run Budgeting', () => {
             assert.equal(messageText(truncated[0]), 'System Instruction');
             assert.equal(messageText(truncated[truncated.length - 1]), messageText(longUser3));
         });
+
+        test('truncateToBudget applies hard clamp floor to single oversized atomic unit', () => {
+            const hugePayload = 'X'.repeat(50000); // 50,000 chars ~ 12,500 tokens
+            const messages = [
+                makeTextMessage({ role: 'system', text: 'System instruction' }),
+                makeToolResult({ callId: 'call_huge', name: 'big_tool', value: hugePayload }),
+            ];
+
+            // Budget of only 200 tokens (~800 chars)
+            const truncated = truncateToBudget(messages, 200);
+            assert.equal(truncated.length, 2);
+            assert.equal(truncated[0].role, 'system');
+            const toolResult = truncated[1];
+            assert.ok(toolResult.output.length < 2000, 'Oversized tool result must be clamped');
+            assert.match(toolResult.output, /\[truncated\]/);
+        });
     });
 
     describe('WindowCompactor', () => {
@@ -465,6 +481,44 @@ describe('Context Compaction & Run Budgeting', () => {
 
             assert.equal(history.length, 2);
             assert.equal(history[1].isDone, true);
+        });
+
+        test('SummarizerCompactor token consumption counts against agent maxRunTokens', async () => {
+            const fakeProvider = FakeProvider.createFakeProvider();
+            registerProvider('fake-summarizer-budget', fakeProvider, 'Fake Summarizer Budget Provider');
+
+            // 1. Response for summarizer LLM call
+            fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Summary of past conversation'));
+            // 2. Response for agent main LLM call
+            fakeProvider.enqueueResponse(FakeProvider.fakeToolCallResponse({
+                name: 'test_tool',
+                args: {},
+                call_id: 'c1',
+            }));
+
+            const llm = new LLMService({ provider: 'fake-summarizer-budget' });
+            const summarizer = new SummarizerCompactor({
+                llmService: llm,
+                maxTokens: 50, // Trigger compaction easily
+                truncateToTokens: 40,
+            });
+
+            const agent = new Agent(llm, {
+                name: 'SummarizerBudgetAgent',
+                pruningStrategy: summarizer,
+                maxRunTokens: 15,
+                tools: [{ name: 'test_tool', func: async () => ({ ok: true }) }],
+            });
+
+            // Add several long messages to trigger summarization
+            for (let i = 0; i < 4; i++) {
+                agent.addInput(makeTextMessage({ role: 'user', text: `Message ${i}: ` + 'hello '.repeat(10) }));
+            }
+
+            const history = await agent.run();
+            const lastTurn = history[history.length - 1];
+            assert.equal(lastTurn.isDone, true);
+            assert.equal(lastTurn.stopReason, 'budget_exhausted');
         });
     });
 });
