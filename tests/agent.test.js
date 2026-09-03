@@ -191,4 +191,18 @@ describe('Agent Core Loop (Offline)', () => {
         assert.ok(startTrace, 'agent:start trace must be emitted');
         assert.equal(startTrace.payload.attributes.mcp_enabled, false);
     });
+
+    test('Agent aborts immediately when passed an aborted signal', async () => {
+        const controller = new AbortController();
+        controller.abort(new Error('Agent run aborted'));
+
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, { name: 'cancellable-agent' });
+        agent.addInput({ role: 'user', content: 'Hello' });
+
+        await assert.rejects(
+            () => agent.run(null, { signal: controller.signal }),
+            /Agent run aborted/
+        );
+    });
 });

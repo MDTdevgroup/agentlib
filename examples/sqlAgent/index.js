@@ -1,9 +1,18 @@
-import './instrumentation.js';
+// Optional OpenTelemetry instrumentation (or via node --import ./examples/sqlAgent/instrumentation.js)
+try {
+  await import('./instrumentation.js');
+} catch (err) {
+  if (err?.type !== 'MissingDependency') {
+    throw err;
+  }
+}
+
 import { Agent, LLMService, ToolLoader, PromptLoader } from "../../index.js";
 import { initDB, generatorTools, executorTools, mainAgentTools } from "./sqlTools.js";
 import readline from "readline";
 import { z } from 'zod';
 import EventEmitter from 'events';
+import { fileURLToPath } from 'node:url';
 import { DomainObservability } from "../../src/services/observability.js";
 
 const llmService = new LLMService({ provider: 'gemini', apiKey: process.env.GEMINI_API_KEY });
@@ -25,8 +34,9 @@ async function main() {
   console.log("Welcome to the SQL Agent!");
   console.log("--------------------------------");
   console.log("Agent: What would you like to do? (type 'quit' to exit)");
-  const db = await initDB("./chinook.db");
-  const promptsPath = './prompts.yml';
+  const dbPath = fileURLToPath(new URL("./chinook.db", import.meta.url));
+  const promptsPath = fileURLToPath(new URL("./prompts.yml", import.meta.url));
+  const db = await initDB(dbPath);
 
   const genTools = new ToolLoader();
   genTools.addTools(generatorTools(db));

@@ -5,15 +5,34 @@
 import { makeException } from './exception.js';
 
 /**
- * Returns a Promise that resolves after `ms` milliseconds.
+ * Returns a Promise that resolves after `ms` milliseconds, or rejects if `signal` is aborted.
  * If ms is falsy or non-positive, returns immediately without a timer tick.
  *
  * @param {number} ms - Milliseconds to sleep.
+ * @param {AbortSignal} [signal] - Optional abort signal to cancel the sleep immediately.
  * @returns {Promise<void>}
  */
-export function sleep(ms) {
+export function sleep(ms, signal = undefined) {
     if (!ms || ms <= 0) return Promise.resolve();
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    if (signal?.aborted) {
+        return Promise.reject(signal.reason || makeException('AbortError', 'Sleep aborted by caller'));
+    }
+    return new Promise((resolve, reject) => {
+        let timerId;
+        const onAbort = () => {
+            clearTimeout(timerId);
+            reject(signal.reason || makeException('AbortError', 'Sleep aborted by caller'));
+        };
+        timerId = setTimeout(() => {
+            if (signal) {
+                signal.removeEventListener('abort', onAbort);
+            }
+            resolve();
+        }, ms);
+        if (signal) {
+            signal.addEventListener('abort', onAbort, { once: true });
+        }
+    });
 }
 
 /**

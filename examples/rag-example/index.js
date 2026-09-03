@@ -1,4 +1,4 @@
-import { MongoClient } from 'mongodb';
+import { loadOptional } from '../../src/util/optional-dep.js';
 import { MONGODB_URI, DATABASE_NAME, COLLECTION_NAME, EMBEDDING_MODEL, NUM_CANDIDATES, LIMIT } from './config.js';
 import { Agent, LLMService, ToolLoader } from '../../index.js';
 import readline from "readline";
@@ -28,6 +28,7 @@ const tools = [
 ];
 
 async function queryResults(userQuery) {
+   const { MongoClient } = await loadOptional('mongodb', 'RAG example', { installCommand: 'npm install mongodb' });
    const client = new MongoClient(MONGODB_URI);
    await client.connect();
    const db = await client.db(DATABASE_NAME);

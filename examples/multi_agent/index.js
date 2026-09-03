@@ -1,5 +1,6 @@
 import { Agent, LLMService, PromptLoader } from '../../index.js';
 import { travelAgentToolLoader, grumpyTravelerToolLoader } from './tools.js';
+import { fileURLToPath } from 'node:url';
 
 /**
  * Custom CPS-based multi-agent conversation loop demo.
@@ -100,7 +101,8 @@ async function runMultiAgent() {
         model: 'gpt-5-nano'
     });
 
-    const promptLoader = await PromptLoader.create('./prompts.yml');
+    const promptsPath = fileURLToPath(new URL('./prompts.yml', import.meta.url));
+    const promptLoader = await PromptLoader.create(promptsPath);
 
     travelAgent.addInput({
         role: 'system',

@@ -18,6 +18,24 @@ describe('Concurrency, Retry & Exception Utilities', () => {
             assert.ok(Date.now() - start < 50);
         });
 
+        test('sleep rejects immediately if passed an already-aborted signal or aborts mid-sleep', async () => {
+            const preAborted = new AbortController();
+            preAborted.abort(new Error('Already aborted'));
+            await assert.rejects(
+                () => sleep(5000, preAborted.signal),
+                /Already aborted/
+            );
+
+            const midAborted = new AbortController();
+            setTimeout(() => midAborted.abort(new Error('Cancelled mid-sleep')), 10);
+            const start = Date.now();
+            await assert.rejects(
+                () => sleep(5000, midAborted.signal),
+                /Cancelled mid-sleep/
+            );
+            assert.ok(Date.now() - start < 100);
+        });
+
         test('createTimeout rejects after duration and cancels cleanly', async () => {
             const timeoutPromise = createTimeout(20);
             await assert.rejects(timeoutPromise, (err) => {
@@ -307,6 +325,96 @@ describe('Concurrency, Retry & Exception Utilities', () => {
             );
 
             assert.equal(attempts, 0, 'Must not execute any attempt if signal was already aborted');
+        });
+
+        test('withRetries does not arm timers or keep event loop open when passed an already-aborted signal with default timeoutMS', async () => {
+            const callerController = new AbortController();
+            callerController.abort(new Error('Pre-aborted'));
+            let attempts = 0;
+
+            const startActiveTimeouts = (process.getActiveResourcesInfo ? process.getActiveResourcesInfo().filter(r => r === 'Timeout').length : 0);
+
+            await assert.rejects(
+                async () => {
+                    await withRetries(
+                        { maxRetries: 3, timeoutMS: 300000 },
+                        async () => {
+                            attempts++;
+                            return 'ok';
+                        },
+                        undefined,
+                        { signal: callerController.signal }
+                    );
+                },
+                (err) => {
+                    assert.match(err.message, /Pre-aborted/);
+                    return true;
+                }
+            );
+
+            assert.equal(attempts, 0, 'Must not execute any attempt if signal was already aborted');
+            if (process.getActiveResourcesInfo) {
+                const endActiveTimeouts = process.getActiveResourcesInfo().filter(r => r === 'Timeout').length;
+                assert.equal(endActiveTimeouts, startActiveTimeouts, 'Must not leak armed timers into event loop');
+            }
+        });
+
+        test('withRetries throws RetryExhausted immediately on final attempt without terminal backoff sleep', async () => {
+            let attempts = 0;
+            const start = Date.now();
+
+            await assert.rejects(
+                async () => {
+                    await withRetries(
+                        { maxRetries: 0, baseDelayMS: 5000, exprDelayMS: 5000 },
+                        async () => {
+                            attempts++;
+                            throw new Error('transient-failure');
+                        },
+                        () => ({ retryable: true, retryAfterMs: 10000 })
+                    );
+                },
+                (err) => {
+                    assert.equal(err.type, 'RetryExhausted');
+                    assert.equal(err.payload?.retryAfterMs, 10000);
+                    return true;
+                }
+            );
+
+            const elapsed = Date.now() - start;
+            assert.equal(attempts, 1);
+            assert.ok(elapsed < 100, `Must fail instantly without terminal 10s sleep, took ${elapsed}ms`);
+        });
+
+        test('withRetries cancels immediately if caller aborts during inter-attempt backoff sleep', async () => {
+            const controller = new AbortController();
+            let attempts = 0;
+            const start = Date.now();
+
+            await assert.rejects(
+                async () => {
+                    await withRetries(
+                        { maxRetries: 3, baseDelayMS: 5000, exprDelayMS: 0, jitterMaxMS: 0 },
+                        async () => {
+                            attempts++;
+                            setTimeout(() => {
+                                controller.abort(new Error('Aborted mid-sleep'));
+                            }, 20);
+                            throw new Error('transient');
+                        },
+                        () => ({ retryable: true }),
+                        { signal: controller.signal }
+                    );
+                },
+                (err) => {
+                    assert.match(err.message, /Aborted mid-sleep/);
+                    return true;
+                }
+            );
+
+            const elapsed = Date.now() - start;
+            assert.equal(attempts, 1);
+            assert.ok(elapsed < 200, `Must cancel sleep immediately on abort, took ${elapsed}ms`);
         });
     });
 
