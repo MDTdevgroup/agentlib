@@ -19,35 +19,47 @@ import { _fetchModelLimits } from '../src/providers/gemini.js';
 describe('Model Context Limits Resolution & Dynamic Fetching', () => {
     describe('Canonical Table Resolution & Pattern Matching', () => {
         test('resolves known OpenAI model context limits with pattern matching', () => {
-            assert.equal(getModelContextLimit('openai', 'gpt-5'), 256000);
-            assert.equal(getModelContextLimit('openai', 'gpt-5.4'), 256000);
-            assert.equal(getModelContextLimit('openai', 'gpt-5-nano'), 128000);
-            assert.equal(getModelContextLimit('openai', 'gpt-4.5'), 128000);
-            assert.equal(getModelContextLimit('openai', 'gpt-4.5-preview'), 128000);
+            assert.equal(getModelContextLimit('openai', 'gpt-6-astra'), 922000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5.6-sol'), 922000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5.6-terra'), 922000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5.6-luna'), 922000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5.6'), 922000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5.4'), 922000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5.4-mini'), 272000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5.4-nano'), 272000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5'), 272000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5-mini'), 272000);
+            assert.equal(getModelContextLimit('openai', 'gpt-5-nano'), 272000);
+            assert.equal(getModelContextLimit('openai', 'gpt-4.1'), 1014808);
+            assert.equal(getModelContextLimit('openai', 'gpt-4.1-mini'), 1014808);
             assert.equal(getModelContextLimit('openai', 'gpt-4o'), 128000);
             assert.equal(getModelContextLimit('openai', 'gpt-4o-2024-08-06'), 128000);
             assert.equal(getModelContextLimit('openai', 'gpt-4o-mini'), 128000);
             assert.equal(getModelContextLimit('openai', 'gpt-4-turbo-2024-04-09'), 128000);
             assert.equal(getModelContextLimit('openai', 'gpt-4-0613'), 8192);
             assert.equal(getModelContextLimit('openai', 'gpt-3.5-turbo-0125'), 16385);
-            assert.equal(getModelContextLimit('openai', 'o1'), 200000);
+            assert.equal(getModelContextLimit('openai', 'o3'), 200000);
             assert.equal(getModelContextLimit('openai', 'o3-mini'), 200000);
+            assert.equal(getModelContextLimit('openai', 'o4-mini'), 200000);
+            assert.equal(getModelContextLimit('openai', 'o1'), 200000);
         });
 
         test('resolves known Gemini model context limits', () => {
-            assert.equal(getModelContextLimit('gemini', 'gemini-1.5-pro'), 2097152);
-            assert.equal(getModelContextLimit('gemini', 'gemini-1.5-pro-002'), 2097152);
-            assert.equal(getModelContextLimit('gemini', 'gemini-1.5-flash'), 1048576);
-            assert.equal(getModelContextLimit('gemini', 'gemini-2.0-flash'), 1048576);
-            assert.equal(getModelContextLimit('gemini', 'gemini-2.5-flash'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3.8-flash'), 1048576);
             assert.equal(getModelContextLimit('gemini', 'gemini-3.7-flash'), 1048576);
-            assert.equal(getModelContextLimit('gemini', 'gemini-3.1-pro-preview'), 2097152);
-            assert.equal(getModelContextLimit('gemini', 'gemini-3-pro-preview'), 2097152);
-            assert.equal(getModelContextLimit('gemini', 'gemini-1.0-pro'), 32768);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3.6-flash'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3.5-flash'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3.5-flash-lite'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3.1-flash-lite'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3.1-pro-preview'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-3-flash-preview'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-2.5-pro'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-2.5-flash'), 1048576);
+            assert.equal(getModelContextLimit('gemini', 'gemini-2.5-flash-lite'), 1048576);
         });
 
         test('falls back gracefully to provider default for unrecognized models', () => {
-            assert.equal(getModelContextLimit('openai', 'novel-unseen-model'), 256000);
+            assert.equal(getModelContextLimit('openai', 'novel-unseen-model'), 272000);
             assert.equal(getModelContextLimit('gemini', 'unreleased-gemini-x'), 1048576);
             assert.equal(getModelContextLimit('vllm', 'my-local-llama'), 32768);
         });
@@ -69,7 +81,7 @@ describe('Model Context Limits Resolution & Dynamic Fetching', () => {
             assert.ok(table.openai);
             assert.ok(table.gemini);
             assert.ok(table.vllm);
-            assert.equal(table.gemini['gemini-1.5-pro'].inputTokenLimit, 2097152);
+            assert.equal(table.gemini['gemini-3.8-flash'].inputTokenLimit, 1048576);
         });
 
         test('saveModelLimitsToFile and loadModelLimitsFromFile work with custom path', async () => {
@@ -133,7 +145,7 @@ describe('Model Context Limits Resolution & Dynamic Fetching', () => {
             fakeProvider.getModelContextLimit = () => 2000000;
 
             const agent = new Agent(llm, {
-                model: 'gemini-1.5-pro',
+                model: 'gemini-3.8-flash',
             });
 
             assert.equal(agent.maxContextTokens, 1500000); // 75% of 2M

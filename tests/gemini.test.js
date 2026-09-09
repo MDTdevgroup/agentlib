@@ -34,7 +34,7 @@ describe('Gemini Provider (models.generateContent)', () => {
 
             const limits = getModelLimits('gemini-2.5-flash');
             assert.equal(limits.inputTokenLimit, 1048576);
-            assert.equal(limits.outputTokenLimit, 8192);
+            assert.equal(limits.outputTokenLimit, 65536);
         });
 
         test('_fetchModelLimits queries client.models.list and updates registry', async () => {
