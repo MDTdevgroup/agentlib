@@ -23,7 +23,7 @@ export function getModelLimits(model = defaultModel) {
 }
 
 /**
- * Private method: Fetches model context limits dynamically from Google Gemini models API.
+ * Fetches model context limits dynamically from Google Gemini models API.
  * Updates in-memory registry and optionally persists to model-limits.json.
  *
  * @param {object} client - GoogleGenAI client instance
@@ -42,7 +42,6 @@ export async function _fetchModelLimits(client, { updateFile = false, filePath =
         let modelsList = [];
         if (typeof client.models.list === 'function') {
             const res = await client.models.list();
-            // Handle async iterable or array responses
             if (res && typeof res[Symbol.asyncIterator] === 'function') {
                 for await (const m of res) {
                     modelsList.push(m);
@@ -111,16 +110,38 @@ export function isRetryable(error) {
     return { retryable: false };
 }
 
-function _convertInput(input) {
-    if (!Array.isArray(input)) return { steps: [], system_instruction: undefined };
-    const steps = [];
-    const systemInstructions = [];
-    const callIdToName = new Map();
+function _mergeConsecutiveRoles(contents) {
+    const merged = [];
+    for (const item of contents) {
+        const last = merged[merged.length - 1];
+        if (last && last.role === item.role) {
+            last.parts.push(...item.parts);
+        } else {
+            merged.push({ role: item.role, parts: [...item.parts] });
+        }
+    }
+    return merged;
+}
 
-    // First pass to map call IDs to names for tool responses
+function _convertInput(input) {
+    if (!Array.isArray(input)) {
+        throw new Error("User prompt not detected, Gemini requires a user prompt.");
+    }
+
+    const contents = [];
+    const systemParts = [];
+    const callIdToName = new Map();
+    const callIdToSignature = new Map();
+
     for (const item of input) {
-        if (item && (item.type === 'function_call' || item.type === 'tool_call') && (item.call_id || item.id) && item.name) {
-            callIdToName.set(item.call_id || item.id, item.name);
+        if (!item || typeof item !== 'object') continue;
+        const callId = item.call_id || item.id;
+        const sig = item.thoughtSignature || item.thought_signature || item.signature;
+        if (callId && sig) {
+            callIdToSignature.set(callId, sig);
+        }
+        if ((item.type === 'function_call' || item.type === 'tool_call') && callId && item.name) {
+            callIdToName.set(callId, item.name);
         }
     }
 
@@ -130,189 +151,213 @@ function _convertInput(input) {
         if (object.role === 'system') {
             const systemText = object.content !== undefined ? object.content : (object.text || '');
             if (systemText) {
-                systemInstructions.push(typeof systemText === 'string' ? systemText : JSON.stringify(systemText));
+                systemParts.push({
+                    text: typeof systemText === 'string' ? systemText : JSON.stringify(systemText),
+                });
             }
         } else if (object.type === 'function_call' || object.type === 'tool_call') {
-            const callId = object.call_id || object.id;
             let args = object.args;
             if (args === undefined && object.arguments !== undefined) {
                 args = typeof object.arguments === 'string' ? JSON.parse(object.arguments) : object.arguments;
             }
-            const funcCall = {
-                type: 'function_call',
-                id: callId,
-                name: object.name,
-                arguments: args ?? {},
+            const callId = object.call_id || object.id;
+            const part = {
+                functionCall: {
+                    name: object.name,
+                    args: args ?? {},
+                },
             };
-            if (object.thoughtSignature || object.signature) {
-                funcCall.signature = object.thoughtSignature || object.signature;
+            const sig = object.thoughtSignature
+                || object.thought_signature
+                || object.signature
+                || (callId ? callIdToSignature.get(callId) : undefined);
+            if (sig) {
+                part.thoughtSignature = sig;
             }
-            steps.push(funcCall);
+            contents.push({
+                role: 'model',
+                parts: [part],
+            });
         } else if (object.type === 'function_call_output' || object.type === 'function_result' || object.type === 'tool_result') {
             const callId = object.call_id || object.id;
             const toolName = object.name || (callId ? callIdToName.get(callId) : undefined) || 'function_call';
-            let outputResult = object.output !== undefined ? object.output : (object.value !== undefined ? object.value : object.result);
-            if (typeof outputResult === 'string') {
+            let parsedResult;
+            if (typeof object.output === 'string') {
                 try {
-                    outputResult = JSON.parse(outputResult);
+                    parsedResult = JSON.parse(object.output);
                 } catch {
-                    // keep as string
+                    parsedResult = object.output;
                 }
+            } else if (object.output !== undefined) {
+                parsedResult = object.output;
+            } else if (object.value !== undefined) {
+                parsedResult = object.value;
+            } else if (object.result !== undefined) {
+                parsedResult = object.result;
+            } else {
+                parsedResult = null;
             }
 
-            const funcResponse = {
-                type: 'function_result',
-                call_id: callId,
-                name: toolName,
-                result: outputResult,
+            const part = {
+                functionResponse: {
+                    name: toolName,
+                    response: { result: parsedResult },
+                },
             };
-            if (object.thoughtSignature || object.signature) {
-                funcResponse.signature = object.thoughtSignature || object.signature;
+            const sig = object.thoughtSignature
+                || object.thought_signature
+                || object.signature
+                || (callId ? callIdToSignature.get(callId) : undefined);
+            if (sig) {
+                part.thoughtSignature = sig;
             }
-            steps.push(funcResponse);
-        } else if (object.type === 'reasoning' || object.type === 'thought') {
-            const thoughtText = object.summary || object.content || object.details || '';
-            const thoughtStep = {
-                type: 'thought',
-                summary: [
-                    {
-                        type: 'text',
-                        text: typeof thoughtText === 'string' ? thoughtText : JSON.stringify(thoughtText),
-                    },
-                ],
-            };
-            if (object.thoughtSignature || object.signature) {
-                thoughtStep.signature = object.thoughtSignature || object.signature;
-            }
-            steps.push(thoughtStep);
+            contents.push({
+                role: 'user',
+                parts: [part],
+            });
         } else if (object.role === 'assistant' || object.role === 'model' || object.type === 'model_output') {
             let textContent = object.content !== undefined ? object.content : (object.text || '');
             if (object.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${object.speaker}]:`)) {
                 textContent = `[${object.speaker}]: ${textContent}`;
             }
-            steps.push({
-                type: 'model_output',
-                content: [
-                    {
-                        type: 'text',
-                        text: typeof textContent === 'string' ? textContent : JSON.stringify(textContent),
-                    },
-                ],
+            contents.push({
+                role: 'model',
+                parts: [{ text: typeof textContent === 'string' ? textContent : JSON.stringify(textContent) }],
             });
         } else if (object.role === 'user' || object.type === 'user_input' || (!object.role && (object.content !== undefined || object.text !== undefined))) {
             let textContent = object.content !== undefined ? object.content : (object.text || '');
             if (object.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${object.speaker}]:`)) {
                 textContent = `[${object.speaker}]: ${textContent}`;
             }
+
             if (typeof textContent === 'string') {
-                steps.push({
-                    type: 'user_input',
-                    content: [
-                        {
-                            type: 'text',
-                            text: textContent,
-                        },
-                    ],
+                contents.push({
+                    role: 'user',
+                    parts: [{ text: textContent }],
                 });
             } else if (Array.isArray(object.content)) {
                 const parts = [];
                 for (const part of object.content) {
                     if (!part || typeof part !== 'object') continue;
                     if (part.type === 'input_image' && part.image_url) {
-                        const [prefix, base64ImageFile] = part.image_url.split(",");
+                        const [prefix, base64ImageFile] = part.image_url.split(',');
                         const mimeMatch = prefix.match(/:(.*?);/);
                         const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
                         parts.push({
-                            type: 'image',
-                            data: base64ImageFile || '',
-                            mime_type: mimeType,
+                            inlineData: {
+                                mimeType,
+                                data: base64ImageFile || '',
+                            },
                         });
-                    } else if (part.type === 'image_url' && part.image_url?.url) {
-                        const [prefix, base64ImageFile] = part.image_url.url.split(",");
-                        const mimeMatch = prefix.match(/:(.*?);/);
-                        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-                        parts.push({
-                            type: 'image',
-                            data: base64ImageFile || '',
-                            mime_type: mimeType,
-                        });
-                    } else if (part.type === 'image') {
+                    } else if (part.type === 'image_url' && part.image_url) {
+                        const urlStr = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url;
+                        if (urlStr && urlStr.includes(',')) {
+                            const [prefix, base64ImageFile] = urlStr.split(',');
+                            const mimeMatch = prefix.match(/:(.*?);/);
+                            const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+                            parts.push({
+                                inlineData: {
+                                    mimeType,
+                                    data: base64ImageFile || '',
+                                },
+                            });
+                        }
+                    } else if (part.inlineData) {
                         parts.push(part);
                     } else if (part.type === 'input_text' || part.type === 'text') {
-                        parts.push({
-                            type: 'text',
-                            text: part.text || '',
-                        });
+                        parts.push({ text: part.text || '' });
                     }
                 }
                 if (parts.length > 0) {
-                    steps.push({
-                        type: 'user_input',
-                        content: parts,
+                    contents.push({
+                        role: 'user',
+                        parts,
                     });
                 }
             }
         }
     }
 
-    const systemInstruction = systemInstructions.length > 0 ? systemInstructions.join('\n\n') : undefined;
+    if (contents.length === 0) {
+        throw new Error("User prompt not detected, Gemini requires a user prompt.");
+    }
 
     return {
-        steps,
-        system_instruction: systemInstruction,
+        contents: _mergeConsecutiveRoles(contents),
+        systemParts,
     };
 }
 
-function _convertSteps(steps) {
-    if (!Array.isArray(steps)) return [];
+function _convertCandidateParts(parts) {
+    if (!Array.isArray(parts)) return [];
     const output = [];
-    for (const step of steps) {
-        if (!step || typeof step !== 'object') continue;
-        if (step.type === 'function_call') {
-            const callId = step.id || step.call_id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-            const rawArgs = step.arguments ?? step.args;
+    for (const part of parts) {
+        if (!part || typeof part !== 'object') continue;
+        if (part.functionCall) {
+            const callId = part.functionCall.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
             output.push({
-                type: 'function_call',
+                type: "function_call",
                 id: callId,
                 call_id: callId,
-                name: step.name,
-                arguments: typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs ?? {}),
-                ...(step.signature ? { thoughtSignature: step.signature } : (step.thoughtSignature ? { thoughtSignature: step.thoughtSignature } : {})),
+                name: part.functionCall.name,
+                arguments: typeof part.functionCall.args === 'string'
+                    ? part.functionCall.args
+                    : JSON.stringify(part.functionCall.args ?? {}),
+                ...((part.thoughtSignature || part.thought_signature || part.signature) ? { thoughtSignature: part.thoughtSignature || part.thought_signature || part.signature } : {}),
             });
-        } else if (step.type === 'thought') {
-            let text = '';
-            if (Array.isArray(step.summary)) {
-                text = step.summary.map(s => (typeof s === 'string' ? s : s.text || '')).filter(Boolean).join('\n');
-            } else if (typeof step.summary === 'string') {
-                text = step.summary;
-            } else if (typeof step.content === 'string') {
-                text = step.content;
-            }
+        } else if (part.thought) {
             output.push({
-                type: 'reasoning',
-                summary: text || undefined,
-                content: text || '',
-                ...(step.signature ? { thoughtSignature: step.signature } : (step.thoughtSignature ? { thoughtSignature: step.thoughtSignature } : {})),
+                type: "reasoning",
+                summary: part.text || '',
+                content: part.text || '',
+                ...((part.thoughtSignature || part.thought_signature || part.signature) ? { thoughtSignature: part.thoughtSignature || part.thought_signature || part.signature } : {}),
             });
-        } else if (step.type === 'model_output') {
-            let text = '';
-            if (Array.isArray(step.content)) {
-                text = step.content.map(c => (typeof c === 'string' ? c : c.text || '')).filter(Boolean).join('\n');
-            } else if (typeof step.content === 'string') {
-                text = step.content;
-            } else if (step.text !== undefined) {
-                text = step.text;
-            }
+        } else if (part.text !== undefined) {
             output.push({
-                type: 'message',
-                role: 'assistant',
-                content: text,
+                type: "message",
+                role: "assistant",
+                content: {
+                    text: part.text,
+                },
+                text: part.text,
             });
-        } else if (step.type === 'message' || step.type === 'reasoning') {
-            output.push(step);
         }
     }
     return output;
+}
+
+function _convertResponse(response, output) {
+    const candidateParts = response?.candidates?.[0]?.content?.parts || [];
+    return {
+        output: output,
+        rawResponse: {
+            output: _convertCandidateParts(candidateParts),
+            model: response?.modelVersion || response?.model,
+            id: response?.responseId || response?.id,
+            usage: response?.usageMetadata || response?.usage,
+            originalFormat: response,
+        },
+    };
+}
+
+function _extractText(response) {
+    const parts = response?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts)) {
+        const textParts = parts.filter(p => typeof p.text === 'string' && !p.thought);
+        if (textParts.length > 0) {
+            return textParts.map(p => p.text).join('');
+        }
+        return null;
+    }
+    if (response?.text) {
+        return typeof response.text === 'function' ? response.text() : response.text;
+    }
+    return null;
+}
+
+async function _applySemanticPruning(messages) {
+    // TODO: Implement embedding-based cosine similarity filtering
+    return messages;
 }
 
 export function toProvider(input) {
@@ -320,99 +365,129 @@ export function toProvider(input) {
 }
 
 export function fromProvider(rawResponse) {
-    if (!rawResponse) {
-        return [];
-    }
+    if (!rawResponse) return [];
     if (Array.isArray(rawResponse.output)) {
-        return rawResponse.output;
+        return rawResponse.output.map(item => {
+            if (item.type === 'message') {
+                const text = typeof item.content === 'string'
+                    ? item.content
+                    : (item.content?.text ?? item.text ?? '');
+                return {
+                    type: 'message',
+                    role: item.role || 'assistant',
+                    content: text,
+                    text,
+                };
+            }
+            if (item.type === 'function_call') {
+                const callId = item.call_id || item.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+                const sig = item.thoughtSignature || item.thought_signature || item.signature;
+                return {
+                    type: 'function_call',
+                    id: callId,
+                    call_id: callId,
+                    name: item.name,
+                    arguments: typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments ?? {}),
+                    ...(sig ? { thoughtSignature: sig } : {}),
+                };
+            }
+            if (item.type === 'reasoning') {
+                const sig = item.thoughtSignature || item.thought_signature || item.signature;
+                return {
+                    type: 'reasoning',
+                    summary: item.summary,
+                    content: item.content,
+                    ...(sig ? { thoughtSignature: sig } : {}),
+                };
+            }
+            return item;
+        });
     }
-    if (Array.isArray(rawResponse.steps)) {
-        return _convertSteps(rawResponse.steps);
+    if (Array.isArray(rawResponse.candidates?.[0]?.content?.parts)) {
+        return _convertCandidateParts(rawResponse.candidates[0].content.parts);
     }
     return [];
 }
 
-export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, tools, signal, previousInteractionId, ...options } = {}) {
+export async function chat(client, input, { model = defaultModel, pruningOptions, inputSchema, outputSchema, tools, signal, ...options } = {}) {
     if (inputSchema) {
         input = inputSchema.parse(input);
     }
 
-    const formattedInput = _convertInput(input);
+    try {
+        let response, output;
 
-    let formattedTools = undefined;
-    if (Array.isArray(tools) && tools.length > 0) {
-        formattedTools = tools.map((tool) => {
-            if (tool.type && tool.type !== 'function') {
-                return tool;
-            }
-            if (tool.googleSearch || tool.type === 'googleSearch') {
-                return { type: 'google_search' };
-            }
-            if (tool.codeExecution || tool.type === 'codeExecution') {
-                return { type: 'code_execution' };
-            }
-            return {
-                type: 'function',
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.parameters,
-            };
-        });
-    }
+        if (pruningOptions?.enabled) {
+            input = await _applySemanticPruning(input);
+        }
 
-    const payload = {
-        model,
-        input: formattedInput.steps,
-        ...(formattedInput.system_instruction ? { system_instruction: formattedInput.system_instruction } : {}),
-        ...(formattedTools && formattedTools.length > 0 ? { tools: formattedTools } : {}),
-        ...(previousInteractionId ? { previous_interaction_id: previousInteractionId } : {}),
-        ...options,
-    };
+        const formattedInput = _convertInput(input);
+        const customTools = tools ? tools.filter(t => t.name) : [];
+        const nativeTools = tools ? tools.filter(t => !t.name) : [];
 
-    if (outputSchema) {
-        payload.response_format = zodToJsonSchema(outputSchema);
-    }
-
-    const requestOptions = signal ? { fetchOptions: { signal } } : undefined;
-    const response = await client.interactions.create(payload, requestOptions);
-
-    const steps = response?.steps || [];
-    const hasFunctionCall = steps.some(step => step.type === 'function_call');
-
-    let output = null;
-    if (!hasFunctionCall) {
-        let text = '';
-        for (const step of steps) {
-            if (step.type === 'model_output' && Array.isArray(step.content)) {
-                for (const part of step.content) {
-                    if (part.type === 'text' && part.text) {
-                        text += part.text;
+        const toolsConfig = [
+            ...(customTools.length > 0 ? [{
+                functionDeclarations: customTools.map(tool => {
+                    const decl = {
+                        name: tool.name,
+                        description: tool.description,
+                    };
+                    if (tool.parametersJsonSchema) {
+                        decl.parametersJsonSchema = tool.parametersJsonSchema;
+                    } else if (tool.parameters) {
+                        decl.parameters = tool.parameters;
                     }
-                }
-            }
-        }
-        if (!text && response?.text) {
-            text = typeof response.text === 'function' ? response.text() : response.text;
-        }
+                    if (tool.func) {
+                        decl.func = tool.func;
+                    }
+                    return decl;
+                }),
+            }] : []),
+            ...nativeTools,
+        ];
+
+        const config = {
+            ...(formattedInput.systemParts.length > 0 ? {
+                systemInstruction: {
+                    parts: formattedInput.systemParts,
+                },
+            } : {}),
+            ...(toolsConfig.length > 0 ? { tools: toolsConfig } : {}),
+            ...(signal ? { abortSignal: signal } : {}),
+            ...options,
+        };
+
         if (outputSchema) {
-            output = text ? outputSchema.parse(JSON.parse(text)) : null;
+            response = await client.models.generateContent({
+                model,
+                contents: formattedInput.contents,
+                config: {
+                    ...config,
+                    responseMimeType: "application/json",
+                    responseJsonSchema: zodToJsonSchema(outputSchema),
+                },
+            });
+
+            const candidates = response.candidates;
+            const hasFunctionCall = candidates && candidates[0] && candidates[0].content && candidates[0].content.parts && candidates[0].content.parts.some(p => p.functionCall);
+
+            if (hasFunctionCall) {
+                output = null;
+            } else {
+                const text = _extractText(response);
+                output = text ? outputSchema.parse(JSON.parse(text)) : null;
+            }
         } else {
-            output = text || null;
+            response = await client.models.generateContent({
+                model,
+                contents: formattedInput.contents,
+                config: config,
+            });
+            output = _extractText(response);
         }
+        return _convertResponse(response, output);
+    } catch (error) {
+        console.error(`Error during Gemini chat completion:`, error);
+        throw error;
     }
-
-    const convertedOutput = _convertSteps(steps);
-
-    return {
-        output,
-        rawResponse: {
-            output: convertedOutput,
-            steps: response?.steps,
-            model: response?.model || model,
-            id: response?.id,
-            usage: response?.usage,
-            status: response?.status,
-            originalFormat: response,
-        },
-    };
 }

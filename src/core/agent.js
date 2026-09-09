@@ -1,9 +1,8 @@
 import {
     getDefaultMaxToolCalls,
     getDefaultToolConcurrency,
-    getDefaultModel,
 } from "../config.js";
-import { getModelContextLimit } from "../providers/registry.js";
+import { getModelContextLimit, getDefaultModel } from "../providers/registry.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
@@ -538,12 +537,14 @@ export class Agent {
                     name: toolCallName(item),
                     args: item.arguments,
                     callId: toolCallId(item),
+                    thoughtSignature: item.thoughtSignature || item.signature,
                 });
                 nextContext = nextContext.addInput(call);
             } else if (isReasoning(item)) {
                 const reasoning = makeReasoning({
                     summary: item.summary,
                     details: item.content,
+                    thoughtSignature: item.thoughtSignature || item.signature,
                 });
                 nextContext = nextContext.addInput(reasoning);
             } else if (isTextMessage(item)) {
@@ -567,10 +568,13 @@ export class Agent {
 
         if (!isDone) {
             const thunks = functionCalls.map(call => () => this._executeSingleTool(call, traceId, rootSpanId, signal));
+
             const toolSettled = await asyncSettleAll(thunks, this.toolConcurrency, 0);
 
             for (let i = 0; i < toolSettled.length; i++) {
                 const settled = toolSettled[i];
+                const originalCall = functionCalls[i];
+                const callSig = originalCall?.thoughtSignature || originalCall?.signature;
                 if (settled.status === 'fulfilled') {
                     const { callId, name, args, result } = settled.value;
                     newExecutedTools.push({ name, args });
@@ -578,10 +582,10 @@ export class Agent {
                         callId,
                         name,
                         value: result,
+                        thoughtSignature: callSig,
                     });
                     nextContext = nextContext.addInput(functionMessage);
                 } else {
-                    const originalCall = functionCalls[i];
                     const name = toolCallName(originalCall);
                     const callId = toolCallId(originalCall);
                     const error = settled.reason;
@@ -593,6 +597,7 @@ export class Agent {
                         callId,
                         name,
                         value: { error: error.message },
+                        thoughtSignature: callSig,
                     });
                     nextContext = nextContext.addInput(functionMessage);
                 }

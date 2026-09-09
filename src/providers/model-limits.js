@@ -112,7 +112,8 @@ export function getModelLimits(provider, model) {
     const p = (provider || 'openai').trim().toLowerCase();
     const m = (model || 'default').trim().toLowerCase();
 
-    const providerLimits = activeLimits[p] || DEFAULT_LIMITS[p] || {};
+    const normalizedProvider = p === 'gemini-interactions' || p === 'gemini interactions' ? 'gemini' : p;
+    const providerLimits = activeLimits[p] || activeLimits[normalizedProvider] || DEFAULT_LIMITS[p] || DEFAULT_LIMITS[normalizedProvider] || {};
 
     // 1. Exact match
     if (providerLimits[m]) {

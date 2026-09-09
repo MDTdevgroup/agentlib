@@ -15,7 +15,7 @@ import EventEmitter from 'events';
 import { fileURLToPath } from 'node:url';
 import { DomainObservability } from "../../src/services/observability.js";
 
-const llmService = new LLMService({ provider: 'gemini', apiKey: process.env.GEMINI_API_KEY });
+const llmService = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 
 // Define the output schema for the executor agent
 const executorOutputSchema = z.object({
@@ -126,7 +126,7 @@ async function main() {
     while (!turn.isDone) {
       turn = await turn.next();
     }
-    
+
     const query = turn.output;
     await executeSql(query);
   }
@@ -141,7 +141,7 @@ async function main() {
     while (!turn.isDone) {
       turn = await turn.next();
     }
-    
+
     if (typeof turn.output === 'object' && turn.output?.explanation_summary) {
       console.log(turn.output.explanation_summary);
     } else {

@@ -22,7 +22,7 @@ import { LLMService } from '../src/services/llm-service.js';
 import { registerProvider, getDefaultModel } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
 import { toProvider as openAIToProvider, fromProvider as openAIFromProvider, chat as openAIChat } from '../src/providers/openai.js';
-import { toProvider as geminiToProvider, fromProvider as geminiFromProvider, chat as geminiChat } from '../src/providers/gemini.js';
+import { toProvider as geminiToProvider, fromProvider as geminiFromProvider, chat as geminiChat } from '../src/providers/gemini-interactions.js';
 import { toProvider as vllmToProvider, fromProvider as vllmFromProvider } from '../src/providers/vllm.js';
 import { z } from 'zod';
 

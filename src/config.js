@@ -13,7 +13,7 @@ export function getDefaultGeminiModel() {
 export function getDefaultModel(provider = getDefaultProvider()) {
     if (!provider) return 'default';
     const normalized = String(provider).trim().toLowerCase();
-    if (normalized === 'gemini') return getDefaultGeminiModel();
+    if (normalized === 'gemini' || normalized === 'gemini-interactions' || normalized.startsWith('gemini')) return getDefaultGeminiModel();
     if (normalized === 'openai' || normalized === 'vllm') return getDefaultOpenaiModel();
     return 'default';
 }
