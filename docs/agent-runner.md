@@ -7,8 +7,7 @@ The `AgentRunner` is a generalized orchestrator for managing multi-turn, multi-a
 Pass a map of Agents to the runner.
 
 ```javascript
-import { AgentRunner, Agent } from '@peebles-group/agentlib-js';
-import { LLMService } from '@peebles-group/agentlib-js/src/services/llm-service.js';
+import { AgentRunner, Agent, LLMService } from '@peebles-group/agentlib-js';
 
 const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 

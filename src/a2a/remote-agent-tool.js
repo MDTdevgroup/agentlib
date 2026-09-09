@@ -1,5 +1,8 @@
-import { ClientFactory } from '@a2a-js/sdk/client';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
+import { loadOptional } from '../util/optional-dep.js';
+
+const A2A_INSTALL_CMD = 'npm install @a2a-js/sdk express';
+const A2A_CUSTOM_MSG = "The A2A client requires '@a2a-js/sdk'.\nInstall with: npm install @a2a-js/sdk";
 
 /**
  * Creates a tool function that calls a remote A2A agent.
@@ -8,9 +11,14 @@ import { v4 as uuidv4 } from 'uuid';
  * @param {string} remoteUrl - The URL of the remote agent (e.g. http://localhost:4000)
  * @param {string} [toolName='remote_agent'] - The name of the tool to register.
  * @param {string} [description] - Description for the tool. Use this to tell the agent when to use it.
- * @returns {object} A tool definition compatible with ToolLoader.
+ * @returns {Promise<object>} A tool definition compatible with ToolLoader.
  */
 export async function createRemoteAgentTool(remoteUrl, toolName = 'remote_agent', description = "Ask a remote agent for help.") {
+    const { ClientFactory } = await loadOptional('@a2a-js/sdk/client', 'A2A client', {
+        installCommand: A2A_INSTALL_CMD,
+        customMessage: A2A_CUSTOM_MSG,
+    });
+
     const factory = new ClientFactory();
     let client;
 
@@ -32,7 +40,7 @@ export async function createRemoteAgentTool(remoteUrl, toolName = 'remote_agent'
 
             const sendParams = {
                 message: {
-                    messageId: uuidv4(),
+                    messageId: randomUUID(),
                     role: 'user',
                     parts: [{ kind: 'text', text: request }],
                     kind: 'message',

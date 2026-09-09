@@ -5,7 +5,7 @@ The `LLMService` is a unified abstraction over various LLM providers (currently 
 ## Initialization
 
 ```javascript
-import { LLMService } from '@peebles-group/agentlib-js/src/services/llm-service.js';
+import { LLMService } from '@peebles-group/agentlib-js';
 
 // OpenAI
 const openaiLlm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
@@ -33,7 +33,7 @@ const response = await llm.chat(messages, {
 });
 
 // Access parsed structured data
-const data = response.output_parsed;
+const data = response.output;
 ```
 
 ## Standardized Syntax

@@ -11,7 +11,7 @@ export const docs = [
     },
     {
       title: "Installing AgentLib",
-      content: "To get started, run npm install and set up your API keys for OpenAI or Gemini in a .env file. You can then run examples such as simpleAgent or mcp-example to see agents in action."
+      content: "To get started, run npm install and set up your API keys for OpenAI or Gemini in a .env file. You can then run examples such as runner_two_agent_conversation or playwright-mcp to see agents in action."
     },
     {
       title: "Using Zod Schemas in AgentLib",
@@ -43,7 +43,7 @@ export const docs = [
     },
     {
       title: "Output Access",
-      content: "AgentLib returns both structured and raw outputs. The field result.output_text gives the plain text, while structured data can be accessed via validated object fields."
+      content: "AgentLib returns both structured and raw outputs. The field result.output gives the response text or structured data, while raw provider payloads are available via rawResponse."
     },
     {
       title: "Token Usage and Model Info",
@@ -66,20 +66,20 @@ export const docs = [
       content: "Ensure you have your environment variables set up in a .env file with OPENAI_API_KEY and GEMINI_API_KEY before running any examples or agents."
     },
     {
-      title: "Simple Agent Example",
-      content: "The simpleAgent example shows basic agent initialization and response handling using the gpt-4o-mini model with minimal setup."
+      title: "Two-Agent Conversation Example",
+      content: "The runner_two_agent_conversation example shows multi-agent interaction and round-trip dialogue orchestration."
     },
     {
       title: "SQL Agent Example",
       content: "The sqlAgent example demonstrates structured output, database interaction, and validation using Zod schemas for responses containing SQL query results."
     },
     {
-      title: "MCP Example",
-      content: "The mcp-example directory shows how to integrate MCP servers for browser automation, filesystem access, and web interactions."
+      title: "Playwright MCP Example",
+      content: "The playwright-mcp directory shows how to integrate MCP servers for browser automation, filesystem access, and web interactions."
     },
     {
-      title: "Translator Example",
-      content: "The translatorExample demonstrates multi-agent orchestration, where different agents handle translation, proofreading, and tone adjustment."
+      title: "Round Robin Conversation Example",
+      content: "The runner_round_robin_conversation demonstrates multi-agent orchestration using custom turn strategies across multiple agents."
     },
     {
       title: "Extending AgentLib",

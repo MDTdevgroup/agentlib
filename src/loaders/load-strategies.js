@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs';
 import http from 'http';
 import https from 'https';
-import sqlite3 from 'sqlite3';
+import { loadOptional } from '../util/optional-dep.js';
 
 export const loadStrategies = {
     /**
@@ -50,7 +50,12 @@ export const loadStrategies = {
      * @param {string} path - The path to the SQLite DB file.
      * @returns {Promise<object>} The prompt data object in key-value pairs of signature: { prompt: string, output: string }.
      */
-    sqlite: (path) => {
+    sqlite: async (path) => {
+        const sqlite3Module = await loadOptional('sqlite3', 'SQLite prompt store', {
+            installCommand: 'npm install sqlite3'
+        });
+        const sqlite3 = sqlite3Module.default || sqlite3Module;
+
         return new Promise((resolve, reject) => {
             const db = new sqlite3.Database(path, sqlite3.OPEN_READONLY, (err) => {
                 if (err) {

@@ -1,6 +1,4 @@
 import { Agent, AgentRunner, LLMService } from '../../index.js';
-import dotenv from 'dotenv';
-dotenv.config({ path: '../../.env' });
 
 async function main() {
     const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });

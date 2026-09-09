@@ -7,7 +7,7 @@ The `Context` class is a simple data container in AgentLib that handles episodic
 You can initialize a new `Context` with an array of messages or start with an empty context.
 
 ```javascript
-import { Context } from '@peebles-group/agentlib-js/src/memory/context.js';
+import { Context } from '@peebles-group/agentlib-js';
 
 // Empty context
 const ctx = new Context();
@@ -73,5 +73,65 @@ Alternatively, you can pass an external `Context` instance (or a raw message arr
 
 ## Context Pruning & Compaction
 
-> [!NOTE]
-> *Placeholder: Documentation for context pruning strategies (Windowing, Summarization, Semantic/Provence) will be added here in a future update.*
+Long conversations cause quadratic token billing across turns. AgentLib provides pluggable **compaction strategies** that shrink the wire payload sent to the LLM while preserving the full, lossless conversation history inside `Context`.
+
+All compactors enforce **atomic tool integrity**—a tool call and its corresponding result are treated as an indivisible unit and never split.
+
+### 1. Sliding Window (`WindowCompactor`)
+
+Preserves all system instructions and the most recent conversation turns within a configured token budget (`truncateToTokens`).
+
+```javascript
+import { Agent, WindowCompactor } from '@peebles-group/agentlib-js';
+
+const agent = new Agent(llm, {
+    pruningStrategy: 'window', // or new WindowCompactor({ maxTokens: 8000, truncateToTokens: 6000 })
+    maxContextTokens: 8000,
+    truncateToTokens: 6000,
+});
+```
+
+### 2. Incremental Summarization (`SummarizerCompactor`)
+
+Condenses older messages into an incremental `[Conversation Summary]` system message while preserving recent turns verbatim. If the summarization model call fails, it gracefully falls back to a sliding window without failing the agent run.
+
+```javascript
+const agent = new Agent(llm, {
+    pruningStrategy: 'summarizer',
+    maxContextTokens: 8000,
+    truncateToTokens: 6000,
+});
+```
+
+### 3. Semantic Pruning (`ProvenceCompactor`)
+
+Uses vector embeddings and cosine similarity against the active query to retain the most relevant messages up to a token budget. Embeddings are cached in-memory across turns so immutable messages are never re-embedded.
+
+```javascript
+import { ProvenceCompactor } from '@peebles-group/agentlib-js';
+
+const compactor = new ProvenceCompactor({
+    embeddingService: {
+        embed: async (text) => myEmbeddingModel.embed(text)
+    },
+    similarityThreshold: 0.75,
+    truncateToTokens: 6000
+});
+
+const agent = new Agent(llm, { pruningStrategy: compactor });
+```
+
+### 4. Custom Compactor (`BaseCompactor`)
+
+You can create a custom compactor by subclassing `BaseCompactor` and implementing `compact(messages) -> Promise<messages>`:
+
+```javascript
+import { BaseCompactor, groupAtomicUnits, truncateToBudget } from '@peebles-group/agentlib-js';
+
+export class CustomCompactor extends BaseCompactor {
+    async compact(messages) {
+        // Custom transformation
+        return truncateToBudget(messages, 4000);
+    }
+}
+```
