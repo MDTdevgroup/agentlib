@@ -1,5 +1,6 @@
 import * as OpenAIProvider from './openai.js';
 import * as GeminiProvider from './gemini.js';
+import * as GeminiInteractionsProvider from './gemini-interactions.js';
 import * as VllmProvider from './vllm.js';
 import {
     getModelLimits as resolveModelLimits,
@@ -12,6 +13,7 @@ import {
 const ALLOWED_PROVIDERS = {
     openai: { name: 'OpenAI', namespace: OpenAIProvider },
     gemini: { name: 'Gemini', namespace: GeminiProvider },
+    'gemini-interactions': { name: 'Gemini Interactions', namespace: GeminiInteractionsProvider },
     vllm: { name: 'vLLM', namespace: VllmProvider },
 };
 
@@ -47,11 +49,17 @@ export function validateProviderName(providerName) {
         return normalized;
     }
 
-    // Check display name match (e.g. 'OpenAI' -> 'openai')
+    // Check display name match (e.g. 'OpenAI' -> 'openai', 'Gemini Interactions' -> 'gemini-interactions')
     for (const [key, provider] of Object.entries(providers)) {
         if (provider.name && normalize(provider.name) === normalized) {
             return key;
         }
+    }
+
+    // Check hyphenated / whitespace / underscore variation (e.g. 'gemini interactions' -> 'gemini-interactions')
+    const hyphenated = normalized.replace(/[\s_]+/g, '-');
+    if (Object.hasOwn(providers, hyphenated)) {
+        return hyphenated;
     }
 
     const allowed = Object.keys(providers);

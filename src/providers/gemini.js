@@ -23,7 +23,7 @@ export function getModelLimits(model = defaultModel) {
 }
 
 /**
- * Private method: Fetches model context limits dynamically from Google Gemini models API.
+ * Fetches model context limits dynamically from Google Gemini models API.
  * Updates in-memory registry and optionally persists to model-limits.json.
  *
  * @param {object} client - GoogleGenAI client instance
@@ -42,7 +42,6 @@ export async function _fetchModelLimits(client, { updateFile = false, filePath =
         let modelsList = [];
         if (typeof client.models.list === 'function') {
             const res = await client.models.list();
-            // Handle async iterable or array responses
             if (res && typeof res[Symbol.asyncIterator] === 'function') {
                 for await (const m of res) {
                     modelsList.push(m);
@@ -111,16 +110,38 @@ export function isRetryable(error) {
     return { retryable: false };
 }
 
+function _mergeConsecutiveRoles(contents) {
+    const merged = [];
+    for (const item of contents) {
+        const last = merged[merged.length - 1];
+        if (last && last.role === item.role) {
+            last.parts.push(...item.parts);
+        } else {
+            merged.push({ role: item.role, parts: [...item.parts] });
+        }
+    }
+    return merged;
+}
+
 function _convertInput(input) {
-    if (!Array.isArray(input)) return { contents: [], systemParts: [] };
+    if (!Array.isArray(input)) {
+        throw new Error("User prompt not detected, Gemini requires a user prompt.");
+    }
+
     const contents = [];
     const systemParts = [];
     const callIdToName = new Map();
+    const callIdToSignature = new Map();
 
-    // First pass to map call IDs to names for tool responses
     for (const item of input) {
-        if (item && item.type === 'function_call' && (item.call_id || item.id) && item.name) {
-            callIdToName.set(item.call_id || item.id, item.name);
+        if (!item || typeof item !== 'object') continue;
+        const callId = item.call_id || item.id;
+        const sig = item.thoughtSignature || item.thought_signature || item.signature;
+        if (callId && sig) {
+            callIdToSignature.set(callId, sig);
+        }
+        if ((item.type === 'function_call' || item.type === 'tool_call') && callId && item.name) {
+            callIdToName.set(callId, item.name);
         }
     }
 
@@ -130,116 +151,140 @@ function _convertInput(input) {
         if (object.role === 'system') {
             const systemText = object.content !== undefined ? object.content : (object.text || '');
             if (systemText) {
-                systemParts.push({ text: typeof systemText === 'string' ? systemText : JSON.stringify(systemText) });
+                systemParts.push({
+                    text: typeof systemText === 'string' ? systemText : JSON.stringify(systemText),
+                });
             }
-        } else if (object.type === 'function_call') {
-            const callId = object.call_id || object.id;
+        } else if (object.type === 'function_call' || object.type === 'tool_call') {
             let args = object.args;
             if (args === undefined && object.arguments !== undefined) {
                 args = typeof object.arguments === 'string' ? JSON.parse(object.arguments) : object.arguments;
             }
-            const funcCall = {
-                name: object.name,
-                args: args ?? {},
+            const callId = object.call_id || object.id;
+            const part = {
+                functionCall: {
+                    name: object.name,
+                    args: args ?? {},
+                },
             };
-            if (callId) funcCall.id = callId;
-
-            const part = { functionCall: funcCall };
-            if (object.thoughtSignature) {
-                part.thoughtSignature = object.thoughtSignature;
+            const sig = object.thoughtSignature
+                || object.thought_signature
+                || object.signature
+                || (callId ? callIdToSignature.get(callId) : undefined);
+            if (sig) {
+                part.thoughtSignature = sig;
             }
             contents.push({
-                role: "model",
+                role: 'model',
                 parts: [part],
             });
-        } else if (object.type === 'function_call_output') {
+        } else if (object.type === 'function_call_output' || object.type === 'function_result' || object.type === 'tool_result') {
             const callId = object.call_id || object.id;
             const toolName = object.name || (callId ? callIdToName.get(callId) : undefined) || 'function_call';
-            let outputResult = object.output !== undefined ? object.output : object.value;
-            if (typeof outputResult === 'string') {
+            let parsedResult;
+            if (typeof object.output === 'string') {
                 try {
-                    outputResult = JSON.parse(outputResult);
+                    parsedResult = JSON.parse(object.output);
                 } catch {
-                    // keep as string
+                    parsedResult = object.output;
                 }
+            } else if (object.output !== undefined) {
+                parsedResult = object.output;
+            } else if (object.value !== undefined) {
+                parsedResult = object.value;
+            } else if (object.result !== undefined) {
+                parsedResult = object.result;
+            } else {
+                parsedResult = null;
             }
 
-            // Gemini functionResponse.response must be a JSON object
-            const responseStruct = (outputResult !== null && typeof outputResult === 'object' && !Array.isArray(outputResult))
-                ? outputResult
-                : { result: outputResult };
-
-            const funcResponse = {
-                name: toolName,
-                response: responseStruct,
+            const part = {
+                functionResponse: {
+                    name: toolName,
+                    response: { result: parsedResult },
+                },
             };
-            if (callId) funcResponse.id = callId;
-
+            const sig = object.thoughtSignature
+                || object.thought_signature
+                || object.signature
+                || (callId ? callIdToSignature.get(callId) : undefined);
+            if (sig) {
+                part.thoughtSignature = sig;
+            }
             contents.push({
                 role: 'user',
-                parts: [{ functionResponse: funcResponse }]
+                parts: [part],
             });
-        } else if (object.role === 'assistant' || object.role === 'model') {
+        } else if (object.role === 'assistant' || object.role === 'model' || object.type === 'model_output') {
             let textContent = object.content !== undefined ? object.content : (object.text || '');
             if (object.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${object.speaker}]:`)) {
                 textContent = `[${object.speaker}]: ${textContent}`;
             }
-            if (typeof textContent === 'string') {
-                contents.push({
-                    role: 'model',
-                    parts: [{ text: textContent }]
-                });
-            }
-        } else if (object.role === 'user' || (!object.role && (object.content !== undefined || object.text !== undefined))) {
+            contents.push({
+                role: 'model',
+                parts: [{ text: typeof textContent === 'string' ? textContent : JSON.stringify(textContent) }],
+            });
+        } else if (object.role === 'user' || object.type === 'user_input' || (!object.role && (object.content !== undefined || object.text !== undefined))) {
             let textContent = object.content !== undefined ? object.content : (object.text || '');
             if (object.speaker && typeof textContent === 'string' && !textContent.startsWith(`[${object.speaker}]:`)) {
                 textContent = `[${object.speaker}]: ${textContent}`;
             }
+
             if (typeof textContent === 'string') {
                 contents.push({
                     role: 'user',
-                    parts: [{ text: textContent }]
+                    parts: [{ text: textContent }],
                 });
             } else if (Array.isArray(object.content)) {
                 const parts = [];
                 for (const part of object.content) {
+                    if (!part || typeof part !== 'object') continue;
                     if (part.type === 'input_image' && part.image_url) {
-                        const [prefix, base64ImageFile] = part.image_url.split(",");
+                        const [prefix, base64ImageFile] = part.image_url.split(',');
                         const mimeMatch = prefix.match(/:(.*?);/);
                         const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
                         parts.push({
                             inlineData: {
                                 mimeType,
-                                data: base64ImageFile || ''
-                            }
+                                data: base64ImageFile || '',
+                            },
                         });
-                    } else if (part.type === 'image_url' && part.image_url?.url) {
-                        const [prefix, base64ImageFile] = part.image_url.url.split(",");
-                        const mimeMatch = prefix.match(/:(.*?);/);
-                        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
-                        parts.push({
-                            inlineData: {
-                                mimeType,
-                                data: base64ImageFile || ''
-                            }
-                        });
+                    } else if (part.type === 'image_url' && part.image_url) {
+                        const urlStr = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url;
+                        if (urlStr && urlStr.includes(',')) {
+                            const [prefix, base64ImageFile] = urlStr.split(',');
+                            const mimeMatch = prefix.match(/:(.*?);/);
+                            const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+                            parts.push({
+                                inlineData: {
+                                    mimeType,
+                                    data: base64ImageFile || '',
+                                },
+                            });
+                        }
+                    } else if (part.inlineData) {
+                        parts.push(part);
                     } else if (part.type === 'input_text' || part.type === 'text') {
                         parts.push({ text: part.text || '' });
                     }
                 }
                 if (parts.length > 0) {
                     contents.push({
-                        role: "user",
-                        parts
+                        role: 'user',
+                        parts,
                     });
                 }
             }
         }
     }
 
+    if (contents.length === 0) {
+        throw new Error("User prompt not detected, Gemini requires a user prompt.");
+    }
+
     return {
-        contents,
-        systemParts
+        contents: _mergeConsecutiveRoles(contents),
+        systemParts,
     };
 }
 
@@ -247,29 +292,34 @@ function _convertCandidateParts(parts) {
     if (!Array.isArray(parts)) return [];
     const output = [];
     for (const part of parts) {
-        if (!part) continue;
+        if (!part || typeof part !== 'object') continue;
         if (part.functionCall) {
             const callId = part.functionCall.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-            const rawArgs = part.functionCall.args;
             output.push({
                 type: "function_call",
                 id: callId,
                 call_id: callId,
                 name: part.functionCall.name,
-                arguments: typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs ?? {}),
-                ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {})
+                arguments: typeof part.functionCall.args === 'string'
+                    ? part.functionCall.args
+                    : JSON.stringify(part.functionCall.args ?? {}),
+                ...((part.thoughtSignature || part.thought_signature || part.signature) ? { thoughtSignature: part.thoughtSignature || part.thought_signature || part.signature } : {}),
             });
         } else if (part.thought) {
             output.push({
                 type: "reasoning",
+                summary: part.text || '',
                 content: part.text || '',
-                ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {})
+                ...((part.thoughtSignature || part.thought_signature || part.signature) ? { thoughtSignature: part.thoughtSignature || part.thought_signature || part.signature } : {}),
             });
         } else if (part.text !== undefined) {
             output.push({
                 type: "message",
                 role: "assistant",
-                content: part.text
+                content: {
+                    text: part.text,
+                },
+                text: part.text,
             });
         }
     }
@@ -277,19 +327,37 @@ function _convertCandidateParts(parts) {
 }
 
 function _convertResponse(response, output) {
-    const candidate = response?.candidates?.[0];
-    const parts = candidate?.content?.parts || [];
+    const candidateParts = response?.candidates?.[0]?.content?.parts || [];
     return {
         output: output,
         rawResponse: {
-            output: _convertCandidateParts(parts),
-            model: response?.modelVersion,
-            id: response?.responseId,
-            usage: response?.usageMetadata,
-            promptFeedback: response?.promptFeedback,
-            finishReason: candidate?.finishReason
-        }
+            output: _convertCandidateParts(candidateParts),
+            model: response?.modelVersion || response?.model,
+            id: response?.responseId || response?.id,
+            usage: response?.usageMetadata || response?.usage,
+            originalFormat: response,
+        },
     };
+}
+
+function _extractText(response) {
+    const parts = response?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts)) {
+        const textParts = parts.filter(p => typeof p.text === 'string' && !p.thought);
+        if (textParts.length > 0) {
+            return textParts.map(p => p.text).join('');
+        }
+        return null;
+    }
+    if (response?.text) {
+        return typeof response.text === 'function' ? response.text() : response.text;
+    }
+    return null;
+}
+
+async function _applySemanticPruning(messages) {
+    // TODO: Implement embedding-based cosine similarity filtering
+    return messages;
 }
 
 export function toProvider(input) {
@@ -297,75 +365,129 @@ export function toProvider(input) {
 }
 
 export function fromProvider(rawResponse) {
-    if (!rawResponse || !Array.isArray(rawResponse.output)) {
-        return [];
+    if (!rawResponse) return [];
+    if (Array.isArray(rawResponse.output)) {
+        return rawResponse.output.map(item => {
+            if (item.type === 'message') {
+                const text = typeof item.content === 'string'
+                    ? item.content
+                    : (item.content?.text ?? item.text ?? '');
+                return {
+                    type: 'message',
+                    role: item.role || 'assistant',
+                    content: text,
+                    text,
+                };
+            }
+            if (item.type === 'function_call') {
+                const callId = item.call_id || item.id || `call_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+                const sig = item.thoughtSignature || item.thought_signature || item.signature;
+                return {
+                    type: 'function_call',
+                    id: callId,
+                    call_id: callId,
+                    name: item.name,
+                    arguments: typeof item.arguments === 'string' ? item.arguments : JSON.stringify(item.arguments ?? {}),
+                    ...(sig ? { thoughtSignature: sig } : {}),
+                };
+            }
+            if (item.type === 'reasoning') {
+                const sig = item.thoughtSignature || item.thought_signature || item.signature;
+                return {
+                    type: 'reasoning',
+                    summary: item.summary,
+                    content: item.content,
+                    ...(sig ? { thoughtSignature: sig } : {}),
+                };
+            }
+            return item;
+        });
     }
-    const items = rawResponse.output;
-    items.output = items;
-    return items;
+    if (Array.isArray(rawResponse.candidates?.[0]?.content?.parts)) {
+        return _convertCandidateParts(rawResponse.candidates[0].content.parts);
+    }
+    return [];
 }
 
-export async function chat(client, input, { model = defaultModel, inputSchema, outputSchema, tools, signal, ...options } = {}) {
-    let response, output;
-
+export async function chat(client, input, { model = defaultModel, pruningOptions, inputSchema, outputSchema, tools, signal, ...options } = {}) {
     if (inputSchema) {
         input = inputSchema.parse(input);
     }
 
-    const formattedInput = _convertInput(input);
-    // Separate custom tools (name/description/parameters) from native Gemini tools (e.g. { googleSearch: {} })
-    const customTools = tools ? tools.filter(t => t.name) : [];
-    const nativeTools = tools ? tools.filter(t => !t.name) : [];
+    try {
+        let response, output;
 
-    const toolsConfig = [
-        ...(customTools.length > 0 ? [{
-            functionDeclarations: customTools.map(tool => ({
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.parameters,
-            }))
-        }] : []),
-        ...nativeTools
-    ];
-
-    const config = {
-        ...(formattedInput.systemParts && formattedInput.systemParts.length > 0 ? {
-            systemInstruction: {
-                parts: formattedInput.systemParts
-            }
-        } : {}),
-        ...(toolsConfig.length > 0 ? { tools: toolsConfig } : {}),
-        ...(signal ? { abortSignal: signal } : {}),
-        ...options
-    };
-
-    if (outputSchema) {
-        response = await client.models.generateContent({
-            model,
-            contents: formattedInput.contents,
-            config: {
-                ...config,
-                responseMimeType: "application/json",
-                responseJsonSchema: zodToJsonSchema(outputSchema),
-            }
-        });
-
-        const candidates = response?.candidates;
-        const hasFunctionCall = candidates && candidates[0] && candidates[0].content && candidates[0].content.parts.some(p => p.functionCall);
-
-        if (hasFunctionCall) {
-            output = null;
-        } else {
-            const text = response?.text ? (typeof response.text === 'function' ? response.text() : response.text) : null;
-            output = text ? outputSchema.parse(JSON.parse(text)) : null;
+        if (pruningOptions?.enabled) {
+            input = await _applySemanticPruning(input);
         }
-    } else {
-        response = await client.models.generateContent({
-            model,
-            contents: formattedInput.contents,
-            config: config,
-        });
-        output = response?.text ? (typeof response.text === 'function' ? response.text() : response.text) : null;
+
+        const formattedInput = _convertInput(input);
+        const customTools = tools ? tools.filter(t => t.name) : [];
+        const nativeTools = tools ? tools.filter(t => !t.name) : [];
+
+        const toolsConfig = [
+            ...(customTools.length > 0 ? [{
+                functionDeclarations: customTools.map(tool => {
+                    const decl = {
+                        name: tool.name,
+                        description: tool.description,
+                    };
+                    if (tool.parametersJsonSchema) {
+                        decl.parametersJsonSchema = tool.parametersJsonSchema;
+                    } else if (tool.parameters) {
+                        decl.parameters = tool.parameters;
+                    }
+                    if (tool.func) {
+                        decl.func = tool.func;
+                    }
+                    return decl;
+                }),
+            }] : []),
+            ...nativeTools,
+        ];
+
+        const config = {
+            ...(formattedInput.systemParts.length > 0 ? {
+                systemInstruction: {
+                    parts: formattedInput.systemParts,
+                },
+            } : {}),
+            ...(toolsConfig.length > 0 ? { tools: toolsConfig } : {}),
+            ...(signal ? { abortSignal: signal } : {}),
+            ...options,
+        };
+
+        if (outputSchema) {
+            response = await client.models.generateContent({
+                model,
+                contents: formattedInput.contents,
+                config: {
+                    ...config,
+                    responseMimeType: "application/json",
+                    responseJsonSchema: zodToJsonSchema(outputSchema),
+                },
+            });
+
+            const candidates = response.candidates;
+            const hasFunctionCall = candidates && candidates[0] && candidates[0].content && candidates[0].content.parts && candidates[0].content.parts.some(p => p.functionCall);
+
+            if (hasFunctionCall) {
+                output = null;
+            } else {
+                const text = _extractText(response);
+                output = text ? outputSchema.parse(JSON.parse(text)) : null;
+            }
+        } else {
+            response = await client.models.generateContent({
+                model,
+                contents: formattedInput.contents,
+                config: config,
+            });
+            output = _extractText(response);
+        }
+        return _convertResponse(response, output);
+    } catch (error) {
+        console.error(`Error during Gemini chat completion:`, error);
+        throw error;
     }
-    return _convertResponse(response, output);
 }

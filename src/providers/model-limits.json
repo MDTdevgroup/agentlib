@@ -1,0 +1,44 @@
+{
+  "openai": {
+    "gpt-6-astra": { "inputTokenLimit": 922000, "outputTokenLimit": 128000 },
+    "gpt-5.6-sol": { "inputTokenLimit": 922000, "outputTokenLimit": 128000 },
+    "gpt-5.6-terra": { "inputTokenLimit": 922000, "outputTokenLimit": 128000 },
+    "gpt-5.6-luna": { "inputTokenLimit": 922000, "outputTokenLimit": 128000 },
+    "gpt-5.6": { "inputTokenLimit": 922000, "outputTokenLimit": 128000 },
+    "gpt-5.4": { "inputTokenLimit": 922000, "outputTokenLimit": 128000 },
+    "gpt-5.4-mini": { "inputTokenLimit": 272000, "outputTokenLimit": 128000 },
+    "gpt-5.4-nano": { "inputTokenLimit": 272000, "outputTokenLimit": 128000 },
+    "gpt-5": { "inputTokenLimit": 272000, "outputTokenLimit": 128000 },
+    "gpt-5-mini": { "inputTokenLimit": 272000, "outputTokenLimit": 128000 },
+    "gpt-5-nano": { "inputTokenLimit": 272000, "outputTokenLimit": 128000 },
+    "gpt-4.1": { "inputTokenLimit": 1014808, "outputTokenLimit": 32768 },
+    "gpt-4.1-mini": { "inputTokenLimit": 1014808, "outputTokenLimit": 32768 },
+    "gpt-4o": { "inputTokenLimit": 128000, "outputTokenLimit": 16384 },
+    "gpt-4o-mini": { "inputTokenLimit": 128000, "outputTokenLimit": 16384 },
+    "gpt-4-turbo": { "inputTokenLimit": 128000, "outputTokenLimit": 4096 },
+    "gpt-4": { "inputTokenLimit": 8192, "outputTokenLimit": 8192 },
+    "gpt-3.5-turbo": { "inputTokenLimit": 16385, "outputTokenLimit": 4096 },
+    "o3": { "inputTokenLimit": 200000, "outputTokenLimit": 100000 },
+    "o3-mini": { "inputTokenLimit": 200000, "outputTokenLimit": 100000 },
+    "o4-mini": { "inputTokenLimit": 200000, "outputTokenLimit": 100000 },
+    "o1": { "inputTokenLimit": 200000, "outputTokenLimit": 100000 },
+    "default": { "inputTokenLimit": 272000, "outputTokenLimit": 16384 }
+  },
+  "gemini": {
+    "gemini-3.8-flash": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-3.7-flash": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-3.6-flash": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-3.5-flash-lite": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-3.5-flash": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-3.1-flash-lite": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-3.1-pro-preview": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-3-flash-preview": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-2.5-pro": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-2.5-flash-lite": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "gemini-2.5-flash": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 },
+    "default": { "inputTokenLimit": 1048576, "outputTokenLimit": 65536 }
+  },
+  "vllm": {
+    "default": { "inputTokenLimit": 32768, "outputTokenLimit": 4096 }
+  }
+}

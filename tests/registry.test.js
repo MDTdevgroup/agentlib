@@ -10,6 +10,8 @@ describe('Provider Registry', () => {
         const providers = getAllowedProviders();
         assert.ok(providers.openai, 'OpenAI provider should exist');
         assert.ok(providers.gemini, 'Gemini provider should exist');
+        assert.ok(providers['gemini-interactions'], 'Gemini Interactions provider should exist');
+        assert.equal(providers['gemini-interactions'].name, 'Gemini Interactions');
         assert.ok(providers.vllm, 'vLLM provider should exist');
     });
 
@@ -18,6 +20,9 @@ describe('Provider Registry', () => {
         assert.equal(validateProviderName('OpenAI'), 'openai');
         assert.equal(validateProviderName('gemini'), 'gemini');
         assert.equal(validateProviderName('Gemini'), 'gemini');
+        assert.equal(validateProviderName('gemini-interactions'), 'gemini-interactions');
+        assert.equal(validateProviderName('Gemini Interactions'), 'gemini-interactions');
+        assert.equal(validateProviderName('gemini interactions'), 'gemini-interactions');
         assert.equal(validateProviderName('vllm'), 'vllm');
     });
 

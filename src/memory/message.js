@@ -65,7 +65,7 @@ export function makeTextMessage({ role = 'user', text = '', content = undefined,
  * @param {string} [params.id] - Alias for Call ID
  * @returns {object} Canonical tool call item
  */
-export function makeToolCall({ name, args = {}, arguments: rawArguments, callId, id } = {}) {
+export function makeToolCall({ name, args = {}, arguments: rawArguments, callId, id, thoughtSignature, signature } = {}) {
     const cid = callId || id;
     const resolvedArgs = rawArguments !== undefined ? rawArguments : args;
     const argumentsString = typeof resolvedArgs === 'string' ? resolvedArgs : JSON.stringify(resolvedArgs ?? {});
@@ -76,6 +76,11 @@ export function makeToolCall({ name, args = {}, arguments: rawArguments, callId,
         arguments: argumentsString,
     };
     if (id !== undefined) item.id = id;
+    const sig = thoughtSignature || signature;
+    if (sig !== undefined) {
+        item.thoughtSignature = sig;
+        item.signature = sig;
+    }
     return deepFreeze(item);
 }
 
@@ -88,9 +93,11 @@ export function makeToolCall({ name, args = {}, arguments: rawArguments, callId,
  * @param {string} [params.name] - Associated tool name
  * @param {any} [params.value] - Execution result value
  * @param {any} [params.output] - Alias for value
+ * @param {string} [params.thoughtSignature] - Optional thought signature
+ * @param {string} [params.signature] - Alias for thought signature
  * @returns {object} Canonical tool output item
  */
-export function makeToolResult({ callId, name, value, output } = {}) {
+export function makeToolResult({ callId, name, value, output, thoughtSignature, signature } = {}) {
     const val = value !== undefined ? value : output;
     const item = {
         type: 'function_call_output',
@@ -98,6 +105,11 @@ export function makeToolResult({ callId, name, value, output } = {}) {
         output: val,
     };
     if (name !== undefined) item.name = name;
+    const sig = thoughtSignature || signature;
+    if (sig !== undefined) {
+        item.thoughtSignature = sig;
+        item.signature = sig;
+    }
     return deepFreeze(item);
 }
 
@@ -108,14 +120,21 @@ export function makeToolResult({ callId, name, value, output } = {}) {
  * @param {any} [params.summary] - High-level summary of reasoning
  * @param {any} [params.details] - Detailed reasoning content
  * @param {any} [params.content] - Alias for details
+ * @param {string} [params.thoughtSignature] - Optional thought signature
+ * @param {string} [params.signature] - Alias for thought signature
  * @returns {object} Canonical reasoning item
  */
-export function makeReasoning({ summary, details, content } = {}) {
+export function makeReasoning({ summary, details, content, thoughtSignature, signature } = {}) {
     const item = {
         type: 'reasoning',
         summary: summary || undefined,
         content: details !== undefined ? details : content,
     };
+    const sig = thoughtSignature || signature;
+    if (sig !== undefined) {
+        item.thoughtSignature = sig;
+        item.signature = sig;
+    }
     return deepFreeze(item);
 }
 
@@ -145,6 +164,10 @@ export function toolCallName(item) {
 
 export function toolCallId(item) {
     return isToolCall(item) ? (item.call_id || item.id) : undefined;
+}
+
+export function toolCallSignature(item) {
+    return isToolCall(item) ? (item.thoughtSignature || item.signature) : undefined;
 }
 
 export function toolCallArgs(item) {
