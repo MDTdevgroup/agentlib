@@ -1,7 +1,13 @@
-import sqlite3 from "sqlite3";
-import { open } from "sqlite";
+import { loadOptional } from "../../src/util/optional-dep.js";
 
 export async function initDB(dbPath = "./chinook.db") {
+  const sqlite3Module = await loadOptional("sqlite3", "SQL database driver", {
+    installCommand: "npm install sqlite3 sqlite"
+  });
+  const sqlite3 = sqlite3Module.default || sqlite3Module;
+  const { open } = await loadOptional("sqlite", "SQL database driver", {
+    installCommand: "npm install sqlite3 sqlite"
+  });
   const db = await open({
     filename: dbPath,
     driver: sqlite3.Database,
