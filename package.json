@@ -2,12 +2,34 @@
   "name": "@peebles-group/agentlib-js",
   "version": "4.0.0",
   "description": "A minimal JavaScript library implementing concurrent async agents for illustrating multi-agent systems and other agentic design patterns including recursive ones purely through function calling loops.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MDTdevgroup/agentlib.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MDTdevgroup/agentlib/issues"
+  },
+  "homepage": "https://github.com/MDTdevgroup/agentlib#readme",
+  "keywords": [
+    "agent",
+    "multi-agent",
+    "ai",
+    "llm",
+    "openai",
+    "gemini",
+    "mcp",
+    "a2a"
+  ],
   "main": "index.js",
   "type": "module",
   "exports": {
     ".": "./index.js",
     "./a2a": "./src/a2a/index.js",
-    "./telemetry": "./src/services/telemetry.js"
+    "./telemetry": "./src/services/telemetry.js",
+    "./package.json": "./package.json"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -73,6 +95,8 @@
   "files": [
     "index.js",
     "src/",
+    "docs/",
+    "MIGRATION.md",
     "README.md",
     "LICENSE"
   ]

@@ -69,6 +69,17 @@ describe('Optional Dependencies & Package Exports', () => {
             assert.ok(AgentLib.DomainObservability, 'DomainObservability should be exported');
             assert.ok(AgentLib.initTelemetry, 'initTelemetry should be exported');
             assert.ok(AgentLib.loadOptional, 'loadOptional should be exported');
+            assert.ok(AgentLib.Exception, 'Exception should be exported');
+            assert.ok(AgentLib.isException, 'isException should be exported');
+
+            // Canonical message constructors & selectors should be exported
+            assert.equal(typeof AgentLib.makeTextMessage, 'function');
+            assert.equal(typeof AgentLib.makeToolCall, 'function');
+            assert.equal(typeof AgentLib.makeToolResult, 'function');
+            assert.equal(typeof AgentLib.makeReasoning, 'function');
+            assert.equal(typeof AgentLib.messageText, 'function');
+            assert.equal(typeof AgentLib.isToolCall, 'function');
+            assert.equal(typeof AgentLib.isToolResult, 'function');
 
             // A2A server functions should NOT be on root export
             assert.equal(AgentLib.startA2AServer, undefined, 'startA2AServer should not be on root export');
