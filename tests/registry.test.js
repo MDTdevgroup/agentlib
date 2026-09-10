@@ -1,0 +1,83 @@
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { getAllowedProviders, validateProviderName, registerProvider } from '../src/providers/registry.js';
+import * as FakeProvider from './helpers/fake-provider.js';
+import { getDefaultGeminiModel } from '../src/config.js';
+import * as GeminiProvider from '../src/providers/gemini.js';
+
+describe('Provider Registry', () => {
+    test('getAllowedProviders returns standard built-in providers', () => {
+        const providers = getAllowedProviders();
+        assert.ok(providers.openai, 'OpenAI provider should exist');
+        assert.ok(providers.gemini, 'Gemini provider should exist');
+        assert.ok(providers['gemini-interactions'], 'Gemini Interactions provider should exist');
+        assert.equal(providers['gemini-interactions'].name, 'Gemini Interactions');
+        assert.ok(providers.vllm, 'vLLM provider should exist');
+    });
+
+    test('validateProviderName validates standard provider keys and display names', () => {
+        assert.equal(validateProviderName('openai'), 'openai');
+        assert.equal(validateProviderName('OpenAI'), 'openai');
+        assert.equal(validateProviderName('gemini'), 'gemini');
+        assert.equal(validateProviderName('Gemini'), 'gemini');
+        assert.equal(validateProviderName('gemini-interactions'), 'gemini-interactions');
+        assert.equal(validateProviderName('Gemini Interactions'), 'gemini-interactions');
+        assert.equal(validateProviderName('gemini interactions'), 'gemini-interactions');
+        assert.equal(validateProviderName('vllm'), 'vllm');
+    });
+
+    test('registerProvider dynamically registers a new provider', () => {
+        const customNamespace = {
+            createClient: () => ({}),
+            chat: async () => ({ output: 'custom', rawResponse: { output: [] } }),
+        };
+
+        const registeredKey = registerProvider('custom-gateway', customNamespace, 'Custom Gateway');
+        assert.equal(registeredKey, 'custom-gateway');
+
+        const providers = getAllowedProviders();
+        assert.ok(providers['custom-gateway']);
+        assert.equal(providers['custom-gateway'].name, 'Custom Gateway');
+        assert.equal(providers['custom-gateway'].namespace, customNamespace);
+
+        assert.equal(validateProviderName('custom-gateway'), 'custom-gateway');
+        assert.equal(validateProviderName('Custom Gateway'), 'custom-gateway');
+    });
+
+    test('registerProvider supports FakeProvider registration', () => {
+        registerProvider('fake', FakeProvider, 'FakeProvider');
+        assert.equal(validateProviderName('fake'), 'fake');
+    });
+
+    test('validateProviderName throws for invalid or unsupported providers', () => {
+        assert.throws(() => validateProviderName(123), TypeError);
+        assert.throws(() => validateProviderName('unsupported-provider-xyz'), /Unsupported provider/);
+    });
+
+    test('Provider registry separates key from display name', () => {
+        registerProvider('anthropic', { createClient: () => ({}), chat: async () => {} }, 'Anthropic Claude');
+        assert.equal(validateProviderName('anthropic'), 'anthropic');
+        assert.equal(validateProviderName('Anthropic Claude'), 'anthropic');
+    });
+
+    test('Gemini provider default model is defined and does not throw ReferenceError', () => {
+        assert.ok(getDefaultGeminiModel(), 'getDefaultGeminiModel must be exported by config.js');
+        assert.equal(typeof GeminiProvider.chat, 'function');
+    });
+
+    test('Gemini chat does not replace or mutate global console.warn', async () => {
+        const originalWarn = console.warn;
+        let fakeClient = {
+            models: {
+                generateContent: async () => ({
+                    candidates: [{ content: { parts: [{ text: 'response' }] } }],
+                    text: () => 'response',
+                }),
+            },
+        };
+
+        await GeminiProvider.chat(fakeClient, [{ role: 'user', content: 'hello' }], {});
+
+        assert.equal(console.warn, originalWarn, 'console.warn must not be monkey-patched');
+    });
+});

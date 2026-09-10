@@ -37,8 +37,7 @@ The consumer connects to the Python provider to answer user queries.
 
 1.  Open a **new terminal** and navigate to the consumer directory:
     ```bash
-    cd ../consumer-js  # from provider-python
-    # or cd examples/a2a_pydantic/consumer-js
+    cd examples/a2a_pydantic/consumer-js
     ```
 
 2.  Install dependencies:

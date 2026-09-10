@@ -19,7 +19,7 @@ class Deps:
     client: AsyncClient
 
 weather_agent = Agent(
-    'openai:gpt-4o',
+    'openai:gpt-5.6',
     deps_type=Deps,
     retries=2,
     system_prompt='You are a helpful weather agent. Be concise.',
