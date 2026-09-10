@@ -27,7 +27,7 @@ export const docs = [
     },
     {
       title: "OpenAI and Gemini Support",
-      content: "AgentLib supports multiple LLM providers including OpenAI models like gpt-4o and Gemini models like gemini-2.5-flash-lite. Developers can switch providers easily."
+      content: "AgentLib supports multiple LLM providers including OpenAI models like gpt-5.6 and Gemini models like gemini-3.8-flash. Developers can switch providers easily."
     },
     {
       title: "Tool Calling",

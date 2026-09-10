@@ -71,10 +71,19 @@ describe('Canonical Message Format & Abstraction Barrier', () => {
         });
 
         test('makeReasoning creates reasoning item', () => {
-            const r = makeReasoning({ summary: 'Thinking step', details: 'Let X be 5' });
+            const r = makeReasoning({
+                summary: 'Thinking step',
+                details: 'Let X be 5',
+                id: 'rs_test_1',
+                encrypted_content: 'enc_123',
+                status: 'completed',
+            });
             assert.equal(isReasoning(r), true);
             assert.equal(r.summary, 'Thinking step');
             assert.equal(r.content, 'Let X be 5');
+            assert.equal(r.id, 'rs_test_1');
+            assert.equal(r.encrypted_content, 'enc_123');
+            assert.equal(r.status, 'completed');
         });
     });
 
@@ -185,6 +194,56 @@ describe('Canonical Message Format & Abstraction Barrier', () => {
             });
             assert.equal(fromWire.length, 1);
             assert.equal(messageText(fromWire[0]), 'Result is 20');
+        });
+
+        test('OpenAI toProvider and fromProvider handle reasoning items with id, summary, and encrypted_content', () => {
+            const rawResponse = {
+                output: [
+                    {
+                        type: 'reasoning',
+                        id: 'rs_001',
+                        summary: [],
+                        content: [],
+                        encrypted_content: 'enc_abc',
+                        status: 'completed',
+                    },
+                    {
+                        type: 'message',
+                        id: 'msg_001',
+                        role: 'assistant',
+                        content: 'Here is the plan',
+                    },
+                ],
+            };
+
+            const canonical = openAIFromProvider(rawResponse);
+            assert.equal(canonical.length, 2);
+            assert.equal(isReasoning(canonical[0]), true);
+            assert.equal(canonical[0].id, 'rs_001');
+            assert.equal(canonical[0].encrypted_content, 'enc_abc');
+            assert.equal(canonical[0].status, 'completed');
+            assert.deepEqual(canonical[0].summary, []);
+            assert.deepEqual(canonical[0].content, []);
+
+            // Test toProvider preserves fields on wire item
+            const wire = openAIToProvider(canonical);
+            assert.equal(wire.length, 2);
+            assert.equal(wire[0].type, 'reasoning');
+            assert.equal(wire[0].id, 'rs_001');
+            assert.equal(wire[0].encrypted_content, 'enc_abc');
+            assert.equal(wire[0].status, 'completed');
+            assert.deepEqual(wire[0].summary, []);
+            assert.deepEqual(wire[0].content, []);
+
+            // Test string summary/content conversion
+            const withStrings = openAIToProvider([
+                makeReasoning({ id: 'rs_002', summary: 'Brief thought', content: 'Detailed thought' }),
+                makeReasoning({ id: 'rs_003' }),
+            ]);
+            assert.deepEqual(withStrings[0].summary, [{ type: 'summary_text', text: 'Brief thought' }]);
+            assert.deepEqual(withStrings[0].content, [{ type: 'reasoning_text', text: 'Detailed thought' }]);
+            // When summary is missing, toProvider must supply summary: [] as required by OpenAI API
+            assert.deepEqual(withStrings[1].summary, []);
         });
 
         test('vLLM toProvider and fromProvider handle chat completion message conversions including tool calls and speaker', () => {

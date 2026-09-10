@@ -20,7 +20,7 @@ async function runClient() {
 
     const agent = new Agent(llmService, {
         toolLoader,
-        model: 'gpt-5',
+        model: 'gpt-5.6',
     });
 
     // 3. Run the flow 

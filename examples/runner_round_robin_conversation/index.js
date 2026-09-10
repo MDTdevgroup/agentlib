@@ -13,7 +13,7 @@ async function main() {
 
     const agentsMap = {};
     for (const config of agentsConfig) {
-        const agent = new Agent(llm, { name: config.name, model: 'gpt-4o-mini' });
+        const agent = new Agent(llm, { name: config.name, model: 'gpt-5.6' });
         agent.addInput({ role: 'system', content: config.instruction });
         agentsMap[config.name] = agent;
     }

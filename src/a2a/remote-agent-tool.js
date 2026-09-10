@@ -14,12 +14,16 @@ const A2A_CUSTOM_MSG = "The A2A client requires '@a2a-js/sdk'.\nInstall with: np
  * @returns {Promise<object>} A tool definition compatible with ToolLoader.
  */
 export async function createRemoteAgentTool(remoteUrl, toolName = 'remote_agent', description = "Ask a remote agent for help.") {
-    const { ClientFactory } = await loadOptional('@a2a-js/sdk/client', 'A2A client', {
+    const { ClientFactory, ClientFactoryOptions, DefaultAgentCardResolver } = await loadOptional('@a2a-js/sdk/client', 'A2A client', {
         installCommand: A2A_INSTALL_CMD,
         customMessage: A2A_CUSTOM_MSG,
     });
 
-    const factory = new ClientFactory();
+    const factoryOptions = {
+        ...(ClientFactoryOptions?.default ?? {}),
+        ...(DefaultAgentCardResolver ? { cardResolver: new DefaultAgentCardResolver({ legacyCompat: { enabled: true } }) } : {}),
+    };
+    const factory = new ClientFactory(factoryOptions);
     let client;
 
     try {

@@ -4,10 +4,10 @@ async function main() {
     const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
 
     // 1. Setup Agents with System Prompts
-    const alice = new Agent(llm, { name: 'Alice', model: 'gpt-4o-mini' });
+    const alice = new Agent(llm, { name: 'Alice', model: 'gpt-5.6' });
     alice.addInput({ role: 'system', content: 'You are Alice. You love cats. Talk to Bob in 1 sentence.' });
 
-    const bob = new Agent(llm, { name: 'Bob', model: 'gpt-4o-mini' });
+    const bob = new Agent(llm, { name: 'Bob', model: 'gpt-5.6' });
     bob.addInput({ role: 'system', content: 'You are Bob. You love dogs. Argue with Alice in 1 sentence.' });
 
     // 2. Setup the Orchestrator

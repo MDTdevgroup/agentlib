@@ -120,16 +120,22 @@ export function makeToolResult({ callId, name, value, output, thoughtSignature, 
  * @param {any} [params.summary] - High-level summary of reasoning
  * @param {any} [params.details] - Detailed reasoning content
  * @param {any} [params.content] - Alias for details
+ * @param {string} [params.id] - Unique identifier for the reasoning item
+ * @param {string} [params.encrypted_content] - Encrypted reasoning tokens
+ * @param {string} [params.status] - Status of the reasoning item
  * @param {string} [params.thoughtSignature] - Optional thought signature
  * @param {string} [params.signature] - Alias for thought signature
  * @returns {object} Canonical reasoning item
  */
-export function makeReasoning({ summary, details, content, thoughtSignature, signature } = {}) {
+export function makeReasoning({ summary, details, content, id, encrypted_content, status, thoughtSignature, signature } = {}) {
     const item = {
         type: 'reasoning',
-        summary: summary || undefined,
+        summary: summary !== undefined ? summary : undefined,
         content: details !== undefined ? details : content,
     };
+    if (id !== undefined) item.id = id;
+    if (encrypted_content !== undefined) item.encrypted_content = encrypted_content;
+    if (status !== undefined) item.status = status;
     const sig = thoughtSignature || signature;
     if (sig !== undefined) {
         item.thoughtSignature = sig;

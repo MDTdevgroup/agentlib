@@ -10,8 +10,10 @@ import {
     makeTextMessage,
     makeToolCall,
     makeToolResult,
+    makeReasoning,
     isToolCall,
     isToolResult,
+    isReasoning,
     messageText,
 } from '../src/memory/message.js';
 import {
@@ -66,6 +68,25 @@ describe('Context Compaction & Run Budgeting', () => {
             // Group 3: final assistant answer
             assert.equal(groups[3].length, 1);
             assert.equal(groups[3][0].role, 'assistant');
+        });
+
+        test('groupAtomicUnits keeps reasoning items with their associated assistant message', () => {
+            const messages = [
+                makeTextMessage({ role: 'user', text: 'Plan a trip' }),
+                makeReasoning({ id: 'rs_1', summary: 'Thinking about trip' }),
+                makeTextMessage({ role: 'assistant', text: 'Here is your trip plan.' }),
+            ];
+
+            const groups = groupAtomicUnits(messages);
+            assert.equal(groups.length, 2);
+            // Group 0: user message
+            assert.equal(groups[0].length, 1);
+            assert.equal(groups[0][0].role, 'user');
+            // Group 1: atomic pair of reasoning + assistant message
+            assert.equal(groups[1].length, 2);
+            assert.ok(isReasoning(groups[1][0]));
+            assert.equal(groups[1][0].id, 'rs_1');
+            assert.equal(groups[1][1].role, 'assistant');
         });
 
         test('truncateToBudget preserves all system messages and fits recent units within token ceiling', () => {

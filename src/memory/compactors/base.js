@@ -2,6 +2,7 @@ import {
     isToolCall,
     isToolResult,
     isTextMessage,
+    isReasoning,
     toolCallId,
 } from '../message.js';
 
@@ -117,7 +118,24 @@ export function groupAtomicUnits(messages) {
             continue;
         }
 
-        // Standard message (user or assistant text or reasoning)
+        if (isReasoning(msg)) {
+            if (currentToolGroup.length > 0) {
+                units.push(currentToolGroup);
+                currentToolGroup = [];
+                pendingCallIds.clear();
+            }
+            currentToolGroup.push(msg);
+            continue;
+        }
+
+        if (isTextMessage(msg) && (msg.role === 'assistant') && currentToolGroup.length > 0 && currentToolGroup.every(isReasoning)) {
+            currentToolGroup.push(msg);
+            units.push(currentToolGroup);
+            currentToolGroup = [];
+            continue;
+        }
+
+        // Standard message (user or assistant text)
         if (currentToolGroup.length > 0) {
             units.push(currentToolGroup);
             currentToolGroup = [];

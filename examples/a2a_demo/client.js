@@ -12,7 +12,7 @@ async function runClient() {
 
     const agent = new Agent(llmService, {
         toolLoader,
-        model: 'gpt-5',
+        model: 'gpt-5.6',
     });
 
     console.log("User: What is 123 + 456?");

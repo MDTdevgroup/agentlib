@@ -65,7 +65,7 @@ npm install mongodb
 node --env-file=.env examples/rag-example/index.js
 ```
 
-### 6. Research Agent (Gemini Interactions & Gemini 3.8 Flash)
+### 6. Research Agent
 Multi-agent iterative research system with aspect planning, parallel web search, hierarchical memory, structured synthesis, and grounded citations:
 ```bash
 node --env-file=.env examples/research_agent/index.js

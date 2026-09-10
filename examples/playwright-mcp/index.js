@@ -21,7 +21,8 @@ async function run() {
     // Set up an agent with multiple MCP servers
     const agent = new Agent(llm, {
       enableMCP: true,
-      name: 'ScraperAgent'
+      name: 'ScraperAgent',
+      model: 'gpt-5.6'
     });
 
     const systemPrompt = promptLoader.getPrompt('instruction').format();

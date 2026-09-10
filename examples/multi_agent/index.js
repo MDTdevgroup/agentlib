@@ -92,13 +92,15 @@ async function runMultiAgent() {
     const travelAgent = new Agent(llmService, {
         name: 'TravelAgent',
         toolLoader: travelAgentToolLoader,
-        model: 'gpt-5-nano'
+        model: 'gpt-5.6',
+        logmode: 'file'
     });
 
     const grumpyTraveler = new Agent(llmService, {
         name: 'GrumpyTraveler',
         toolLoader: grumpyTravelerToolLoader,
-        model: 'gpt-5-nano'
+        model: 'gpt-5.6',
+        logmode: 'file'
     });
 
     const promptsPath = fileURLToPath(new URL('./prompts.yml', import.meta.url));

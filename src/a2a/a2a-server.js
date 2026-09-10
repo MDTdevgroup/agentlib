@@ -63,6 +63,10 @@ export async function startA2AServer(agent, { port = 4000, name, baseUrl = `http
             { url: `${baseUrl}/a2a/jsonrpc`, transport: 'JSONRPC' },
             { url: `${baseUrl}/a2a/rest`, transport: 'HTTP+JSON' },
         ],
+        supportedInterfaces: [
+            { url: `${baseUrl}/a2a/jsonrpc`, protocolBinding: 'JSONRPC', protocolVersion: '1.0' },
+            { url: `${baseUrl}/a2a/rest`, protocolBinding: 'HTTP+JSON', protocolVersion: '1.0' },
+        ],
     };
 
     // 2. Setup Executor and Handlers
@@ -86,15 +90,18 @@ export async function startA2AServer(agent, { port = 4000, name, baseUrl = `http
     app.use('/a2a/rest', restHandler({ requestHandler, userBuilder: UserBuilder.noAuthentication }));
 
     // Start Server
-    const server = app.listen(port, () => {
-        if (agent.events) {
-            agent.events.emit('a2a:start', {
-                baseUrl,
-                port,
-                cardUrl: `${baseUrl}/${AGENT_CARD_PATH}`,
-            });
-        }
-    });
+    return new Promise((resolve, reject) => {
+        const server = app.listen(port, () => {
+            if (agent.events) {
+                agent.events.emit('a2a:start', {
+                    baseUrl,
+                    port,
+                    cardUrl: `${baseUrl}/${AGENT_CARD_PATH}`,
+                });
+            }
+            resolve(server);
+        });
 
-    return server;
+        server.on('error', reject);
+    });
 }

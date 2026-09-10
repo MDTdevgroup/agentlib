@@ -115,7 +115,7 @@ async function runRAGExample() {
    const toolLoader = new ToolLoader();
    toolLoader.addTools(tools);
    const agent = new Agent(llmService, {
-      model: "gpt-4o-mini",
+      model: "gpt-5.6",
       toolLoader: toolLoader
    });
 

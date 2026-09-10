@@ -75,12 +75,27 @@ export function toProvider(input) {
             return wireItem;
         }
         if (item.type === 'reasoning') {
+            let summary = item.summary;
+            if (typeof summary === 'string') {
+                summary = [{ type: 'summary_text', text: summary }];
+            } else if (!Array.isArray(summary)) {
+                summary = [];
+            }
+            let content = item.content;
+            if (typeof content === 'string') {
+                content = [{ type: 'reasoning_text', text: content }];
+            } else if (!Array.isArray(content) && content !== undefined) {
+                content = [];
+            }
+
             const wireItem = {
                 type: 'reasoning',
+                summary,
             };
-            if (item.summary !== undefined) wireItem.summary = item.summary;
-            if (item.content !== undefined) wireItem.content = item.content;
             if (item.id) wireItem.id = item.id;
+            if (content !== undefined) wireItem.content = content;
+            if (item.encrypted_content !== undefined) wireItem.encrypted_content = item.encrypted_content;
+            if (item.status !== undefined) wireItem.status = item.status;
             return wireItem;
         }
         if (item.type === 'message' || item.role) {
@@ -138,11 +153,15 @@ export function fromProvider(rawResponse) {
             };
         }
         if (item.type === 'reasoning') {
-            return {
+            const reasoningItem = {
                 type: 'reasoning',
-                summary: item.summary,
-                content: item.content,
+                id: item.id,
+                summary: item.summary ?? [],
+                content: item.content ?? [],
             };
+            if (item.encrypted_content !== undefined) reasoningItem.encrypted_content = item.encrypted_content;
+            if (item.status !== undefined) reasoningItem.status = item.status;
+            return reasoningItem;
         }
         if (item.type === 'message') {
             let text = '';

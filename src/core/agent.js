@@ -342,7 +342,7 @@ export class Agent {
                 input: activeContext.getMessages(),
                 input_length: activeContext.getMessages().length,
                 model: this.model,
-                tools_available: allTools.map(t => t.name),
+                tools_available: allTools.map(t => t.name || t.type),
                 tool_count: allTools.length,
                 mcp_enabled: mcpInfo.enabled !== false,
                 mcp_servers: mcpInfo.servers || mcpInfo
@@ -542,8 +542,11 @@ export class Agent {
                 nextContext = nextContext.addInput(call);
             } else if (isReasoning(item)) {
                 const reasoning = makeReasoning({
+                    id: item.id,
                     summary: item.summary,
                     details: item.content,
+                    encrypted_content: item.encrypted_content,
+                    status: item.status,
                     thoughtSignature: item.thoughtSignature || item.signature,
                 });
                 nextContext = nextContext.addInput(reasoning);

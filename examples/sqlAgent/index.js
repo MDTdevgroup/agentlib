@@ -52,7 +52,9 @@ async function main() {
   new DomainObservability(sharedBus, { mode: 'file' });
 
   const sqlGeneratorAgent = new Agent(llmService, {
-    toolLoader: genTools, eventEmitter: sharedBus
+    toolLoader: genTools,
+    eventEmitter: sharedBus,
+    model: 'gpt-5.6'
   });
 
   sqlGeneratorAgent.addInput({
@@ -63,7 +65,8 @@ async function main() {
   const sqlExecutorAgent = new Agent(llmService, {
     toolLoader: execTools,
     outputSchema: executorOutputSchema,
-    eventEmitter: sharedBus
+    eventEmitter: sharedBus,
+    model: 'gpt-5.6'
   });
 
   sqlExecutorAgent.addInput({
@@ -78,7 +81,8 @@ async function main() {
 
   const mainAgent = new Agent(llmService, {
     toolLoader: mainTools,
-    eventEmitter: sharedBus
+    eventEmitter: sharedBus,
+    model: 'gpt-5.6'
   });
 
   mainAgent.addInput({
