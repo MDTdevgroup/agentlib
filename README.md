@@ -63,7 +63,30 @@ const runner = new AgentRunner({ Alice: alice, Bob: bob });
 const history = await runner.run({ role: 'user', content: 'Hello team!' });
 ```
 
-### 3. Agent-to-Agent (A2A) Server
+### 3. Agent with Tools
+
+```javascript
+import { Agent, LLMService, defineTool } from '@peebles-group/agentlib-js';
+
+const getWeather = defineTool(
+  {
+    name: 'get_weather',
+    description: 'Get current weather for a city',
+    parameters: {
+      type: 'object',
+      properties: { city: { type: 'string' } },
+      required: ['city'],
+    },
+  },
+  async ({ city }) => ({ city, temperature: 72, condition: 'Sunny' })
+);
+
+const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });
+const agent = new Agent(llm, { tools: [getWeather] });
+```
+See [Tool & Prompt Loaders](./docs/loaders.md) for tool validation, dependency factories, and MCP integration.
+
+### 4. Agent-to-Agent (A2A) Server
 
 ```javascript
 import { Agent, LLMService } from '@peebles-group/agentlib-js';

@@ -37,7 +37,9 @@ export async function startA2AServer(agent, { port = 4000, name, baseUrl = `http
     const express = expressModule.default || expressModule;
 
     // 1. Generate Agent Card
-    const tools = agent.toolLoader.getTools();
+    const tools = typeof agent.toolLoader.getToolDeclarations === 'function'
+        ? agent.toolLoader.getToolDeclarations()
+        : agent.toolLoader.getTools();
 
     // Convert tools to A2A skills
     const skills = tools.map(tool => ({

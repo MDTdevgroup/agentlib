@@ -8,7 +8,8 @@ try {
 }
 
 import { Agent, LLMService, ToolLoader, PromptLoader } from "../../index.js";
-import { initDB, generatorTools, executorTools, mainAgentTools } from "./sqlTools.js";
+import { initDB } from "./database.js";
+import { generatorTools, executorTools, mainAgentTools } from "./tools/index.js";
 import readline from "readline";
 import { z } from 'zod';
 import EventEmitter from 'events';

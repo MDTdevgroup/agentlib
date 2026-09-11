@@ -329,7 +329,9 @@ export class Agent {
         // Generate a new trace ID and root span ID
         const traceId = this.name + "-" + randomUUID();
         const rootSpanId = this.name + "-" + randomUUID();
-        const allTools = this.toolLoader.getTools() || [];
+        const allTools = (typeof this.toolLoader.getToolDeclarations === 'function'
+            ? this.toolLoader.getToolDeclarations()
+            : this.toolLoader.getTools?.()) || [];
         const mcpInfo = this.toolLoader.getMCPInfo();
 
         // 1. EMIT: Agent start
@@ -456,7 +458,9 @@ export class Agent {
             };
         }
 
-        const allTools = this.toolLoader.getTools() || [];
+        const allTools = (typeof this.toolLoader.getToolDeclarations === 'function'
+            ? this.toolLoader.getToolDeclarations()
+            : this.toolLoader.getTools?.()) || [];
 
         // Apply compactor strategy to wire messages if configured
         let messagesToSend = currentContext.getMessages();
