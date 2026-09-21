@@ -16,7 +16,8 @@ export const generateCustomSqlQueryDeclaration = {
     },
 };
 
-export async function generateCustomSqlQuery(_db, args, _context) {
+export async function generateCustomSqlQuery(_db, args, { signal } = {}) {
+    signal?.throwIfAborted?.();
     return args;
 }
 

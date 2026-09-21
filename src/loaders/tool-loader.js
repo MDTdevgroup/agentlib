@@ -157,6 +157,9 @@ export class ToolLoader {
                 this._validateToolStructure(tool);
                 const identifier = this._getToolIdentifier(tool);
 
+                // TODO: Consider supporting automatic tool name prefixes or namespacing
+                // (e.g. `${serverName}_${toolName}`) to prevent collisions across multiple
+                // MCP servers or multi-agent catalogs without requiring manual renaming.
                 if (
                     this.localTools.has(identifier) ||
                     this.mcpTools.has(identifier) ||
@@ -267,6 +270,9 @@ export class ToolLoader {
         const isFunction = !tool.type || tool.type === 'function';
         if (isFunction) {
             const { func, ...declaration } = tool;
+            // TODO: Reconcile MCP dispatch paths. MCPClient creates a closure-based func
+            // that calls client.executeTool(), while MCPManager also provides an executeTool()
+            // method that searches across connected clients. Unify these paths in a follow-up.
             return {
                 declaration: {
                     type: 'function',

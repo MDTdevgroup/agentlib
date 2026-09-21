@@ -21,7 +21,15 @@ export const findTopTracksInGenreDeclaration = {
     },
 };
 
-export async function findTopTracksInGenre(db, { genreName, limit }, _context) {
+/**
+ * Finds top tracks sold in a genre.
+ *
+ * NOTE: SQLite drivers do not support query-level cancellation via AbortSignal.
+ * Checking signal?.throwIfAborted?.() guarantees cooperative cancellation before
+ * initiating database work.
+ */
+export async function findTopTracksInGenre(db, { genreName, limit }, { signal } = {}) {
+    signal?.throwIfAborted?.();
     const generatedQuery = getTopTracksInGenre(genreName, limit);
     const rows = await db.all(generatedQuery);
     return rows;

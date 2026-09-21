@@ -11,7 +11,15 @@ export const listTablesDeclaration = {
     },
 };
 
-export async function listTables(db, _args, _context) {
+/**
+ * Lists table names in SQLite.
+ *
+ * NOTE: SQLite drivers do not support query-level cancellation via AbortSignal.
+ * Checking signal?.throwIfAborted?.() guarantees cooperative cancellation before
+ * initiating database work.
+ */
+export async function listTables(db, _args, { signal } = {}) {
+    signal?.throwIfAborted?.();
     const rows = await db.all("SELECT name FROM sqlite_master WHERE type='table';");
     return rows.map(r => r.name);
 }

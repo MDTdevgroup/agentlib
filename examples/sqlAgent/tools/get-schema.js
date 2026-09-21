@@ -16,7 +16,15 @@ export const getSchemaDeclaration = {
     },
 };
 
-export async function getSchema(db, { table }, _context) {
+/**
+ * Gets table schema via PRAGMA table_info.
+ *
+ * NOTE: SQLite drivers do not support query-level cancellation via AbortSignal.
+ * Checking signal?.throwIfAborted?.() guarantees cooperative cancellation before
+ * initiating database work.
+ */
+export async function getSchema(db, { table }, { signal } = {}) {
+    signal?.throwIfAborted?.();
     const safe = String(table).replace(/'/g, "''");
     const schema = await db.all(`PRAGMA table_info('${safe}');`);
     return schema;

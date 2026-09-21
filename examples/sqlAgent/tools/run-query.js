@@ -31,7 +31,15 @@ function validateRunQueryArgs(args) {
     return { query: args.query.trim() };
 }
 
-export async function runQuery(db, { query }, _context) {
+/**
+ * Executes a SQL query against the database.
+ *
+ * NOTE: SQLite drivers do not support query-level cancellation via AbortSignal.
+ * Checking signal?.throwIfAborted?.() guarantees cooperative cancellation before
+ * initiating database work.
+ */
+export async function runQuery(db, { query }, { signal } = {}) {
+    signal?.throwIfAborted?.();
     const rows = await db.all(query);
     return rows;
 }

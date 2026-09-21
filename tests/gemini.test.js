@@ -602,6 +602,7 @@ describe('Gemini Provider (models.generateContent)', () => {
             };
 
             const toolLoader = {
+                getToolDeclarations: () => [{ name: 'generate_custom_sql_query', description: 'query sql' }],
                 getTools: () => [{ name: 'generate_custom_sql_query', description: 'query sql' }],
                 findTool: (name) => {
                     if (name === 'generate_custom_sql_query') {

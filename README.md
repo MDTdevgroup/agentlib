@@ -78,7 +78,10 @@ const getWeather = defineTool(
       required: ['city'],
     },
   },
-  async ({ city }) => ({ city, temperature: 72, condition: 'Sunny' })
+  async ({ city }, { signal } = {}) => {
+    signal?.throwIfAborted?.();
+    return { city, temperature: 72, condition: 'Sunny' };
+  }
 );
 
 const llm = new LLMService({ provider: 'openai', apiKey: process.env.OPENAI_API_KEY });

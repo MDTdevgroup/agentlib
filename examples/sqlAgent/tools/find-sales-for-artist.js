@@ -17,7 +17,15 @@ export const findSalesForArtistDeclaration = {
     },
 };
 
-export async function findSalesForArtist(db, { artistName }, _context) {
+/**
+ * Finds sales for a specific artist.
+ *
+ * NOTE: SQLite drivers do not support query-level cancellation via AbortSignal.
+ * Checking signal?.throwIfAborted?.() guarantees cooperative cancellation before
+ * initiating database work.
+ */
+export async function findSalesForArtist(db, { artistName }, { signal } = {}) {
+    signal?.throwIfAborted?.();
     const generatedQuery = getSalesForArtist(artistName);
     const rows = await db.all(generatedQuery);
     return rows;

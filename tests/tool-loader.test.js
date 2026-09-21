@@ -102,7 +102,7 @@ describe('ToolLoader Registry & Lifecycle', () => {
         assert.equal(loader.getToolDeclarations().length, 0);
     });
 
-    test('findTool prioritizes local tools over MCP tools (local-first)', async () => {
+    test('local tools list before MCP tools in declaration and getTools order', async () => {
         const fakeMcpManager = {
             addServer: async () => ({
                 serverName: 'test-mcp',
@@ -178,7 +178,7 @@ describe('ToolLoader Registry & Lifecycle', () => {
 
         assert.ok(removeServerCalled, 'removeServer must be called to rollback server connection');
         assert.equal(loader.getToolDeclarations().length, 1);
-        assert.equal(loader.findTool('conflict_tool').func.name !== 'mcp', true);
+        assert.equal(await loader.findTool('conflict_tool').func(), 'local');
     });
 
     test('MCP registration throws AggregateError if rollback fails after validation error', async () => {
@@ -248,6 +248,58 @@ describe('ToolLoader Registry & Lifecycle', () => {
         assert.equal(loader.findTool('serverB_tool'), null);
         assert.ok(loader.findTool('my_local_tool'), 'Local tools must survive cleanup');
         assert.equal(loader.getToolDeclarations().length, 1);
+    });
+
+    test('MCP registration rolls back if returned tools conflict with another MCP server', async () => {
+        const removedServers = [];
+        const servers = {
+            'server-1': [
+                { name: 'server1_tool', func: async () => 's1' },
+                { name: 'duplicate_tool', func: async () => 's1-dup' },
+            ],
+            'server-2': [
+                { name: 'server2_tool', func: async () => 's2' },
+                { name: 'duplicate_tool', func: async () => 's2-dup' }, // Conflicts with server-1
+            ],
+        };
+
+        const fakeMcpManager = {
+            addServer: async (serverName) => ({
+                serverName,
+                tools: servers[serverName] || [],
+            }),
+            removeServer: async (serverName) => {
+                removedServers.push(serverName);
+                return true;
+            },
+            cleanup: async () => {},
+            getServerInfo: () => ({ enabled: true }),
+        };
+
+        const loader = new ToolLoader(true, {
+            mcpManagerFactory: () => fakeMcpManager,
+        });
+
+        // First server registers cleanly
+        await loader.addMCPServer('server-1', {});
+        assert.equal(loader.getToolDeclarations().length, 2);
+
+        // Second server conflicts on 'duplicate_tool'
+        await assert.rejects(
+            async () => loader.addMCPServer('server-2', {}),
+            {
+                message: /MCP tool with name 'duplicate_tool' already exists/,
+            }
+        );
+
+        // Verify server-2 was rolled back
+        assert.deepEqual(removedServers, ['server-2']);
+
+        // Verify server-1 tools remained registered and unharmed
+        assert.equal(loader.getToolDeclarations().length, 2);
+        assert.ok(loader.findTool('server1_tool'));
+        assert.equal(await loader.findTool('duplicate_tool').func(), 's1-dup');
+        assert.equal(loader.findTool('server2_tool'), null);
     });
 
     test('getSystemPromptSnippet uses declarations and omits empty tools', () => {
