@@ -2,6 +2,7 @@ import { test, describe, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Agent } from '../src/core/agent.js';
 import { LLMService } from '../src/services/llm-service.js';
+import { defineTool, withValidation } from '../src/tools/define-tool.js';
 import { registerProvider } from '../src/providers/registry.js';
 import * as FakeProvider from './helpers/fake-provider.js';
 
@@ -203,6 +204,114 @@ describe('Agent Core Loop (Offline)', () => {
         await assert.rejects(
             () => agent.run(null, { signal: controller.signal }),
             /Agent run aborted/
+        );
+    });
+
+    test('Agent passes tool declarations only to LLM provider (no func property)', async () => {
+        const testTool = defineTool(
+            {
+                name: 'secure_op',
+                description: 'A secure operation',
+                parameters: { type: 'object' },
+            },
+            async () => 'secret_result'
+        );
+
+        fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Done.'));
+
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, { name: 'boundary-agent', tools: [testTool] });
+        agent.addInput({ role: 'user', content: 'Run secure op' });
+
+        await agent.run();
+
+        const calls = fakeProvider.getCalls();
+        assert.equal(calls.length, 1);
+        const toolsPassedToProvider = calls[0].options.tools;
+        assert.ok(Array.isArray(toolsPassedToProvider));
+        assert.equal(toolsPassedToProvider.length, 1);
+        assert.equal(toolsPassedToProvider[0].name, 'secure_op');
+        assert.equal(toolsPassedToProvider[0].func, undefined, 'Provider must receive declarations only, without func');
+    });
+
+    test('Tool argument validation failure returns survivable error result by default', async () => {
+        const validatedTool = defineTool(
+            {
+                name: 'validated_calc',
+                description: 'Validated calculator',
+                parameters: { type: 'object', properties: { n: { type: 'number' } } },
+            },
+            withValidation(
+                (args) => {
+                    if (typeof args.n !== 'number') throw new Error('Parameter "n" must be a number');
+                    return args;
+                },
+                async ({ n }) => n * 2
+            )
+        );
+
+        // Turn 1: model calls tool with invalid string arg
+        fakeProvider.enqueueResponse(FakeProvider.fakeToolCallResponse({
+            name: 'validated_calc',
+            args: { n: 'not-a-number' },
+            call_id: 'call_val_1',
+        }));
+        // Turn 2: model sees error result and responds
+        fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Input was invalid.'));
+
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, { name: 'validation-agent', tools: [validatedTool] });
+        agent.addInput({ role: 'user', content: 'Calculate' });
+
+        const history = await agent.run();
+        assert.equal(history.length, 2);
+        assert.equal(history[0].isDone, false);
+        // Check that the tool result contains the validation error message
+        const messages = history[0].context.getMessages();
+        const toolResultMsg = messages.find(m => m.type === 'function_call_output');
+        assert.ok(toolResultMsg);
+        assert.ok(
+            toolResultMsg.output?.error?.includes('ToolArgumentInvalid') ||
+            toolResultMsg.output?.error?.includes('Parameter "n" must be a number')
+        );
+        assert.equal(history[1].output, 'Input was invalid.');
+    });
+
+    test('Tool argument validation failure throws when onToolError is throw', async () => {
+        const validatedTool = defineTool(
+            {
+                name: 'strict_tool',
+                description: 'Strict tool',
+            },
+            withValidation(
+                () => {
+                    throw new Error('Strict validation failed');
+                },
+                async () => 'ok'
+            )
+        );
+
+        fakeProvider.enqueueResponse(FakeProvider.fakeToolCallResponse({
+            name: 'strict_tool',
+            args: {},
+            call_id: 'call_val_2',
+        }));
+
+        const llm = new LLMService({ provider: 'fake' });
+        const agent = new Agent(llm, {
+            name: 'strict-agent',
+            tools: [validatedTool],
+            onToolError: 'throw',
+        });
+        agent.addInput({ role: 'user', content: 'Go' });
+
+        await assert.rejects(
+            () => agent.run(),
+            (err) => {
+                assert.ok(err.message.includes('ToolArgumentInvalid'));
+                assert.ok(err.cause?.message?.includes('Strict validation failed'));
+                return true;
+            }
         );
     });
 });

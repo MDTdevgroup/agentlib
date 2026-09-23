@@ -66,6 +66,8 @@ describe('Optional Dependencies & Package Exports', () => {
             assert.ok(AgentLib.Context, 'Context should be exported');
             assert.ok(AgentLib.PromptLoader, 'PromptLoader should be exported');
             assert.ok(AgentLib.ToolLoader, 'ToolLoader should be exported');
+            assert.equal(typeof AgentLib.defineTool, 'function', 'defineTool should be exported');
+            assert.equal(typeof AgentLib.withValidation, 'function', 'withValidation should be exported');
             assert.ok(AgentLib.DomainObservability, 'DomainObservability should be exported');
             assert.ok(AgentLib.initTelemetry, 'initTelemetry should be exported');
             assert.ok(AgentLib.loadOptional, 'loadOptional should be exported');

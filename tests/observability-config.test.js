@@ -181,12 +181,12 @@ describe('Observability, Config Accessors & Release Validation', () => {
         });
     });
 
-    describe('Release 4.0.0 Metadata & Exports Verification', () => {
-        test('package.json specifies version 4.0.0 and correct engines', () => {
+    describe('Release 4.1.0 Metadata & Exports Verification', () => {
+        test('package.json specifies version 4.1.0 and correct engines', () => {
             const pkgPath = path.join(process.cwd(), 'package.json');
             const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
 
-            assert.equal(pkg.version, '4.0.0', 'package.json version must be 4.0.0');
+            assert.equal(pkg.version, '4.1.0', 'package.json version must be 4.1.0');
             assert.ok(pkg.engines?.node, 'Node engine requirement must be specified');
             assert.ok(pkg.exports['.'], 'Root export must be defined');
             assert.ok(pkg.exports['./a2a'], 'A2A subpath export must be defined');

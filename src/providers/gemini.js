@@ -437,9 +437,6 @@ export async function chat(client, input, { model = defaultModel, pruningOptions
                     } else if (tool.parameters) {
                         decl.parameters = tool.parameters;
                     }
-                    if (tool.func) {
-                        decl.func = tool.func;
-                    }
                     return decl;
                 }),
             }] : []),
