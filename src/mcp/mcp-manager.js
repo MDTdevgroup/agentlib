@@ -13,8 +13,10 @@ export class MCPManager {
         }
 
         try {
-            const client = new MCPClient();
+            const client = new MCPClient({ eventEmitter: this.events });
             const tools = await client.connectToServer(serverConfig);
+            const protocolVersion = client.getNegotiatedProtocolVersion();
+            const instructions = client.getInstructions();
 
             this.clients.set(serverName, client);
             this.serverConfigs.set(serverName, serverConfig);
@@ -24,10 +26,12 @@ export class MCPManager {
                     serverName,
                     toolCount: tools.length,
                     tools: tools.map(t => t.name),
+                    protocolVersion,
+                    instructions,
                 });
             }
 
-            return { serverName, tools, toolCount: tools.length };
+            return { serverName, tools, toolCount: tools.length, protocolVersion, instructions, client };
 
         } catch (error) {
             if (this.events) {
@@ -115,6 +119,8 @@ export class MCPManager {
                 connected: isConnected,
                 toolCount: tools.length,
                 tools: tools,
+                instructions: client.getInstructions?.(),
+                protocolVersion: client.getNegotiatedProtocolVersion?.(),
             };
         }
 
