@@ -26,13 +26,18 @@ describe('Model Context Protocol (MCP) Integration & Error Routing (SDK v2)', ()
         );
 
         await assert.rejects(
-            async () => client.connectToServer({ type: 'sse', url: 'ftp://example.com' }),
-            /Invalid SSE URL protocol 'ftp:'/
+            async () => client.connectToServer({ type: 'streamableHttp', url: 'ftp://example.com' }),
+            /Invalid Streamable HTTP URL protocol 'ftp:'/
         );
 
         await assert.rejects(
-            async () => client.connectToServer({ type: 'sse', url: '' }),
-            /SSE transport requires a valid server URL/
+            async () => client.connectToServer({ type: 'streamableHttp', url: '' }),
+            /Streamable HTTP transport requires a valid server URL/
+        );
+
+        await assert.rejects(
+            async () => client.connectToServer({ type: 'sse', url: 'https://example.com' }),
+            /Invalid server type: sse/
         );
     });
 

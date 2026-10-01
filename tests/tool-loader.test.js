@@ -127,17 +127,47 @@ describe('ToolLoader Registry & Lifecycle', () => {
 
         await loader.addMCPServer('test-mcp', {});
 
-        // Local tools are listed first
+        // Local tools are listed first; MCP tools are prefixed by default
         const declarations = loader.getToolDeclarations();
         assert.equal(declarations.length, 2);
         assert.equal(declarations[0].name, 'local_only');
-        assert.equal(declarations[1].name, 'shared_name');
+        assert.equal(declarations[1].name, 'test-mcp_shared_name');
 
         const foundLocal = loader.findTool('local_only');
         assert.equal(await foundLocal.func(), 'local-impl');
 
-        const foundMcp = loader.findTool('shared_name');
-        assert.equal(await foundMcp.func(), 'mcp-impl');
+        // Found by qualified name
+        const foundMcpQualified = loader.findTool('test-mcp_shared_name');
+        assert.equal(await foundMcpQualified.func(), 'mcp-impl');
+
+        // Found by unambiguous raw name fallback
+        const foundMcpRaw = loader.findTool('shared_name');
+        assert.equal(await foundMcpRaw.func(), 'mcp-impl');
+    });
+
+    test('MCP tools support prefixToolNames: false for unprefixed declarations', async () => {
+        const fakeMcpManager = {
+            addServer: async () => ({
+                serverName: 'test-mcp',
+                tools: [
+                    { name: 'raw_tool', func: async () => 'raw-impl' },
+                ],
+            }),
+            removeServer: async () => true,
+            cleanup: async () => {},
+            getServerInfo: () => ({ enabled: true }),
+        };
+
+        const loader = new ToolLoader(true, {
+            mcpManagerFactory: () => fakeMcpManager,
+            prefixToolNames: false,
+        });
+
+        await loader.addMCPServer('test-mcp', {});
+        const declarations = loader.getToolDeclarations();
+        assert.equal(declarations.length, 1);
+        assert.equal(declarations[0].name, 'raw_tool');
+        assert.equal(await loader.findTool('raw_tool').func(), 'raw-impl');
     });
 
     test('MCP registration rolls back if returned tools conflict with local tools', async () => {
@@ -162,6 +192,7 @@ describe('ToolLoader Registry & Lifecycle', () => {
 
         const loader = new ToolLoader(true, {
             mcpManagerFactory: () => fakeMcpManager,
+            prefixToolNames: false,
         });
 
         loader.addTool({
@@ -179,6 +210,47 @@ describe('ToolLoader Registry & Lifecycle', () => {
         assert.ok(removeServerCalled, 'removeServer must be called to rollback server connection');
         assert.equal(loader.getToolDeclarations().length, 1);
         assert.equal(await loader.findTool('conflict_tool').func(), 'local');
+    });
+
+    test('MCP registration rolls back if prefixed tool name conflicts with an existing local tool', async () => {
+        let removeServerCalled = false;
+        const fakeMcpManager = {
+            addServer: async () => ({
+                serverName: 'server-1',
+                tools: [
+                    { name: 'action', func: async () => 'mcp' },
+                ],
+            }),
+            removeServer: async (serverName) => {
+                if (serverName === 'server-1') {
+                    removeServerCalled = true;
+                    return true;
+                }
+                return false;
+            },
+            cleanup: async () => {},
+            getServerInfo: () => ({ enabled: true }),
+        };
+
+        const loader = new ToolLoader(true, {
+            mcpManagerFactory: () => fakeMcpManager,
+            prefixToolNames: true,
+        });
+
+        loader.addTool({
+            name: 'server-1_action',
+            func: async () => 'local',
+        });
+
+        await assert.rejects(
+            async () => loader.addMCPServer('server-1', {}),
+            {
+                message: /MCP tool with name 'server-1_action' already exists/,
+            }
+        );
+
+        assert.ok(removeServerCalled);
+        assert.equal(loader.getToolDeclarations().length, 1);
     });
 
     test('MCP registration throws AggregateError if rollback fails after validation error', async () => {
@@ -250,7 +322,7 @@ describe('ToolLoader Registry & Lifecycle', () => {
         assert.equal(loader.getToolDeclarations().length, 1);
     });
 
-    test('MCP registration rolls back if returned tools conflict with another MCP server', async () => {
+    test('MCP registration rolls back if returned tools conflict with another MCP server (prefixToolNames: false)', async () => {
         const removedServers = [];
         const servers = {
             'server-1': [
@@ -278,6 +350,7 @@ describe('ToolLoader Registry & Lifecycle', () => {
 
         const loader = new ToolLoader(true, {
             mcpManagerFactory: () => fakeMcpManager,
+            prefixToolNames: false,
         });
 
         // First server registers cleanly
@@ -300,6 +373,43 @@ describe('ToolLoader Registry & Lifecycle', () => {
         assert.ok(loader.findTool('server1_tool'));
         assert.equal(await loader.findTool('duplicate_tool').func(), 's1-dup');
         assert.equal(loader.findTool('server2_tool'), null);
+    });
+
+    test('MCP servers with identical raw tool names coexist cleanly when prefixToolNames: true', async () => {
+        const servers = {
+            'server-1': [
+                { name: 'query', func: async () => 's1-query' },
+            ],
+            'server-2': [
+                { name: 'query', func: async () => 's2-query' },
+            ],
+        };
+
+        const fakeMcpManager = {
+            addServer: async (serverName) => ({
+                serverName,
+                tools: servers[serverName] || [],
+            }),
+            removeServer: async () => true,
+            cleanup: async () => {},
+            getServerInfo: () => ({ enabled: true }),
+        };
+
+        const loader = new ToolLoader(true, {
+            mcpManagerFactory: () => fakeMcpManager,
+            prefixToolNames: true,
+        });
+
+        await loader.addMCPServer('server-1', {});
+        await loader.addMCPServer('server-2', {});
+
+        const declarations = loader.getToolDeclarations();
+        assert.equal(declarations.length, 2);
+        assert.equal(declarations[0].name, 'server-1_query');
+        assert.equal(declarations[1].name, 'server-2_query');
+
+        assert.equal(await loader.findTool('server-1_query').func(), 's1-query');
+        assert.equal(await loader.findTool('server-2_query').func(), 's2-query');
     });
 
     test('getSystemPromptSnippet uses declarations and omits empty tools', () => {

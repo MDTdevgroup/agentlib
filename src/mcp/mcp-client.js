@@ -82,11 +82,7 @@ class MCPClient {
             case "stdio":
                 this.transport = new StdioClientTransport(server);
                 break;
-            case "sse": {
-                const url = this._validateUrl(server.url, "SSE");
-                this.transport = new SSEClientTransport(url, server.transportOptions);
-                break;
-            }
+            case "http":
             case "streamableHttp": {
                 const url = this._validateUrl(server.url, "Streamable HTTP");
                 const transportOpts = { ...(server.transportOptions || {}) };
