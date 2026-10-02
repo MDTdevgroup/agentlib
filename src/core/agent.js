@@ -1,9 +1,11 @@
 import {
     getDefaultMaxToolCalls,
     getDefaultToolConcurrency,
+    getDefaultToolExposure,
 } from "../config.js";
 import { getModelContextLimit, getDefaultModel } from "../providers/registry.js";
 import { ToolLoader } from "../loaders/tool-loader.js";
+import { resolveExposurePolicy } from "../tools/exposure.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
@@ -52,6 +54,8 @@ export class Agent {
      * @param {number|null} [options.maxRunTokens=null] - Maximum cumulative tokens budget across the run before terminating.
      * @param {number} [options.maxContextTokens] - Token threshold triggering compaction (defaults to 75% of model context limit).
      * @param {number} [options.truncateToTokens] - Target token budget when compacting (defaults to 50% of model context limit).
+     * @param {string|Function} [options.toolExposure] - Tool exposure policy ('all' | 'progressive' | 'auto' | custom function).
+     * @param {object} [options.toolExposureOptions={}] - Configuration options for tool exposure policy (mode, thresholdRatio, rank).
      * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
      */
     constructor(llmService, {
@@ -70,6 +74,8 @@ export class Agent {
         maxRunTokens = null,
         maxContextTokens,
         truncateToTokens,
+        toolExposure = getDefaultToolExposure(),
+        toolExposureOptions = {},
         ...options } = {}) {
 
         this.name = name;
@@ -95,6 +101,9 @@ export class Agent {
         this.pruningStrategy = pruningStrategy;
         this.pruningOptions = pruningOptions;
         this.maxRunTokens = maxRunTokens || options.budget || null;
+        this.toolExposure = toolExposure;
+        this.toolExposureOptions = toolExposureOptions;
+        this.exposurePolicy = resolveExposurePolicy(toolExposure, toolExposureOptions);
 
         // Dynamically resolve context limit from model specifications if not explicitly provided
         const resolvedLimit = getModelContextLimit(this.llmService?.provider, this.model);
@@ -178,6 +187,46 @@ export class Agent {
     }
 
     /**
+     * Lazily registers an MCP server configuration without connecting immediately.
+     * Connection and tool discovery occur mid-run when requested by the model or explicitly.
+     * @param {string} serverName - Identifier for the MCP server.
+     * @param {Object} config - Configuration object for the MCP server.
+     * @param {Object} [options={}] - Optional registration parameters.
+     * @param {string} [options.description=''] - Server description used for discovery search.
+     * @param {boolean} [options.prefixToolNames=false] - Whether to prefix tool names.
+     */
+    registerMCPServer(serverName, config, options = {}) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return this.toolLoader.registerMCPServer(serverName, config, options);
+    }
+
+    /**
+     * Programmatically enables a lazily registered MCP server.
+     * @param {string} serverName - Identifier of the server to connect and enable.
+     */
+    async enableMCPServer(serverName) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return await this.toolLoader.enableMCPServer(serverName);
+    }
+
+    /**
+     * Programmatically disables an active MCP server.
+     * @param {string} serverName - Identifier of the server to disable.
+     * @param {Object} [options={}] - Options for disabling.
+     * @param {boolean} [options.disconnect=false] - Whether to disconnect the underlying transport.
+     */
+    async disableMCPServer(serverName, options = {}) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return await this.toolLoader.disableMCPServer(serverName, options);
+    }
+
+    /**
      * Cleans up all MCP servers and agent resources.
      */
     async cleanup() {
@@ -202,7 +251,7 @@ export class Agent {
     /**
      * Executes a single tool call, handling errors, missing tools, and telemetry.
      */
-    async _executeSingleTool(call, traceId, rootSpanId, signal = null) {
+    async _executeSingleTool(call, traceId, rootSpanId, signal = null, resolveMeta = null) {
         signal?.throwIfAborted?.();
         const name = toolCallName(call);
         const callId = toolCallId(call);
@@ -232,6 +281,62 @@ export class Agent {
                 args: {},
                 result: { error: `Failed to parse tool arguments: ${parseErr.message}` },
             };
+        }
+
+        // Check if this tool is a meta-tool handled by exposure policy
+        if (typeof resolveMeta === 'function') {
+            try {
+                const metaResolution = await resolveMeta(name, args, { signal, toolLoader: this.toolLoader });
+                if (metaResolution && metaResolution.handled) {
+                    this._emitTrace('tool:start', {
+                        traceId,
+                        spanId: toolSpanId,
+                        parentSpanId: rootSpanId,
+                        name: `tool_exec:${name}`,
+                        attributes: {
+                            tool_name: name,
+                            arguments: args,
+                        }
+                    });
+                    this._emitTrace('tool:complete', {
+                        traceId,
+                        spanId: toolSpanId,
+                        parentSpanId: rootSpanId,
+                        name: `tool_exec:${name}`,
+                        attributes: {
+                            tool_name: name,
+                            arguments: args,
+                            result_preview: JSON.stringify(metaResolution.result)?.slice(0, 100),
+                        }
+                    });
+                    return {
+                        callId,
+                        name,
+                        args,
+                        result: metaResolution.result,
+                        nextExposureState: metaResolution.nextState,
+                    };
+                }
+            } catch (metaErr) {
+                this._emitTrace('tool:error', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        error: metaErr.message,
+                    }
+                });
+                if (this.onToolError === 'throw') throw metaErr;
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: { error: `Meta-tool "${name}" execution failed: ${metaErr.message}` },
+                };
+            }
         }
 
         const tool = this.toolLoader.findTool(name);
@@ -350,7 +455,13 @@ export class Agent {
         });
 
         const isExternalContextNull = externalContext === null;
-        return this._executeTurn(1, activeContext, [], traceId, rootSpanId, isExternalContextNull, 0, options);
+        const initialFrame = {
+            stepNumber: 1,
+            executedTools: [],
+            totalRunTokens: 0,
+            exposureState: options.exposureState || {},
+        };
+        return this._executeTurn(activeContext, initialFrame, traceId, rootSpanId, isExternalContextNull, options);
     }
 
     /**
@@ -395,7 +506,32 @@ export class Agent {
     /**
      * Executes a single step of the agent's inner loop (LLM Call -> Tool Execution).
      */
-    async _executeTurn(stepNumber, currentContext, executedTools, traceId, rootSpanId, updateInternalContext, totalRunTokens = 0, options = {}) {
+    async _executeTurn(currentContext, frame = {}, traceId, rootSpanId, updateInternalContext, options = {}) {
+        // Defensive support for legacy positional signature: (stepNumber, currentContext, executedTools, ...)
+        if (typeof currentContext === 'number') {
+            const stepNum = currentContext;
+            const ctx = frame;
+            const tools = traceId;
+            const trId = rootSpanId;
+            const rSpanId = updateInternalContext;
+            const updateInternal = options;
+            const runTokens = arguments[6] || 0;
+            const opts = arguments[7] || {};
+            return this._executeTurn(
+                ctx,
+                { stepNumber: stepNum, executedTools: tools, totalRunTokens: runTokens, exposureState: opts.exposureState || {} },
+                trId,
+                rSpanId,
+                updateInternal,
+                opts
+            );
+        }
+
+        const stepNumber = frame.stepNumber ?? 1;
+        const executedTools = frame.executedTools ?? [];
+        const totalRunTokens = frame.totalRunTokens ?? 0;
+        let exposureState = frame.exposureState ?? {};
+
         const signal = options.signal || this.signal;
         signal?.throwIfAborted?.();
 
@@ -424,6 +560,7 @@ export class Agent {
                 context: currentContext,
                 isDone: true,
                 stopReason: 'step_limit',
+                exposure: exposureState,
             };
         }
 
@@ -453,10 +590,30 @@ export class Agent {
                 context: currentContext,
                 isDone: true,
                 stopReason: 'budget_exhausted',
+                exposure: exposureState,
             };
         }
 
-        const allTools = this.toolLoader.getToolDeclarations() || [];
+        const rawCatalog = this.toolLoader.getToolDeclarations() || [];
+        const activePolicy = options.toolExposure
+            ? resolveExposurePolicy(options.toolExposure, { ...this.toolExposureOptions, ...options.toolExposureOptions })
+            : this.exposurePolicy;
+
+        const exposureContext = {
+            toolLoader: this.toolLoader,
+            signal,
+            maxContextTokens: this.maxContextTokens,
+            ...this.additionalOptions,
+            ...options,
+        };
+
+        const {
+            declarations: wireTools = [],
+            resolve: resolveMetaTool,
+            nextState: policyNextState,
+        } = await activePolicy(rawCatalog, exposureState, exposureContext);
+
+        let currentExposureState = policyNextState || exposureState;
 
         // Apply compactor strategy to wire messages if configured
         let messagesToSend = currentContext.getMessages();
@@ -493,8 +650,8 @@ export class Agent {
                 model: this.model,
                 input: messagesToSend,
                 input_length: messagesToSend.length,
-                tools_available: allTools.map(t => t.name),
-                tool_count: allTools.length,
+                tools_available: wireTools.map(t => t.name || t.type),
+                tool_count: wireTools.length,
                 step: stepNumber
             }
         });
@@ -502,7 +659,7 @@ export class Agent {
         let response = await this.llmService.chat(messagesToSend, {
             model: this.model,
             outputSchema: this.outputSchema,
-            tools: allTools,
+            tools: wireTools,
             signal,
             ...this.additionalOptions
         });
@@ -570,7 +727,7 @@ export class Agent {
         let newExecutedTools = [...executedTools];
 
         if (!isDone) {
-            const thunks = functionCalls.map(call => () => this._executeSingleTool(call, traceId, rootSpanId, signal));
+            const thunks = functionCalls.map(call => () => this._executeSingleTool(call, traceId, rootSpanId, signal, resolveMetaTool));
 
             const toolSettled = await asyncSettleAll(thunks, this.toolConcurrency, 0);
 
@@ -579,7 +736,10 @@ export class Agent {
                 const originalCall = functionCalls[i];
                 const callSig = originalCall?.thoughtSignature || originalCall?.signature;
                 if (settled.status === 'fulfilled') {
-                    const { callId, name, args, result } = settled.value;
+                    const { callId, name, args, result, nextExposureState } = settled.value;
+                    if (nextExposureState) {
+                        currentExposureState = nextExposureState;
+                    }
                     newExecutedTools.push({ name, args });
                     const functionMessage = makeToolResult({
                         callId,
@@ -613,10 +773,18 @@ export class Agent {
                 rawResponse: rawResponse,
                 executedTools: newExecutedTools,
                 context: nextContext,
+                exposure: currentExposureState,
                 next: async (overrideContext = null, nextOptions = {}) => {
                     const stateToPass = overrideContext || nextContext;
                     const mergedOpts = { ...options, ...nextOptions };
-                    return this._executeTurn(stepNumber + 1, stateToPass, newExecutedTools, traceId, rootSpanId, updateInternalContext, updatedRunTokens, mergedOpts);
+                    const nextExposureState = nextOptions.exposureState || currentExposureState;
+                    const nextFrame = {
+                        stepNumber: stepNumber + 1,
+                        executedTools: newExecutedTools,
+                        totalRunTokens: updatedRunTokens,
+                        exposureState: nextExposureState,
+                    };
+                    return this._executeTurn(stateToPass, nextFrame, traceId, rootSpanId, updateInternalContext, mergedOpts);
                 }
             };
         } else {
@@ -641,7 +809,8 @@ export class Agent {
                 rawResponse: rawResponse,
                 executedTools: newExecutedTools,
                 context: nextContext,
-                isDone: true
+                isDone: true,
+                exposure: currentExposureState,
             };
         }
     }
