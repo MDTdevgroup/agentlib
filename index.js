@@ -6,6 +6,14 @@ export { PromptLoader, Prompt } from './src/loaders/prompt-loader.js';
 export { ToolLoader } from "./src/loaders/tool-loader.js";
 export { defineTool, withValidation } from "./src/tools/define-tool.js";
 export { assertToolSource, LocalToolSource, MCPToolSource } from "./src/tools/sources/index.js";
+export {
+    exposeAll,
+    exposeProgressive,
+    exposeAuto,
+    resolveExposurePolicy,
+    estimateDeclarationTokens,
+} from "./src/tools/exposure.js";
+export { rankKeywords } from "./src/tools/keyword-search.js";
 export { DomainObservability, createTracer } from "./src/services/observability.js";
 export { initTelemetry } from "./src/services/telemetry.js";
 export { loadOptional } from "./src/util/optional-dep.js";

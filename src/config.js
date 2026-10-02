@@ -38,6 +38,18 @@ export function getDefaultToolConcurrency() {
     return 5;
 }
 
+export function getDefaultToolExposure() {
+    return 'all';
+}
+
+export function getDefaultToolExposureThreshold() {
+    return 0.05;
+}
+
+export function getDefaultToolExposureMode() {
+    return 'expand';
+}
+
 export function getDefaultRetrySpec() {
     return {
         maxRetries: 3,
