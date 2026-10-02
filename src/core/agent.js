@@ -187,6 +187,46 @@ export class Agent {
     }
 
     /**
+     * Lazily registers an MCP server configuration without connecting immediately.
+     * Connection and tool discovery occur mid-run when requested by the model or explicitly.
+     * @param {string} serverName - Identifier for the MCP server.
+     * @param {Object} config - Configuration object for the MCP server.
+     * @param {Object} [options={}] - Optional registration parameters.
+     * @param {string} [options.description=''] - Server description used for discovery search.
+     * @param {boolean} [options.prefixToolNames=false] - Whether to prefix tool names.
+     */
+    registerMCPServer(serverName, config, options = {}) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return this.toolLoader.registerMCPServer(serverName, config, options);
+    }
+
+    /**
+     * Programmatically enables a lazily registered MCP server.
+     * @param {string} serverName - Identifier of the server to connect and enable.
+     */
+    async enableMCPServer(serverName) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return await this.toolLoader.enableMCPServer(serverName);
+    }
+
+    /**
+     * Programmatically disables an active MCP server.
+     * @param {string} serverName - Identifier of the server to disable.
+     * @param {Object} [options={}] - Options for disabling.
+     * @param {boolean} [options.disconnect=false] - Whether to disconnect the underlying transport.
+     */
+    async disableMCPServer(serverName, options = {}) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return await this.toolLoader.disableMCPServer(serverName, options);
+    }
+
+    /**
      * Cleans up all MCP servers and agent resources.
      */
     async cleanup() {

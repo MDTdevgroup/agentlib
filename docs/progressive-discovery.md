@@ -183,3 +183,10 @@ const branchedHistory = await agent.branch(turn1, alternateContext);
 ## Native Tools Pass-Through
 
 Provider-native tools (such as Gemini's `{ type: 'web_search' }` or OpenAI's file search) are never hidden or indexed by `search_tools`. They remain on the wire array across all policies and modes, ensuring native provider features operate without disruption.
+
+---
+
+## See Also
+
+- [Lazy MCP Servers (`docs/lazy-servers.md`)](lazy-servers.md): Deferring MCP server connections and child process spawning until mid-run discovery.
+

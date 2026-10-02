@@ -15,6 +15,7 @@ export class MCPToolSource {
      */
     constructor({
         serverName,
+        description = '',
         client = null,
         serverConfig = null,
         tools = null,
@@ -26,6 +27,7 @@ export class MCPToolSource {
         }
 
         this.serverName = serverName;
+        this.description = description;
         this.client = client;
         this.serverConfig = serverConfig;
         this.prefixToolNames = prefixToolNames;
@@ -52,7 +54,7 @@ export class MCPToolSource {
             id: this.serverName,
             kind: 'mcp',
             title: this.serverName,
-            description: this.client?.getInstructions?.() || `MCP tools from server ${this.serverName}`,
+            description: this.description || this.client?.getInstructions?.() || `MCP tools from server ${this.serverName}`,
             connected: isConnected,
         };
     }

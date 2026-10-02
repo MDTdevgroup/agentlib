@@ -18,14 +18,17 @@ export class ToolLoader {
     constructor(enableMCP = false, {
         eventEmitter = null,
         mcpManagerFactory = null,
+        mcpSourceFactory = null,
         prefixToolNames = true,
     } = {}) {
         this.events = eventEmitter;
         this.prefixToolNames = prefixToolNames;
+        this.mcpSourceFactory = mcpSourceFactory;
         this.localSource = new LocalToolSource();
         this.sources = [this.localSource];
         this.nameIndex = new Map();
         this.rawNameIndex = new Map();
+        this.registeredServers = new Map();
 
         const createMCP = mcpManagerFactory || (opts => new MCPManager(opts));
         this.mcpManager = enableMCP ? createMCP({ eventEmitter: this.events }) : null;
@@ -263,6 +266,212 @@ export class ToolLoader {
     }
 
     /**
+     * Lazily registers an MCP server configuration without connecting.
+     * Deferring connection eliminates startup latency and child process overhead.
+     *
+     * @param {string} serverName - Identifier for the MCP server.
+     * @param {object} serverConfig - Server configuration blueprint (e.g. transport, command, url).
+     * @param {object} [options={}]
+     * @param {string} [options.description=''] - Natural language description of server capabilities.
+     * @param {boolean} [options.prefixToolNames] - Override default tool name prefixing.
+     * @returns {{ serverName: string, status: 'dormant' }}
+     */
+    registerMCPServer(serverName, serverConfig, { description = '', prefixToolNames, sourceFactory = null } = {}) {
+        if (!serverName || typeof serverName !== 'string') {
+            throw new TypeError("registerMCPServer requires a non-empty 'serverName' string.");
+        }
+        if (!serverConfig || typeof serverConfig !== 'object') {
+            throw new TypeError("registerMCPServer requires a valid 'serverConfig' object.");
+        }
+        if (this.registeredServers.has(serverName)) {
+            throw new Error(`MCP server '${serverName}' is already registered.`);
+        }
+
+        const isActivelyConnected = this.sources.some(s => {
+            const desc = typeof s.describe === 'function' ? s.describe() : {};
+            return desc.kind === 'mcp' && desc.id === serverName;
+        });
+        if (isActivelyConnected) {
+            throw new Error(`MCP server '${serverName}' is already actively connected.`);
+        }
+
+        const prefix = prefixToolNames !== undefined ? prefixToolNames : this.prefixToolNames;
+        this.registeredServers.set(serverName, {
+            serverName,
+            serverConfig,
+            description,
+            prefixToolNames: prefix,
+            sourceFactory,
+            status: 'dormant',
+            source: null,
+        });
+
+        return { serverName, status: 'dormant' };
+    }
+
+    /**
+     * Connects and activates a registered MCP server mid-run, indexing its tools into the catalog.
+     *
+     * @param {string} serverName - Identifier of registered server to enable.
+     * @returns {Promise<{ serverName: string, status: string, tools: Array<object>, toolCount: number }>}
+     */
+    async enableMCPServer(serverName) {
+        if (!this.registeredServers.has(serverName)) {
+            throw new Error(`MCP server '${serverName}' is not registered.`);
+        }
+
+        const entry = this.registeredServers.get(serverName);
+        if (entry.status === 'active' && entry.source) {
+            const decls = entry.source.getDeclarations();
+            return {
+                serverName,
+                status: 'active',
+                tools: decls,
+                toolCount: decls.length,
+            };
+        }
+
+        const createSource = entry.sourceFactory || this.mcpSourceFactory || (opts => new MCPToolSource(opts));
+        const source = entry.source || createSource({
+            serverName,
+            serverConfig: entry.serverConfig,
+            description: entry.description,
+            prefixToolNames: entry.prefixToolNames,
+            eventEmitter: this.events,
+        });
+
+        try {
+            await source.connect();
+            const declarations = await source.list();
+
+            const batchIdentifiers = new Set();
+            for (const decl of declarations) {
+                const identifier = decl.name || decl.type;
+                if (this.nameIndex.has(identifier) || batchIdentifiers.has(identifier)) {
+                    throw new Error(`MCP tool with name '${identifier}' already exists.`);
+                }
+                batchIdentifiers.add(identifier);
+            }
+
+            if (!this.sources.includes(source)) {
+                this.sources.push(source);
+            }
+            this._rebuildIndex();
+
+            entry.source = source;
+            entry.status = 'active';
+
+            if (this.events) {
+                this.events.emit('mcp:server_enabled', {
+                    serverName,
+                    toolCount: declarations.length,
+                    tools: declarations.map(d => d.name),
+                });
+            }
+
+            return {
+                serverName,
+                status: 'active',
+                tools: declarations,
+                toolCount: declarations.length,
+            };
+        } catch (error) {
+            try {
+                await source.close();
+            } catch {
+                // Ignore close error during rollback
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Deactivates an active MCP server, removing its tools from active index.
+     * NOTE: Disabling drops tool definitions and invalidates prompt prefix cache.
+     * Should be performed at conversation boundaries.
+     *
+     * @param {string} serverName - Server to disable.
+     * @param {object} [options={}]
+     * @param {boolean} [options.disconnect=false] - Whether to close the underlying connection.
+     * @returns {Promise<boolean>}
+     */
+    async disableMCPServer(serverName, { disconnect = false } = {}) {
+        let foundSource = null;
+
+        // 1. Check registered servers
+        if (this.registeredServers.has(serverName)) {
+            const entry = this.registeredServers.get(serverName);
+            foundSource = entry.source;
+            entry.status = 'disabled';
+            if (disconnect && entry.source) {
+                await entry.source.close();
+                entry.source = null;
+            }
+        }
+
+        // 2. Remove source from this.sources
+        const index = this.sources.findIndex(s => {
+            if (foundSource && s === foundSource) return true;
+            const desc = typeof s.describe === 'function' ? s.describe() : {};
+            return desc.kind === 'mcp' && desc.id === serverName;
+        });
+
+        if (index !== -1) {
+            const [source] = this.sources.splice(index, 1);
+            if (disconnect) {
+                await source.close();
+            }
+            this._rebuildIndex();
+        }
+
+        if (this.events) {
+            this.events.emit('mcp:server_disabled', { serverName });
+        }
+
+        return true;
+    }
+
+    /**
+     * Returns a summary list of all registered (dormant, active, disabled) and eager MCP servers.
+     *
+     * @returns {Array<{ name: string, description: string, status: 'dormant'|'active'|'disabled', toolCount: number }>}
+     */
+    getRegisteredMCPServers() {
+        const list = [];
+        const processed = new Set();
+
+        // 1. Registered servers
+        for (const [name, entry] of this.registeredServers) {
+            processed.add(name);
+            const toolCount = entry.source ? entry.source.getDeclarations().length : 0;
+            list.push({
+                name,
+                description: entry.description || `MCP tools from server ${name}`,
+                status: entry.status,
+                toolCount,
+            });
+        }
+
+        // 2. Active eager servers from this.sources
+        for (const source of this.sources) {
+            if (source === this.localSource) continue;
+            const desc = typeof source.describe === 'function' ? source.describe() : {};
+            if (desc.kind === 'mcp' && desc.id && !processed.has(desc.id)) {
+                processed.add(desc.id);
+                const toolCount = typeof source.getDeclarations === 'function' ? source.getDeclarations().length : 0;
+                list.push({
+                    name: desc.id,
+                    description: desc.description || `MCP tools from server ${desc.id}`,
+                    status: 'active',
+                    toolCount,
+                });
+            }
+        }
+
+        return list;
+    }
+
+    /**
      * Generates a text snippet describing available tools for the System Prompt.
      *
      * @returns {string} Formatted description or empty string.
@@ -316,6 +525,18 @@ export class ToolLoader {
             }
         }
         this.sources = [this.localSource];
+
+        for (const [_name, entry] of this.registeredServers) {
+            if (entry.source) {
+                try {
+                    await entry.source.close();
+                } catch {
+                    // Ignore close errors
+                }
+                entry.source = null;
+                entry.status = 'dormant';
+            }
+        }
 
         if (this.mcpManager) {
             await this.mcpManager.cleanup();
