@@ -1,4 +1,8 @@
+import { createHash } from "node:crypto";
 import MCPClient from "../../mcp/mcp-client.js";
+
+export const TOOL_NAME_SEPARATOR = '_';
+export const MAX_TOOL_NAME_LENGTH = 64;
 
 /**
  * ToolSource wrapping an MCP server connection.
@@ -28,15 +32,32 @@ export class MCPToolSource {
 
         this.serverName = serverName;
         this.description = description;
-        this.client = client;
         this.serverConfig = serverConfig;
         this.prefixToolNames = prefixToolNames;
         this.events = eventEmitter;
-        this.mockTools = tools ? new Map(tools.map(t => [t.name, t])) : null;
         this.cachedDeclarations = null;
+        this.nameMapping = new Map();
+
+        if (!client && tools) {
+            const toolMap = new Map(tools.map(t => [t.name, t]));
+            this.client = {
+                isServerConnected: () => true,
+                listDeclarations: () => Array.from(toolMap.values()).map(({ func: _f, ...decl }) => ({ type: 'function', ...decl })),
+                executeTool: async (n, a, c) => {
+                    const tool = toolMap.get(n);
+                    if (tool && typeof tool.func === 'function') {
+                        return tool.func(a, c);
+                    }
+                    throw new Error(`Tool '${n}' not found on MCP server '${this.serverName}'`);
+                },
+            };
+        } else {
+            this.client = client;
+        }
 
         this._toolsChangedHandler = () => {
             this.cachedDeclarations = null;
+            this.nameMapping.clear();
         };
 
         if (this.client && typeof this.client.onToolsChanged === 'function') {
@@ -49,7 +70,7 @@ export class MCPToolSource {
      * @returns {object}
      */
     describe() {
-        const isConnected = this.client ? Boolean(this.client.isServerConnected()) : Boolean(this.mockTools);
+        const isConnected = Boolean(this.client?.isServerConnected?.());
         return {
             id: this.serverName,
             kind: 'mcp',
@@ -80,26 +101,31 @@ export class MCPToolSource {
         if (this.client) {
             rawDeclarations = typeof this.client.listDeclarations === 'function'
                 ? this.client.listDeclarations()
-                : (this.client.tools || []).map(t => {
-                    const { func: _f, ...decl } = t;
-                    return decl;
-                });
-        } else if (this.mockTools) {
-            rawDeclarations = Array.from(this.mockTools.values()).map(t => {
-                const { func: _f, ...decl } = t;
-                return { type: 'function', ...decl };
-            });
+                : (this.client.tools || []).map(({ func: _f, ...decl }) => decl);
         }
 
+        this.nameMapping.clear();
         this.cachedDeclarations = rawDeclarations.map(decl => {
-            const qualifiedName = this.prefixToolNames
-                ? `${this.serverName}_${decl.name}`
+            let qualifiedName = this.prefixToolNames
+                ? `${this.serverName}${TOOL_NAME_SEPARATOR}${decl.name}`
                 : decl.name;
+
+            if (qualifiedName.length > MAX_TOOL_NAME_LENGTH) {
+                const hash = createHash('sha256').update(qualifiedName).digest('hex').slice(0, 8);
+                qualifiedName = `${qualifiedName.slice(0, 55)}_${hash}`;
+            }
+
+            this.nameMapping.set(qualifiedName, decl.name);
 
             return {
                 ...decl,
                 type: 'function',
                 name: qualifiedName,
+                source: {
+                    kind: 'mcp',
+                    serverName: this.serverName,
+                    remoteName: decl.name,
+                },
             };
         });
 
@@ -115,22 +141,14 @@ export class MCPToolSource {
      * @returns {Promise<any>}
      */
     async invoke(name, args, context = {}) {
-        let rawName = name;
-        const prefix = `${this.serverName}_`;
-
-        if (this.prefixToolNames && name.startsWith(prefix)) {
-            rawName = name.slice(prefix.length);
+        let rawName = this.nameMapping.get(name);
+        if (!rawName) {
+            const matched = this.cachedDeclarations?.find(d => d.name === name || d.source?.remoteName === name);
+            rawName = matched ? matched.source.remoteName : name;
         }
 
         if (this.client && typeof this.client.executeTool === 'function') {
             return await this.client.executeTool(rawName, args, context);
-        }
-
-        if (this.mockTools) {
-            const mockTool = this.mockTools.get(rawName) || this.mockTools.get(name);
-            if (mockTool && typeof mockTool.func === 'function') {
-                return await mockTool.func(args, context);
-            }
         }
 
         throw new Error(`Tool '${name}' not found on MCP server '${this.serverName}'`);
@@ -168,6 +186,5 @@ export class MCPToolSource {
             }
         }
         this.cachedDeclarations = null;
-        this.mockTools = null;
     }
 }

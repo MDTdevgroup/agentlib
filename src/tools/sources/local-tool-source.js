@@ -163,6 +163,7 @@ export class LocalToolSource {
                 declaration: {
                     type: 'function',
                     ...declaration,
+                    source: { kind: 'local' },
                 },
                 implementation: func,
             };
@@ -170,7 +171,10 @@ export class LocalToolSource {
 
         const { func: _ignored, ...declaration } = tool;
         return {
-            declaration: { ...declaration },
+            declaration: {
+                ...declaration,
+                source: { kind: 'local' },
+            },
             implementation: null,
         };
     }

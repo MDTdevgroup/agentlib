@@ -4,7 +4,7 @@ import {
     getDefaultToolExposure,
 } from "../config.js";
 import { getModelContextLimit, getDefaultModel } from "../providers/registry.js";
-import { ToolLoader } from "../loaders/tool-loader.js";
+import { ToolLoader, RESERVED_META_TOOL_NAMES } from "../loaders/tool-loader.js";
 import { resolveExposurePolicy } from "../tools/exposure.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
@@ -284,20 +284,20 @@ export class Agent {
         }
 
         // Check if this tool is a meta-tool handled by exposure policy
-        if (typeof resolveMeta === 'function') {
+        if (typeof resolveMeta === 'function' && RESERVED_META_TOOL_NAMES.has(name)) {
+            this._emitTrace('tool:start', {
+                traceId,
+                spanId: toolSpanId,
+                parentSpanId: rootSpanId,
+                name: `tool_exec:${name}`,
+                attributes: {
+                    tool_name: name,
+                    arguments: args,
+                }
+            });
             try {
                 const metaResolution = await resolveMeta(name, args, { signal, toolLoader: this.toolLoader });
                 if (metaResolution && metaResolution.handled) {
-                    this._emitTrace('tool:start', {
-                        traceId,
-                        spanId: toolSpanId,
-                        parentSpanId: rootSpanId,
-                        name: `tool_exec:${name}`,
-                        attributes: {
-                            tool_name: name,
-                            arguments: args,
-                        }
-                    });
                     this._emitTrace('tool:complete', {
                         traceId,
                         spanId: toolSpanId,
@@ -507,26 +507,6 @@ export class Agent {
      * Executes a single step of the agent's inner loop (LLM Call -> Tool Execution).
      */
     async _executeTurn(currentContext, frame = {}, traceId, rootSpanId, updateInternalContext, options = {}) {
-        // Defensive support for legacy positional signature: (stepNumber, currentContext, executedTools, ...)
-        if (typeof currentContext === 'number') {
-            const stepNum = currentContext;
-            const ctx = frame;
-            const tools = traceId;
-            const trId = rootSpanId;
-            const rSpanId = updateInternalContext;
-            const updateInternal = options;
-            const runTokens = arguments[6] || 0;
-            const opts = arguments[7] || {};
-            return this._executeTurn(
-                ctx,
-                { stepNumber: stepNum, executedTools: tools, totalRunTokens: runTokens, exposureState: opts.exposureState || {} },
-                trId,
-                rSpanId,
-                updateInternal,
-                opts
-            );
-        }
-
         const stepNumber = frame.stepNumber ?? 1;
         const executedTools = frame.executedTools ?? [];
         const totalRunTokens = frame.totalRunTokens ?? 0;
@@ -600,11 +580,15 @@ export class Agent {
             : this.exposurePolicy;
 
         const exposureContext = {
-            toolLoader: this.toolLoader,
             signal,
             maxContextTokens: this.maxContextTokens,
+            toolExposureOptions: {
+                ...this.toolExposureOptions,
+                ...options.toolExposureOptions,
+            },
             ...this.additionalOptions,
             ...options,
+            toolLoader: this.toolLoader,
         };
 
         const {
@@ -738,7 +722,18 @@ export class Agent {
                 if (settled.status === 'fulfilled') {
                     const { callId, name, args, result, nextExposureState } = settled.value;
                     if (nextExposureState) {
-                        currentExposureState = nextExposureState;
+                        currentExposureState = {
+                            ...currentExposureState,
+                            ...nextExposureState,
+                            discovered: Array.from(new Set([
+                                ...(currentExposureState.discovered || []),
+                                ...(nextExposureState.discovered || []),
+                            ])),
+                            enabledServers: Array.from(new Set([
+                                ...(currentExposureState.enabledServers || []),
+                                ...(nextExposureState.enabledServers || []),
+                            ])),
+                        };
                     }
                     newExecutedTools.push({ name, args });
                     const functionMessage = makeToolResult({

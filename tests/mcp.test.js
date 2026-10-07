@@ -145,8 +145,8 @@ describe('Model Context Protocol (MCP) Integration & Error Routing (SDK v2)', ()
 
         // 3. Happy path execution with structuredContent
         const result = await client.executeTool('calculate_tax', { amount: 100, rate: 0.15 });
-        assert.ok(Array.isArray(result));
-        assert.equal(result[0].text, 'Tax: $15, Total: $115');
+        assert.ok(Array.isArray(result.content));
+        assert.equal(result.content[0].text, 'Tax: $15, Total: $115');
         assert.deepEqual(result.structuredContent, { tax: 15, total: 115 });
 
         // 4. Error path (isError: true) mapped to structured Exception
@@ -231,7 +231,7 @@ describe('Model Context Protocol (MCP) Integration & Error Routing (SDK v2)', ()
         assert.deepEqual(client.listNames(), ['status_check']);
 
         const res = await client.executeTool('status_check', {});
-        assert.equal(res[0].text, 'System OK');
+        assert.equal(res.content[0].text, 'System OK');
         assert.equal(res.structuredContent.status, 'healthy');
 
         await client.disconnect();

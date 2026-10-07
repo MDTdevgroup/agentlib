@@ -199,7 +199,8 @@ export async function chat(client, input, { model = defaultModel, inputSchema, o
     if (Array.isArray(tools) && tools.length > 0) {
         formattedTools = tools.map((tool) => {
             if (tool.type && tool.type !== 'function') {
-                return tool;
+                const { source: _source, ...rest } = tool;
+                return rest;
             }
             return {
                 type: 'function',

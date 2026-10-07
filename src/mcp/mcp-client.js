@@ -8,6 +8,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { trace } from "@opentelemetry/api";
 import { makeException } from "../util/exception.js";
 
+export const DEFAULT_LIST_MAX_PAGES = 64;
+
 export const DEFAULT_CLIENT_INFO = Object.freeze({
     name: "@peebles-group/agentlib-js",
     version: "4.1.0",
@@ -23,7 +25,7 @@ class MCPClient {
      * @param {EventEmitter} [options.eventEmitter] - Optional event emitter for status and list changes.
      * @param {number} [options.listMaxPages=64] - Cap on list pagination walk.
      */
-    constructor({ clientInfo = DEFAULT_CLIENT_INFO, eventEmitter = null, listMaxPages = 64 } = {}) {
+    constructor({ clientInfo = DEFAULT_CLIENT_INFO, eventEmitter = null, listMaxPages = DEFAULT_LIST_MAX_PAGES } = {}) {
         this.clientInfo = clientInfo;
         this.events = eventEmitter;
         this.listMaxPages = listMaxPages;
@@ -138,20 +140,25 @@ class MCPClient {
 
         const toolsResult = await this.mcp.listTools();
         this.rawTools = toolsResult.tools || [];
-        this.tools = this.rawTools.map((tool) => {
-            return {
-                type: "function",
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.inputSchema,
-                outputSchema: tool.outputSchema,
-                func: async (args, context = {}) => {
-                    return await this.executeTool(tool.name, args, context);
-                }
-            };
-        });
-
+        this.tools = this.rawTools.map(tool => this._mapTool(tool));
         return this.tools;
+    }
+
+    /**
+     * Maps an MCP SDK tool representation to an internal fused tool object.
+     * @private
+     */
+    _mapTool(tool) {
+        return {
+            type: "function",
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.inputSchema,
+            outputSchema: tool.outputSchema,
+            func: async (args, context = {}) => {
+                return await this.executeTool(tool.name, args, context);
+            },
+        };
     }
 
     /**
@@ -171,16 +178,7 @@ class MCPClient {
 
         if (Array.isArray(tools)) {
             this.rawTools = tools;
-            this.tools = tools.map((tool) => ({
-                type: "function",
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.inputSchema,
-                outputSchema: tool.outputSchema,
-                func: async (args, context = {}) => {
-                    return await this.executeTool(tool.name, args, context);
-                }
-            }));
+            this.tools = tools.map(tool => this._mapTool(tool));
         } else {
             this.refreshTools().catch((err) => {
                 if (this.events) {
@@ -283,21 +281,14 @@ class MCPClient {
             });
         }
 
-        const output = result.content;
-        if (output && typeof output === 'object' && result.structuredContent !== undefined) {
-            try {
-                Object.defineProperty(output, 'structuredContent', {
-                    value: result.structuredContent,
-                    writable: true,
-                    enumerable: false,
-                    configurable: true,
-                });
-            } catch {
-                // If output is frozen or not extensible, fallback without error
-            }
+        if (result.structuredContent !== undefined) {
+            return {
+                content: result.content,
+                structuredContent: result.structuredContent,
+            };
         }
 
-        return output;
+        return result.content;
     }
 
     /**
@@ -365,27 +356,10 @@ class MCPClient {
         return this.mcp?.getDiscoverResult?.();
     }
 
-    // --- Backward compatibility methods ---
-
-    getTools() {
-        if (!this.isConnected) {
-            return [];
-        }
-        return this.tools;
-    }
-
-    getToolNames() {
-        return this.listNames();
-    }
-
-    getAvailableTools() {
-        return this.listNames();
-    }
-
-    getAgentTools() {
-        return this.tools;
-    }
-
+    /**
+     * Checks if the client is connected to a server.
+     * @returns {boolean}
+     */
     isServerConnected() {
         return this.isConnected;
     }

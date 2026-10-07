@@ -140,9 +140,9 @@ describe('ToolLoader Registry & Lifecycle', () => {
         const foundMcpQualified = loader.findTool('test-mcp_shared_name');
         assert.equal(await foundMcpQualified.func(), 'mcp-impl');
 
-        // Found by unambiguous raw name fallback
+        // Unprefixed name is not found when prefixToolNames is true
         const foundMcpRaw = loader.findTool('shared_name');
-        assert.equal(await foundMcpRaw.func(), 'mcp-impl');
+        assert.equal(foundMcpRaw, null);
     });
 
     test('MCP tools support prefixToolNames: false for unprefixed declarations', async () => {
@@ -289,7 +289,7 @@ describe('ToolLoader Registry & Lifecycle', () => {
             addServer: async (serverName) => ({
                 serverName,
                 tools: [
-                    { name: `${serverName}_tool`, func: async () => serverName },
+                    { name: 'tool', func: async () => serverName },
                 ],
             }),
             removeServer: async () => true,

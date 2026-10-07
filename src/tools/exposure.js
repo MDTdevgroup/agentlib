@@ -3,6 +3,7 @@ import {
     getDefaultToolExposure,
     getDefaultToolExposureThreshold,
     getDefaultToolExposureMode,
+    getDefaultMaxContextTokens,
 } from "../config.js";
 
 /**
@@ -32,9 +33,7 @@ export function estimateDeclarationTokens(declarationOrArray) {
 function getToolSource(declaration) {
     if (declaration.source?.serverName) return declaration.source.serverName;
     if (declaration.source?.id) return declaration.source.id;
-    const name = declaration.name || '';
-    const idx = name.indexOf('_');
-    if (idx > 0) return name.slice(0, idx);
+    if (declaration.source?.kind) return declaration.source.kind;
     return 'local';
 }
 
@@ -59,11 +58,8 @@ function formatToolByDetail(decl, detail = 'name_and_description') {
     }
 }
 
-/**
- * Generates the search_tools meta-tool declaration.
- */
-function createSearchToolsDeclaration() {
-    return {
+export const META_TOOL_DECLARATIONS = Object.freeze({
+    search_tools: Object.freeze({
         type: 'function',
         name: 'search_tools',
         description: 'Search available tools by natural language query. Returns matching tool names and descriptions grouped by source.',
@@ -86,14 +82,8 @@ function createSearchToolsDeclaration() {
             },
             required: ['query'],
         },
-    };
-}
-
-/**
- * Generates the get_tool_details meta-tool declaration.
- */
-function createGetToolDetailsDeclaration() {
-    return {
+    }),
+    get_tool_details: Object.freeze({
         type: 'function',
         name: 'get_tool_details',
         description: 'Retrieve the complete parameter schema and documentation for specific tool names.',
@@ -108,14 +98,8 @@ function createGetToolDetailsDeclaration() {
             },
             required: ['names'],
         },
-    };
-}
-
-/**
- * Generates the call_tool proxy declaration used in facade mode.
- */
-function createCallToolDeclaration() {
-    return {
+    }),
+    call_tool: Object.freeze({
         type: 'function',
         name: 'call_tool',
         description: 'Invoke an available tool by name with arguments.',
@@ -133,14 +117,8 @@ function createCallToolDeclaration() {
             },
             required: ['name', 'arguments'],
         },
-    };
-}
-
-/**
- * Generates the search_servers meta-tool declaration for discovering lazy MCP servers.
- */
-function createSearchServersDeclaration() {
-    return {
+    }),
+    search_servers: Object.freeze({
         type: 'function',
         name: 'search_servers',
         description: 'Search available MCP servers by description or capability query to find servers that can be enabled.',
@@ -158,14 +136,8 @@ function createSearchServersDeclaration() {
             },
             required: ['query'],
         },
-    };
-}
-
-/**
- * Generates the enable_server meta-tool declaration to connect an MCP server mid-run.
- */
-function createEnableServerDeclaration() {
-    return {
+    }),
+    enable_server: Object.freeze({
         type: 'function',
         name: 'enable_server',
         description: 'Connect and enable an MCP server mid-run, loading its tools into the catalog.',
@@ -179,14 +151,8 @@ function createEnableServerDeclaration() {
             },
             required: ['name'],
         },
-    };
-}
-
-/**
- * Generates the disable_server meta-tool declaration.
- */
-function createDisableServerDeclaration() {
-    return {
+    }),
+    disable_server: Object.freeze({
         type: 'function',
         name: 'disable_server',
         description: 'Disable an active MCP server. Note: This drops tool definitions from the catalog and should only be used at conversation boundaries.',
@@ -200,97 +166,129 @@ function createDisableServerDeclaration() {
             },
             required: ['name'],
         },
-    };
+    }),
+});
+
+/**
+ * Shared resolver for lazy MCP server meta-tools (search_servers, enable_server, disable_server).
+ * @param {string} name
+ * @param {object} args
+ * @param {object} options
+ * @returns {Promise<{ handled: boolean, result?: any, nextEnabledServers?: Array<string> }>}
+ */
+async function resolveServerMetaTool(name, args, { toolLoader, ranker = rankKeywords, enabledServers = [] }) {
+    if (name === 'search_servers') {
+        const query = args.query || '';
+        const limit = typeof args.limit === 'number' ? args.limit : 5;
+        const servers = toolLoader && typeof toolLoader.getRegisteredMCPServers === 'function'
+            ? toolLoader.getRegisteredMCPServers()
+            : [];
+        const scored = await ranker(query, servers, { limit });
+        return {
+            handled: true,
+            result: { query, totalMatches: scored.length, servers: scored.map(s => s.entry || s) },
+            nextEnabledServers: [...enabledServers],
+        };
+    }
+    if (name === 'enable_server') {
+        const serverName = args.name || args.server_name;
+        if (!toolLoader || typeof toolLoader.enableMCPServer !== 'function') {
+            throw new Error("ToolLoader not available in execution context for enable_server.");
+        }
+        const enableResult = await toolLoader.enableMCPServer(serverName);
+        const nextEnabled = enabledServers.includes(serverName)
+            ? [...enabledServers]
+            : [...enabledServers, serverName];
+        return {
+            handled: true,
+            result: {
+                serverName,
+                status: 'enabled',
+                toolsAdded: enableResult.toolCount,
+                tools: (enableResult.tools || []).map(t => t.name),
+            },
+            nextEnabledServers: nextEnabled,
+        };
+    }
+    if (name === 'disable_server') {
+        const serverName = args.name || args.server_name;
+        if (!toolLoader || typeof toolLoader.disableMCPServer !== 'function') {
+            throw new Error("ToolLoader not available in execution context for disable_server.");
+        }
+        const disabled = await toolLoader.disableMCPServer(serverName, { disconnect: false });
+        const nextEnabled = enabledServers.filter(s => s !== serverName);
+        return {
+            handled: true,
+            result: {
+                serverName,
+                status: disabled ? 'disabled' : 'not_found',
+                notice: 'Server disabled. Note: Disabling drops tools and invalidates prompt prefix cache; should be performed at conversation boundaries.',
+            },
+            nextEnabledServers: nextEnabled,
+        };
+    }
+    return { handled: false };
 }
 
 /**
  * Eager Exposure Policy: Returns every declaration in the catalog upfront.
  *
  * @param {Array<object>} catalog - Full list of tool declarations.
- * @param {object} exposureState - Current turn's exposure state.
+ * @param {object} [exposureState={}] - Current turn's exposure state.
+ * @param {object} [context={}] - Execution context.
+ * @param {object} [options={}] - Additional options.
  * @returns {Promise<{ declarations: Array<object>, metaTools: Array<object>, resolve: Function, nextState: object }>}
  */
-export async function exposeAll(catalog, exposureState = {}, context = {}) {
+export async function exposeAll(catalog, exposureState = {}, context = {}, options = {}) {
     const toolLoader = context?.toolLoader;
-    const registeredServers = toolLoader && typeof toolLoader.getRegisteredMCPServers === 'function'
-        ? toolLoader.getRegisteredMCPServers()
+    const hasLazyServers = toolLoader && typeof toolLoader.hasLazyServers === 'function'
+        ? toolLoader.hasLazyServers()
+        : Boolean(toolLoader?.registeredServers?.size > 0);
+
+    const metaTools = (hasLazyServers || options.enableLazyServers)
+        ? [
+            META_TOOL_DECLARATIONS.search_servers,
+            META_TOOL_DECLARATIONS.enable_server,
+            META_TOOL_DECLARATIONS.disable_server,
+        ]
         : [];
 
-    const metaTools = [];
-    if (registeredServers.length > 0) {
-        metaTools.push(
-            createSearchServersDeclaration(),
-            createEnableServerDeclaration(),
-            createDisableServerDeclaration(),
-        );
-    }
-
-    const enabledServersList = Array.isArray(exposureState?.enabledServers)
+    let nextEnabledServersList = Array.isArray(exposureState?.enabledServers)
         ? [...exposureState.enabledServers]
         : [];
-    let nextEnabledServersList = [...enabledServersList];
+
+    const makeState = (overrides = {}) => {
+        const state = { ...exposureState, ...overrides };
+        if (exposureState?.enabledServers !== undefined || hasLazyServers || options.enableLazyServers) {
+            state.enabledServers = [...nextEnabledServersList];
+        }
+        return state;
+    };
 
     async function resolve(name, args = {}, execContext = {}) {
         const currentLoader = context.toolLoader || execContext.toolLoader;
-        if (name === 'search_servers') {
-            const query = args.query || '';
-            const limit = typeof args.limit === 'number' ? args.limit : 5;
-            const servers = currentLoader && typeof currentLoader.getRegisteredMCPServers === 'function'
-                ? currentLoader.getRegisteredMCPServers()
-                : [];
-            const scored = await rankKeywords(query, servers, { limit });
+        const serverResolution = await resolveServerMetaTool(name, args, {
+            toolLoader: currentLoader,
+            ranker: rankKeywords,
+            enabledServers: nextEnabledServersList,
+        });
+
+        if (serverResolution.handled) {
+            nextEnabledServersList = serverResolution.nextEnabledServers;
             return {
                 handled: true,
-                result: { query, totalMatches: scored.length, servers: scored.map(s => s.entry || s) },
-                nextState: { ...exposureState, enabledServers: nextEnabledServersList },
-            };
-        }
-        if (name === 'enable_server') {
-            const serverName = args.name || args.server_name;
-            if (!currentLoader || typeof currentLoader.enableMCPServer !== 'function') {
-                throw new Error("ToolLoader not available in execution context for enable_server.");
-            }
-            const enableResult = await currentLoader.enableMCPServer(serverName);
-            if (!nextEnabledServersList.includes(serverName)) {
-                nextEnabledServersList.push(serverName);
-            }
-            return {
-                handled: true,
-                result: {
-                    serverName,
-                    status: 'enabled',
-                    toolsAdded: enableResult.toolCount,
-                    tools: (enableResult.tools || []).map(t => t.name),
-                },
-                nextState: { ...exposureState, enabledServers: nextEnabledServersList },
-            };
-        }
-        if (name === 'disable_server') {
-            const serverName = args.name || args.server_name;
-            if (!currentLoader || typeof currentLoader.disableMCPServer !== 'function') {
-                throw new Error("ToolLoader not available in execution context for disable_server.");
-            }
-            await currentLoader.disableMCPServer(serverName, { disconnect: false });
-            nextEnabledServersList = nextEnabledServersList.filter(s => s !== serverName);
-            return {
-                handled: true,
-                result: { serverName, status: 'disabled' },
-                nextState: { ...exposureState, enabledServers: nextEnabledServersList },
+                result: serverResolution.result,
+                nextState: makeState(),
             };
         }
         return { handled: false };
-    }
-
-    const nextState = { ...(exposureState || {}) };
-    if (exposureState?.enabledServers !== undefined || registeredServers.length > 0) {
-        nextState.enabledServers = nextEnabledServersList;
     }
 
     return {
         declarations: [...metaTools, ...catalog.map(d => ({ ...d }))],
         metaTools,
         resolve,
-        nextState,
+        nextState: makeState(),
     };
 }
 
@@ -324,23 +322,23 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
     let nextEnabledServersList = [...enabledServersList];
 
     const metaTools = [
-        createSearchToolsDeclaration(),
-        createGetToolDetailsDeclaration(),
+        META_TOOL_DECLARATIONS.search_tools,
+        META_TOOL_DECLARATIONS.get_tool_details,
     ];
     if (mode === 'facade') {
-        metaTools.push(createCallToolDeclaration());
+        metaTools.push(META_TOOL_DECLARATIONS.call_tool);
     }
 
     const toolLoader = context.toolLoader;
-    const registeredServers = toolLoader && typeof toolLoader.getRegisteredMCPServers === 'function'
-        ? toolLoader.getRegisteredMCPServers()
-        : [];
+    const hasLazyServers = toolLoader && typeof toolLoader.hasLazyServers === 'function'
+        ? toolLoader.hasLazyServers()
+        : Boolean(toolLoader?.registeredServers?.size > 0);
 
-    if (registeredServers.length > 0 || options.enableLazyServers) {
+    if (hasLazyServers || options.enableLazyServers) {
         metaTools.push(
-            createSearchServersDeclaration(),
-            createEnableServerDeclaration(),
-            createDisableServerDeclaration(),
+            META_TOOL_DECLARATIONS.search_servers,
+            META_TOOL_DECLARATIONS.enable_server,
+            META_TOOL_DECLARATIONS.disable_server,
         );
     }
 
@@ -362,6 +360,14 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
     }
 
     let nextDiscoveredList = [...discoveredList];
+
+    const makeState = (overrides = {}) => ({
+        ...exposureState,
+        mode,
+        discovered: [...nextDiscoveredList],
+        enabledServers: [...nextEnabledServersList],
+        ...overrides,
+    });
 
     /**
      * Resolves meta-tool invocations.
@@ -398,11 +404,7 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
                     results,
                     groupedBySource,
                 },
-                nextState: {
-                    ...exposureState,
-                    mode,
-                    discovered: nextDiscoveredList,
-                },
+                nextState: makeState(),
             };
         }
 
@@ -416,7 +418,7 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
             for (const toolName of requestedNames) {
                 let tool = functionTools.find(t => t.name === toolName);
                 if (!tool) {
-                    const candidates = functionTools.filter(t => t.name?.endsWith('_' + toolName));
+                    const candidates = functionTools.filter(t => t.source?.remoteName === toolName);
                     if (candidates.length === 1) {
                         tool = candidates[0];
                     }
@@ -438,12 +440,7 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
                 result: {
                     tools: details,
                 },
-                nextState: {
-                    ...exposureState,
-                    mode,
-                    discovered: nextDiscoveredList,
-                    enabledServers: nextEnabledServersList,
-                },
+                nextState: makeState(),
             };
         }
 
@@ -478,94 +475,23 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
             return {
                 handled: true,
                 result: toolResult,
-                nextState: {
-                    ...exposureState,
-                    mode,
-                    discovered: nextDiscoveredList,
-                    enabledServers: nextEnabledServersList,
-                },
+                nextState: makeState(),
             };
         }
 
-        if (name === 'search_servers') {
-            const query = args.query || '';
-            const limit = typeof args.limit === 'number' ? args.limit : 5;
-            const currentLoader = context.toolLoader || execContext.toolLoader;
-            const servers = currentLoader && typeof currentLoader.getRegisteredMCPServers === 'function'
-                ? currentLoader.getRegisteredMCPServers()
-                : [];
+        const currentLoader = context.toolLoader || execContext.toolLoader;
+        const serverResolution = await resolveServerMetaTool(name, args, {
+            toolLoader: currentLoader,
+            ranker,
+            enabledServers: nextEnabledServersList,
+        });
 
-            const scoredMatches = await ranker(query, servers, { limit });
-            const results = scoredMatches.map(m => m.entry || m);
-
+        if (serverResolution.handled) {
+            nextEnabledServersList = serverResolution.nextEnabledServers;
             return {
                 handled: true,
-                result: {
-                    query,
-                    totalMatches: results.length,
-                    servers: results,
-                },
-                nextState: {
-                    ...exposureState,
-                    mode,
-                    discovered: nextDiscoveredList,
-                    enabledServers: nextEnabledServersList,
-                },
-            };
-        }
-
-        if (name === 'enable_server') {
-            const serverName = args.name || args.server_name;
-            const currentLoader = context.toolLoader || execContext.toolLoader;
-            if (!currentLoader || typeof currentLoader.enableMCPServer !== 'function') {
-                throw new Error("ToolLoader not available in execution context for enable_server.");
-            }
-
-            const enableResult = await currentLoader.enableMCPServer(serverName);
-            if (!nextEnabledServersList.includes(serverName)) {
-                nextEnabledServersList.push(serverName);
-            }
-
-            return {
-                handled: true,
-                result: {
-                    serverName,
-                    status: 'enabled',
-                    toolsAdded: enableResult.toolCount,
-                    tools: (enableResult.tools || []).map(t => t.name),
-                },
-                nextState: {
-                    ...exposureState,
-                    mode,
-                    discovered: nextDiscoveredList,
-                    enabledServers: nextEnabledServersList,
-                },
-            };
-        }
-
-        if (name === 'disable_server') {
-            const serverName = args.name || args.server_name;
-            const currentLoader = context.toolLoader || execContext.toolLoader;
-            if (!currentLoader || typeof currentLoader.disableMCPServer !== 'function') {
-                throw new Error("ToolLoader not available in execution context for disable_server.");
-            }
-
-            await currentLoader.disableMCPServer(serverName, { disconnect: false });
-            nextEnabledServersList = nextEnabledServersList.filter(s => s !== serverName);
-
-            return {
-                handled: true,
-                result: {
-                    serverName,
-                    status: 'disabled',
-                    notice: 'Server disabled. Note: Disabling drops tools and invalidates prompt prefix cache; should be performed at conversation boundaries.',
-                },
-                nextState: {
-                    ...exposureState,
-                    mode,
-                    discovered: nextDiscoveredList,
-                    enabledServers: nextEnabledServersList,
-                },
+                result: serverResolution.result,
+                nextState: makeState(),
             };
         }
 
@@ -576,12 +502,7 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
         declarations: wireDeclarations,
         metaTools,
         resolve,
-        nextState: {
-            ...exposureState,
-            mode,
-            discovered: nextDiscoveredList,
-            enabledServers: nextEnabledServersList,
-        },
+        nextState: makeState(),
     };
 }
 
@@ -601,7 +522,7 @@ export async function exposeAuto(catalog, exposureState = {}, context = {}, opti
     }
 
     const totalTokens = estimateDeclarationTokens(catalog);
-    const maxContext = context?.maxContextTokens || 64000;
+    const maxContext = context?.maxContextTokens || getDefaultMaxContextTokens();
     const thresholdRatio = options.thresholdRatio ?? context?.thresholdRatio ?? context?.toolExposureOptions?.thresholdRatio ?? getDefaultToolExposureThreshold();
     const thresholdTokens = Math.floor(maxContext * thresholdRatio);
 
@@ -614,7 +535,7 @@ export async function exposeAuto(catalog, exposureState = {}, context = {}, opti
         );
     }
 
-    return exposeAll(catalog, exposureState);
+    return exposeAll(catalog, exposureState, context, options);
 }
 
 /**
@@ -637,6 +558,6 @@ export function resolveExposurePolicy(policyOrName = getDefaultToolExposure(), o
             return (catalog, state, context) => exposeAuto(catalog, state, context, { ...options, ...context?.toolExposureOptions });
         case 'all':
         default:
-            return (catalog, state, context) => exposeAll(catalog, state, context);
+            return (catalog, state, context) => exposeAll(catalog, state, context, { ...options, ...context?.toolExposureOptions });
     }
 }

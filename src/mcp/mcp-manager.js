@@ -31,7 +31,7 @@ export class MCPManager {
                 });
             }
 
-            return { serverName, tools, toolCount: tools.length, protocolVersion, instructions, client };
+            return { serverName, tools, toolCount: tools.length, protocolVersion, instructions };
 
         } catch (error) {
             if (this.events) {
@@ -43,6 +43,10 @@ export class MCPManager {
             }
             throw error;
         }
+    }
+
+    getClient(serverName) {
+        return this.clients.get(serverName) || null;
     }
 
     async removeServer(serverName) {
@@ -72,29 +76,15 @@ export class MCPManager {
         }
     }
 
-    // Get all tools from all connected servers
+    // Get all tool declarations from all connected servers
     getAllTools() {
         const allTools = [];
 
         for (const [_serverName, client] of this.clients) {
-            allTools.push(...client.getTools());
+            allTools.push(...client.listDeclarations());
         }
 
         return allTools;
-    }
-
-    // Execute a tool by finding the right server
-    async executeTool(toolName, args) {
-        for (const [_serverName, client] of this.clients) {
-            if (client.isServerConnected()) {
-                const availableTools = client.getAvailableTools();
-                if (availableTools.includes(toolName)) {
-                    return await client.executeTool(toolName, args);
-                }
-            }
-        }
-
-        throw new Error(`MCPManager: Tool '${toolName}' not found on any connected server`);
     }
 
     // Get comprehensive server information
@@ -108,7 +98,7 @@ export class MCPManager {
 
         for (const [serverName, client] of this.clients) {
             const isConnected = client.isServerConnected();
-            const tools = isConnected ? client.getAvailableTools() : [];
+            const tools = isConnected ? client.listNames() : [];
 
             if (isConnected) {
                 info.connectedServers++;
@@ -138,7 +128,7 @@ export class MCPManager {
             try {
                 if (client.isServerConnected()) {
                     // Try to get tools as a health check
-                    client.getAvailableTools();
+                    client.listNames();
                     results.servers[serverName] = 'healthy';
                 } else {
                     results.servers[serverName] = 'disconnected';
@@ -213,7 +203,7 @@ export class MCPManager {
 
         for (const [serverName, client] of this.clients) {
             if (client.isServerConnected()) {
-                const tools = client.getAvailableTools();
+                const tools = client.listNames();
                 const matchingTools = tools.filter(tool => regex.test(tool));
 
                 if (matchingTools.length > 0) {
@@ -267,7 +257,7 @@ export class MCPManager {
         let count = 0;
         for (const client of this.clients.values()) {
             if (client.isServerConnected()) {
-                count += client.getAvailableTools().length;
+                count += client.listNames().length;
             }
         }
         return count;

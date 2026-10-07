@@ -72,6 +72,11 @@ export class A2AToolSource {
                     },
                     required: ["request"],
                 },
+                source: {
+                    kind: 'a2a',
+                    serverName: this.toolName,
+                    remoteName: this.toolName,
+                },
             },
         ];
     }

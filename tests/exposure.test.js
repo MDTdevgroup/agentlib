@@ -60,7 +60,7 @@ describe('Tool Exposure Policies (exposure.js)', () => {
     });
 
     describe('exposeAll Policy', () => {
-        test('exposes all tools from catalog upfront with empty metaTools', async () => {
+        test('exposes all tools from catalog upfront with empty metaTools when no lazy servers', async () => {
             const state = { custom: 123 };
             const result = await exposeAll(catalog, state);
 
@@ -70,6 +70,30 @@ describe('Tool Exposure Policies (exposure.js)', () => {
 
             const res = await result.resolve('any_tool', {});
             assert.equal(res.handled, false);
+        });
+
+        test('eager MCP servers do NOT inject lazy-server meta-tools', async () => {
+            // Simulated loader with eager servers only (hasLazyServers() is false)
+            const eagerLoader = {
+                getRegisteredMCPServers: () => [{ name: 'playwright', config: {} }],
+                hasLazyServers: () => false,
+            };
+
+            const result = await exposeAll(catalog, {}, { toolLoader: eagerLoader });
+            assert.equal(result.metaTools.length, 0, 'Must NOT inject server meta-tools when only eager servers exist');
+        });
+
+        test('lazy MCP servers DO inject lazy-server meta-tools in exposeAll', async () => {
+            const lazyLoader = {
+                getRegisteredMCPServers: () => [{ name: 'github', description: 'GitHub API' }],
+                hasLazyServers: () => true,
+            };
+
+            const result = await exposeAll(catalog, {}, { toolLoader: lazyLoader });
+            assert.equal(result.metaTools.length, 3);
+            assert.ok(result.metaTools.some(t => t.name === 'search_servers'));
+            assert.ok(result.metaTools.some(t => t.name === 'enable_server'));
+            assert.ok(result.metaTools.some(t => t.name === 'disable_server'));
         });
     });
 
@@ -201,6 +225,44 @@ describe('Tool Exposure Policies (exposure.js)', () => {
             assert.equal(customRankerCalled, true);
             assert.equal(res.result.results.length, 1);
         });
+
+        test('groups multi-word local tools under local source rather than splitting on underscore', async () => {
+            const localCatalog = [
+                {
+                    name: 'get_weather_forecast',
+                    description: 'Get weather forecast',
+                    source: { kind: 'local' },
+                },
+                {
+                    name: 'fs_read_file',
+                    description: 'Read file',
+                    source: { kind: 'mcp', serverName: 'fs', remoteName: 'read_file' },
+                },
+            ];
+
+            const { resolve } = await exposeProgressive(localCatalog);
+            const res = await resolve('search_tools', { query: 'weather' });
+            assert.equal(res.handled, true);
+            assert.ok(res.result.groupedBySource['local'], 'Must group under "local"');
+            assert.equal(res.result.groupedBySource['get'], undefined, 'Must NOT group under "get"');
+        });
+
+        test('get_tool_details resolves by remoteName when qualified name differs', async () => {
+            const prefixedCatalog = [
+                {
+                    name: 'fs_read_file',
+                    description: 'Read a file',
+                    source: { kind: 'mcp', serverName: 'fs', remoteName: 'read_file' },
+                    parameters: { type: 'object' },
+                },
+            ];
+
+            const { resolve } = await exposeProgressive(prefixedCatalog, { discovered: [] });
+            const res = await resolve('get_tool_details', { names: ['read_file'] });
+            assert.equal(res.handled, true);
+            assert.equal(res.result.tools[0].name, 'fs_read_file');
+            assert.deepEqual(res.nextState.discovered, ['fs_read_file']);
+        });
     });
 
     describe('exposeAuto Policy', () => {
@@ -209,6 +271,24 @@ describe('Tool Exposure Policies (exposure.js)', () => {
             const result = await exposeAuto(catalog, {}, { maxContextTokens: 100000 }, { thresholdRatio: 0.05 });
             assert.equal(result.declarations.length, catalog.length);
             assert.deepEqual(result.metaTools, []);
+        });
+
+        test('forwards context to exposeAll below threshold so lazy servers are discoverable', async () => {
+            const lazyLoader = {
+                getRegisteredMCPServers: () => [{ name: 'github', description: 'GitHub API' }],
+                hasLazyServers: () => true,
+            };
+
+            const result = await exposeAuto(
+                catalog,
+                {},
+                { maxContextTokens: 100000, toolLoader: lazyLoader },
+                { thresholdRatio: 0.05 }
+            );
+
+            assert.equal(result.declarations.length, catalog.length + 3);
+            assert.equal(result.metaTools.length, 3);
+            assert.ok(result.metaTools.some(t => t.name === 'search_servers'));
         });
 
         test('switches to progressive when estimated tokens exceed threshold', async () => {

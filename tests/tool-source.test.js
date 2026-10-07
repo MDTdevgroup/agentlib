@@ -11,10 +11,11 @@ import { defineTool } from '../src/tools/define-tool.js';
 describe('ToolSource Contract & Implementations', () => {
 
     describe('assertToolSource Validator', () => {
-        test('passes when all 5 methods are implemented', () => {
+        test('passes when all 6 methods are implemented', () => {
             const validSource = {
                 describe: () => ({ id: 'test', kind: 'local', title: 'Test', description: 'Test', connected: true }),
                 list: async () => [],
+                getDeclarations: () => [],
                 invoke: async () => {},
                 connect: async () => {},
                 close: async () => {},
@@ -31,12 +32,27 @@ describe('ToolSource Contract & Implementations', () => {
             const missingInvoke = {
                 describe: () => {},
                 list: async () => [],
+                getDeclarations: () => [],
                 connect: async () => {},
                 close: async () => {},
             };
             assert.throws(() => assertToolSource(missingInvoke), {
                 name: 'TypeError',
                 message: /must implement 'invoke\(\)'/,
+            });
+        });
+
+        test('throws TypeError when getDeclarations is missing', () => {
+            const missingGetDeclarations = {
+                describe: () => {},
+                list: async () => [],
+                invoke: async () => {},
+                connect: async () => {},
+                close: async () => {},
+            };
+            assert.throws(() => assertToolSource(missingGetDeclarations), {
+                name: 'TypeError',
+                message: /must implement 'getDeclarations\(\)'/,
             });
         });
     });
@@ -141,6 +157,50 @@ describe('ToolSource Contract & Implementations', () => {
             const declarations = await source.list();
             assert.equal(declarations[0].name, 'search');
             assert.equal(await source.invoke('search', {}), 'results');
+        });
+
+        test('truncates qualified tool names exceeding 64 characters with hash', async () => {
+            const longToolName = 'a_very_long_tool_name_that_will_cause_the_qualified_name_to_exceed_sixty_four_characters_easily';
+            const mockTools = [
+                { name: longToolName, description: 'Long name tool', func: async () => 'ok' },
+            ];
+
+            const source = new MCPToolSource({
+                serverName: 'long_server_name',
+                tools: mockTools,
+                prefixToolNames: true,
+            });
+
+            const declarations = await source.list();
+            assert.equal(declarations.length, 1);
+            const qualifiedName = declarations[0].name;
+            assert.ok(qualifiedName.length <= 64, `Qualified name length ${qualifiedName.length} must be <= 64`);
+            assert.equal(declarations[0].source.remoteName, longToolName);
+
+            // Invocable via qualified truncated name
+            assert.equal(await source.invoke(qualifiedName, {}), 'ok');
+            // Invocable via raw name
+            assert.equal(await source.invoke(longToolName, {}), 'ok');
+        });
+
+        test('invoking raw name that starts with server prefix resolves correctly', async () => {
+            const mockTools = [
+                { name: 'github_search', description: 'GitHub search', func: async () => 'gh-results' },
+            ];
+
+            const source = new MCPToolSource({
+                serverName: 'github',
+                tools: mockTools,
+                prefixToolNames: true,
+            });
+
+            const declarations = await source.list();
+            assert.equal(declarations[0].name, 'github_github_search');
+
+            // Invocable via qualified name
+            assert.equal(await source.invoke('github_github_search', {}), 'gh-results');
+            // Invocable via raw name (does not strip github_ prefix incorrectly)
+            assert.equal(await source.invoke('github_search', {}), 'gh-results');
         });
 
         test('throws descriptive error on unknown tool invocation', async () => {

@@ -13,6 +13,7 @@
  * A valid ToolSource provides:
  * - describe(): ToolSourceDescriptor
  * - list(): Promise<Array<object>>
+ * - getDeclarations(): Array<object>
  * - invoke(name, args, context): Promise<any>
  * - connect(): Promise<void>
  * - close(): Promise<void>
@@ -25,7 +26,7 @@ export function assertToolSource(source) {
         throw new TypeError("ToolSource must be a non-null object.");
     }
 
-    const requiredMethods = ['describe', 'list', 'invoke', 'connect', 'close'];
+    const requiredMethods = ['describe', 'list', 'getDeclarations', 'invoke', 'connect', 'close'];
     for (const method of requiredMethods) {
         if (typeof source[method] !== 'function') {
             throw new TypeError(`ToolSource must implement '${method}()' as a function.`);

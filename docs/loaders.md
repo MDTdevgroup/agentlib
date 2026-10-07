@@ -122,16 +122,22 @@ toolLoader.addTools([weatherTool, customerTool]);
 
 ### Adding MCP Servers
 
-When MCP is enabled (`new ToolLoader(true)`), you can connect external MCP servers:
+When MCP is enabled (`new ToolLoader(true)`), you can connect external MCP servers eagerly or register them lazily:
 
+#### Eager Connection (`addMCPServer`)
 ```javascript
 const toolLoader = new ToolLoader(true);
 
+// Eagerly connects and indexes tools.
+// By default, tool names are prefixed as `${serverName}_${toolName}` (e.g. `filesystem_read_file`).
 await toolLoader.addMCPServer('filesystem', {
     type: 'stdio',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp']
 });
+
+// To disable prefixing and preserve legacy raw names:
+await toolLoader.addMCPServer('filesystem', serverConfig, { prefixToolNames: false });
 
 // Inspect status
 const info = toolLoader.getMCPInfo();
@@ -144,6 +150,27 @@ await toolLoader.cleanup();
 ```
 
 If an MCP server returns tools that conflict with already registered local tools or existing MCP servers, `addMCPServer` automatically rolls back the server connection before throwing.
+
+#### Lazy Server Registration (`registerMCPServer`)
+For workflows where capabilities are optional and connecting at startup would pay unnecessary latency, register servers lazily:
+
+```javascript
+toolLoader.registerMCPServer('github', githubConfig, {
+    description: 'GitHub operations: pull requests, issues, commits',
+});
+```
+
+When lazy servers are registered, discovery meta-tools (`search_servers`, `enable_server`, `disable_server`) allow the model to discover and connect dormant servers on demand.
+
+### Custom Tool Sources (`ToolSource`)
+
+`ToolLoader` is built on a unified `ToolSource` contract. You can register custom tool sources directly:
+
+```javascript
+loader.addSource(customToolSource);
+```
+
+All tool sources implement the 6-method capability contract: `describe()`, `list()`, `getDeclarations()`, `invoke(name, args, context)`, `connect()`, and `close()`. Validate custom sources with `assertToolSource(source)`.
 
 ---
 

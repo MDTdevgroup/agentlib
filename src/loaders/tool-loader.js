@@ -3,6 +3,15 @@ import { assertToolSource } from "../tools/sources/tool-source.js";
 import { LocalToolSource } from "../tools/sources/local-tool-source.js";
 import { MCPToolSource } from "../tools/sources/mcp-tool-source.js";
 
+export const RESERVED_META_TOOL_NAMES = Object.freeze(new Set([
+    'search_tools',
+    'get_tool_details',
+    'call_tool',
+    'search_servers',
+    'enable_server',
+    'disable_server',
+]));
+
 /**
  * Manages the lifecycle, storage, validation, and retrieval of an agent's tools.
  * Acts as a facade over an ordered collection of ToolSource instances.
@@ -13,6 +22,7 @@ export class ToolLoader {
      * @param {object} [options={}]
      * @param {EventEmitter} [options.eventEmitter=null] - Event emitter for MCP events.
      * @param {Function} [options.mcpManagerFactory=null] - Factory to instantiate MCPManager.
+     * @param {Function} [options.mcpSourceFactory=null] - Factory to instantiate MCPToolSource.
      * @param {boolean} [options.prefixToolNames=true] - Whether MCP tools are prefixed by default.
      */
     constructor(enableMCP = false, {
@@ -27,11 +37,21 @@ export class ToolLoader {
         this.localSource = new LocalToolSource();
         this.sources = [this.localSource];
         this.nameIndex = new Map();
-        this.rawNameIndex = new Map();
         this.registeredServers = new Map();
 
         const createMCP = mcpManagerFactory || (opts => new MCPManager(opts));
         this.mcpManager = enableMCP ? createMCP({ eventEmitter: this.events }) : null;
+    }
+
+    /**
+     * Returns true if there are lazily registered MCP servers.
+     * @returns {boolean}
+     */
+    hasLazyServers() {
+        for (const entry of this.registeredServers.values()) {
+            if (entry.isLazy) return true;
+        }
+        return false;
     }
 
     /**
@@ -56,19 +76,7 @@ export class ToolLoader {
      */
     addSource(source) {
         assertToolSource(source);
-        const declarations = typeof source.getDeclarations === 'function'
-            ? source.getDeclarations()
-            : [];
-
-        const batchIdentifiers = new Set();
-        for (const decl of declarations) {
-            const identifier = decl.name || decl.type;
-            if (this.nameIndex.has(identifier) || batchIdentifiers.has(identifier)) {
-                throw new Error(`Tool with name '${identifier}' already exists.`);
-            }
-            batchIdentifiers.add(identifier);
-        }
-
+        this._assertNoCollisions(source.getDeclarations());
         this.sources.push(source);
         this._rebuildIndex();
     }
@@ -82,10 +90,7 @@ export class ToolLoader {
     getToolDeclarations() {
         const declarations = [];
         for (const source of this.sources) {
-            const sourceDecls = typeof source.getDeclarations === 'function'
-                ? source.getDeclarations()
-                : [];
-            for (const decl of sourceDecls) {
+            for (const decl of source.getDeclarations()) {
                 declarations.push({ ...decl });
             }
         }
@@ -104,8 +109,7 @@ export class ToolLoader {
             if (source === this.localSource) {
                 tools.push(...this.localSource.getTools());
             } else {
-                const decls = typeof source.getDeclarations === 'function' ? source.getDeclarations() : [];
-                for (const decl of decls) {
+                for (const decl of source.getDeclarations()) {
                     const name = decl.name || decl.type;
                     tools.push({
                         ...decl,
@@ -118,36 +122,22 @@ export class ToolLoader {
     }
 
     /**
-     * Finds a tool by qualified or unambiguous raw name.
+     * Finds a tool by qualified or registered name.
      * Checks local tools first, then MCP tools.
      *
      * @param {string} name - Name of the tool to find.
      * @returns {object|null} Fused tool object including executable function, or null.
      */
     findTool(name) {
-        // 1. Direct match on qualified name index
         const entry = this.nameIndex.get(name);
-        if (entry) {
-            if (entry.source === this.localSource) {
-                return this.localSource.findTool(name);
-            }
-            return {
-                ...entry.declaration,
-                func: async (args, context) => entry.source.invoke(name, args, context),
-            };
+        if (!entry) return null;
+        if (entry.source === this.localSource) {
+            return this.localSource.findTool(name);
         }
-
-        // 2. Unambiguous raw name fallback
-        const rawMatches = this.rawNameIndex.get(name);
-        if (rawMatches && rawMatches.length === 1) {
-            const match = rawMatches[0];
-            return {
-                ...match.declaration,
-                func: async (args, context) => match.source.invoke(match.qualifiedName, args, context),
-            };
-        }
-
-        return null;
+        return {
+            ...entry.declaration,
+            func: async (args, context) => entry.source.invoke(name, args, context),
+        };
     }
 
     /**
@@ -169,16 +159,10 @@ export class ToolLoader {
             throw new TypeError("addTools expects an array of tools");
         }
 
-        const batchIdentifiers = new Set();
         for (const tool of tools) {
             this._validateToolStructure(tool);
-            const identifier = this._getToolIdentifier(tool);
-
-            if (this.nameIndex.has(identifier) || batchIdentifiers.has(identifier)) {
-                throw new Error(`Tool with name '${identifier}' already exists.`);
-            }
-            batchIdentifiers.add(identifier);
         }
+        this._assertNoCollisions(tools);
 
         this.localSource.addTools(tools);
         this._rebuildIndex();
@@ -199,33 +183,34 @@ export class ToolLoader {
         }
 
         const result = await this.mcpManager.addServer(serverName, config);
+        const client = typeof this.mcpManager.getClient === 'function'
+            ? this.mcpManager.getClient(serverName)
+            : (result.client || null);
         const serverTools = result.tools || [];
         const prefix = options.prefixToolNames !== undefined ? options.prefixToolNames : this.prefixToolNames;
 
         const source = new MCPToolSource({
             serverName,
-            client: result.client,
+            client,
             tools: serverTools,
             prefixToolNames: prefix,
             eventEmitter: this.events,
         });
 
-        const batchIdentifiers = new Set();
         try {
             for (const tool of serverTools) {
                 this._validateToolStructure(tool);
             }
 
-            const declarations = source.getDeclarations();
-            for (const decl of declarations) {
-                const identifier = decl.name;
-                if (this.nameIndex.has(identifier) || batchIdentifiers.has(identifier)) {
-                    throw new Error(`MCP tool with name '${identifier}' already exists.`);
-                }
-                batchIdentifiers.add(identifier);
-            }
+            this._assertNoCollisions(source.getDeclarations(), 'MCP tool');
 
             this.sources.push(source);
+            this.registeredServers.set(serverName, {
+                serverName,
+                status: 'active',
+                source,
+                isLazy: false,
+            });
             this._rebuildIndex();
         } catch (validationError) {
             try {
@@ -252,6 +237,7 @@ export class ToolLoader {
         if (!this.mcpManager) return false;
         const removed = await this.mcpManager.removeServer(serverName);
         if (removed) {
+            this.registeredServers.delete(serverName);
             const index = this.sources.findIndex(s => {
                 const desc = s.describe();
                 return desc.kind === 'mcp' && desc.id === serverName;
@@ -288,7 +274,7 @@ export class ToolLoader {
         }
 
         const isActivelyConnected = this.sources.some(s => {
-            const desc = typeof s.describe === 'function' ? s.describe() : {};
+            const desc = s.describe();
             return desc.kind === 'mcp' && desc.id === serverName;
         });
         if (isActivelyConnected) {
@@ -304,6 +290,7 @@ export class ToolLoader {
             sourceFactory,
             status: 'dormant',
             source: null,
+            isLazy: true,
         });
 
         return { serverName, status: 'dormant' };
@@ -344,14 +331,7 @@ export class ToolLoader {
             await source.connect();
             const declarations = await source.list();
 
-            const batchIdentifiers = new Set();
-            for (const decl of declarations) {
-                const identifier = decl.name || decl.type;
-                if (this.nameIndex.has(identifier) || batchIdentifiers.has(identifier)) {
-                    throw new Error(`MCP tool with name '${identifier}' already exists.`);
-                }
-                batchIdentifiers.add(identifier);
-            }
+            this._assertNoCollisions(declarations, 'MCP tool');
 
             if (!this.sources.includes(source)) {
                 this.sources.push(source);
@@ -396,32 +376,35 @@ export class ToolLoader {
      * @returns {Promise<boolean>}
      */
     async disableMCPServer(serverName, { disconnect = false } = {}) {
-        let foundSource = null;
+        const entry = this.registeredServers.get(serverName);
+        let foundSource = entry?.source;
 
-        // 1. Check registered servers
-        if (this.registeredServers.has(serverName)) {
-            const entry = this.registeredServers.get(serverName);
-            foundSource = entry.source;
-            entry.status = 'disabled';
-            if (disconnect && entry.source) {
-                await entry.source.close();
-                entry.source = null;
-            }
+        if (!foundSource) {
+            const found = this.sources.find(s => {
+                const desc = s.describe();
+                return desc.kind === 'mcp' && desc.id === serverName;
+            });
+            if (found) foundSource = found;
         }
 
-        // 2. Remove source from this.sources
-        const index = this.sources.findIndex(s => {
-            if (foundSource && s === foundSource) return true;
-            const desc = typeof s.describe === 'function' ? s.describe() : {};
-            return desc.kind === 'mcp' && desc.id === serverName;
-        });
+        if (!entry && !foundSource) {
+            return false;
+        }
 
-        if (index !== -1) {
-            const [source] = this.sources.splice(index, 1);
-            if (disconnect) {
-                await source.close();
+        if (entry) {
+            entry.status = 'disabled';
+        }
+
+        if (foundSource) {
+            const index = this.sources.indexOf(foundSource);
+            if (index !== -1) {
+                this.sources.splice(index, 1);
+                this._rebuildIndex();
             }
-            this._rebuildIndex();
+            if (disconnect) {
+                await foundSource.close();
+                if (entry && entry.isLazy) entry.source = null;
+            }
         }
 
         if (this.events) {
@@ -438,36 +421,16 @@ export class ToolLoader {
      */
     getRegisteredMCPServers() {
         const list = [];
-        const processed = new Set();
-
-        // 1. Registered servers
         for (const [name, entry] of this.registeredServers) {
-            processed.add(name);
+            const desc = entry.source ? entry.source.describe() : {};
             const toolCount = entry.source ? entry.source.getDeclarations().length : 0;
             list.push({
                 name,
-                description: entry.description || `MCP tools from server ${name}`,
+                description: entry.description || desc.description || `MCP tools from server ${name}`,
                 status: entry.status,
                 toolCount,
             });
         }
-
-        // 2. Active eager servers from this.sources
-        for (const source of this.sources) {
-            if (source === this.localSource) continue;
-            const desc = typeof source.describe === 'function' ? source.describe() : {};
-            if (desc.kind === 'mcp' && desc.id && !processed.has(desc.id)) {
-                processed.add(desc.id);
-                const toolCount = typeof source.getDeclarations === 'function' ? source.getDeclarations().length : 0;
-                list.push({
-                    name: desc.id,
-                    description: desc.description || `MCP tools from server ${desc.id}`,
-                    status: 'active',
-                    toolCount,
-                });
-            }
-        }
-
         return list;
     }
 
@@ -533,8 +496,12 @@ export class ToolLoader {
                 } catch {
                     // Ignore close errors
                 }
-                entry.source = null;
-                entry.status = 'dormant';
+                if (entry.isLazy) {
+                    entry.source = null;
+                    entry.status = 'dormant';
+                } else {
+                    entry.status = 'disabled';
+                }
             }
         }
 
@@ -549,37 +516,22 @@ export class ToolLoader {
 
     _rebuildIndex() {
         this.nameIndex.clear();
-        this.rawNameIndex.clear();
-
         for (const source of this.sources) {
-            const declarations = typeof source.getDeclarations === 'function'
-                ? source.getDeclarations()
-                : [];
-
-            for (const decl of declarations) {
-                const qualifiedName = decl.name || decl.type;
-                this.nameIndex.set(qualifiedName, { source, declaration: decl });
-
-                let rawName = qualifiedName;
-                const sourceDesc = source.describe();
-                if (sourceDesc.kind === 'mcp' && qualifiedName.startsWith(`${sourceDesc.id}_`)) {
-                    rawName = qualifiedName.slice(sourceDesc.id.length + 1);
-                }
-
-                if (!this.rawNameIndex.has(rawName)) {
-                    this.rawNameIndex.set(rawName, []);
-                }
-                this.rawNameIndex.get(rawName).push({
-                    source,
-                    qualifiedName,
-                    declaration: decl,
-                });
+            for (const decl of source.getDeclarations()) {
+                this.nameIndex.set(decl.name || decl.type, { source, declaration: decl });
             }
         }
     }
 
-    _getToolIdentifier(tool) {
-        return tool.name || tool.type;
+    _assertNoCollisions(declarations, prefix = 'Tool') {
+        const batchIdentifiers = new Set();
+        for (const item of declarations) {
+            const identifier = item.name || item.type;
+            if (this.nameIndex.has(identifier) || batchIdentifiers.has(identifier)) {
+                throw new Error(`${prefix} with name '${identifier}' already exists.`);
+            }
+            batchIdentifiers.add(identifier);
+        }
     }
 
     _validateToolStructure(tool) {
@@ -593,6 +545,9 @@ export class ToolLoader {
 
         if (typeof tool.name !== 'string' || !tool.name.trim()) {
             throw new Error("Tool missing name");
+        }
+        if (RESERVED_META_TOOL_NAMES.has(tool.name)) {
+            throw new Error(`Tool name '${tool.name}' is reserved for agent meta-tools.`);
         }
         if (typeof tool.func !== 'function') {
             throw new Error("Tool missing func");
