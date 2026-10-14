@@ -167,6 +167,26 @@ export const META_TOOL_DECLARATIONS = Object.freeze({
             required: ['name'],
         },
     }),
+    run_tool_script: Object.freeze({
+        type: 'function',
+        name: 'run_tool_script',
+        description: 'Execute a JavaScript script that invokes tools programmatically in a secure sandbox. Use this to chain multiple tools, filter, or process intermediate outputs without passing large payloads through the model context.',
+        parameters: {
+            type: 'object',
+            properties: {
+                code: {
+                    type: 'string',
+                    description: 'The JavaScript code to execute in the sandbox. The script has access to asynchronous tool functions and can use console.log to output results.',
+                },
+                tools: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Optional list of tool names that the script intends to call. Stubs for these tools will be generated and provided in scope.',
+                },
+            },
+            required: ['code'],
+        },
+    }),
 });
 
 /**
@@ -245,13 +265,17 @@ export async function exposeAll(catalog, exposureState = {}, context = {}, optio
         ? toolLoader.hasLazyServers()
         : Boolean(toolLoader?.registeredServers?.size > 0);
 
-    const metaTools = (hasLazyServers || options.enableLazyServers)
-        ? [
+    const metaTools = [];
+    if (options.codeMode || context?.codeMode) {
+        metaTools.push(META_TOOL_DECLARATIONS.run_tool_script);
+    }
+    if (hasLazyServers || options.enableLazyServers) {
+        metaTools.push(
             META_TOOL_DECLARATIONS.search_servers,
             META_TOOL_DECLARATIONS.enable_server,
             META_TOOL_DECLARATIONS.disable_server,
-        ]
-        : [];
+        );
+    }
 
     let nextEnabledServersList = Array.isArray(exposureState?.enabledServers)
         ? [...exposureState.enabledServers]
@@ -327,6 +351,9 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
     ];
     if (mode === 'facade') {
         metaTools.push(META_TOOL_DECLARATIONS.call_tool);
+    }
+    if (options.codeMode || context?.codeMode) {
+        metaTools.push(META_TOOL_DECLARATIONS.run_tool_script);
     }
 
     const toolLoader = context.toolLoader;

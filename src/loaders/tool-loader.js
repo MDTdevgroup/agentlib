@@ -10,6 +10,7 @@ export const RESERVED_META_TOOL_NAMES = Object.freeze(new Set([
     'search_servers',
     'enable_server',
     'disable_server',
+    'run_tool_script',
 ]));
 
 /**

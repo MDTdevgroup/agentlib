@@ -45,3 +45,14 @@ export {
     messageRole,
     deepFreeze,
 } from "./src/memory/message.js";
+export {
+    WorkerSandbox,
+    DenoSandbox,
+    assertSandbox,
+    createSandbox,
+    isDenoAvailable,
+} from "./src/tools/sandbox/index.js";
+export {
+    generateToolStub,
+    generateToolStubs,
+} from "./src/tools/stubs.js";

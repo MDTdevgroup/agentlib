@@ -50,6 +50,18 @@ export function getDefaultToolExposureMode() {
     return 'expand';
 }
 
+export function getDefaultMaxSandboxLogBytes() {
+    return 16384;
+}
+
+export function getDefaultSandboxTimeoutMS() {
+    return 30000;
+}
+
+export function getDefaultSandboxMemoryMB() {
+    return 128;
+}
+
 export function getDefaultRetrySpec() {
     return {
         maxRetries: 3,

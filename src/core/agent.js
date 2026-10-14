@@ -6,6 +6,8 @@ import {
 import { getModelContextLimit, getDefaultModel } from "../providers/registry.js";
 import { ToolLoader, RESERVED_META_TOOL_NAMES } from "../loaders/tool-loader.js";
 import { resolveExposurePolicy } from "../tools/exposure.js";
+import { createSandbox, assertSandbox } from "../tools/sandbox/index.js";
+import { generateToolStubs } from "../tools/stubs.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
@@ -56,6 +58,9 @@ export class Agent {
      * @param {number} [options.truncateToTokens] - Target token budget when compacting (defaults to 50% of model context limit).
      * @param {string|Function} [options.toolExposure] - Tool exposure policy ('all' | 'progressive' | 'auto' | custom function).
      * @param {object} [options.toolExposureOptions={}] - Configuration options for tool exposure policy (mode, thresholdRatio, rank).
+     * @param {boolean|object} [options.codeMode=false] - Whether to enable programmatic tool calling via run_tool_script, or sandbox options.
+     * @param {Function} [options.approveToolCall=null] - Optional hook `({ name, args, callId, origin, signal }) => boolean | void` to authorize direct or sandboxed tool calls.
+     * @param {object} [options.sandbox=null] - Custom sandbox conforming to the Sandbox contract.
      * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
      */
     constructor(llmService, {
@@ -76,6 +81,9 @@ export class Agent {
         truncateToTokens,
         toolExposure = getDefaultToolExposure(),
         toolExposureOptions = {},
+        codeMode = false,
+        approveToolCall = null,
+        sandbox = null,
         ...options } = {}) {
 
         this.name = name;
@@ -101,9 +109,31 @@ export class Agent {
         this.pruningStrategy = pruningStrategy;
         this.pruningOptions = pruningOptions;
         this.maxRunTokens = maxRunTokens || options.budget || null;
+        this.codeMode = codeMode;
+        this.approveToolCall = approveToolCall;
+
+        if (sandbox) {
+            assertSandbox(sandbox);
+            this.sandbox = sandbox;
+        } else if (codeMode && typeof codeMode === 'object' && typeof codeMode.run === 'function') {
+            assertSandbox(codeMode);
+            this.sandbox = codeMode;
+        } else if (codeMode && typeof codeMode === 'object' && codeMode.sandbox) {
+            assertSandbox(codeMode.sandbox);
+            this.sandbox = codeMode.sandbox;
+        } else if (codeMode) {
+            const sandboxOpts = typeof codeMode === 'object' ? codeMode : {};
+            this.sandbox = createSandbox(sandboxOpts);
+        } else {
+            this.sandbox = null;
+        }
+
         this.toolExposure = toolExposure;
-        this.toolExposureOptions = toolExposureOptions;
-        this.exposurePolicy = resolveExposurePolicy(toolExposure, toolExposureOptions);
+        this.toolExposureOptions = {
+            ...toolExposureOptions,
+            codeMode: Boolean(codeMode),
+        };
+        this.exposurePolicy = resolveExposurePolicy(toolExposure, this.toolExposureOptions);
 
         // Dynamically resolve context limit from model specifications if not explicitly provided
         const resolvedLimit = getModelContextLimit(this.llmService?.provider, this.model);
@@ -227,6 +257,35 @@ export class Agent {
     }
 
     /**
+     * Resolves an active sandbox instance for executing scripts.
+     * @param {object} [turnOptions={}]
+     * @returns {object}
+     */
+    _resolveSandbox(turnOptions = {}) {
+        if (turnOptions.sandbox) {
+            assertSandbox(turnOptions.sandbox);
+            return turnOptions.sandbox;
+        }
+        if (this.sandbox) {
+            return this.sandbox;
+        }
+        const mode = turnOptions.codeMode !== undefined ? turnOptions.codeMode : this.codeMode;
+        if (mode) {
+            if (typeof mode === 'object' && typeof mode.run === 'function') {
+                assertSandbox(mode);
+                return mode;
+            }
+            if (typeof mode === 'object' && mode.sandbox) {
+                assertSandbox(mode.sandbox);
+                return mode.sandbox;
+            }
+            const sandboxOpts = typeof mode === 'object' ? mode : {};
+            return createSandbox(sandboxOpts);
+        }
+        return createSandbox();
+    }
+
+    /**
      * Cleans up all MCP servers and agent resources.
      */
     async cleanup() {
@@ -251,7 +310,7 @@ export class Agent {
     /**
      * Executes a single tool call, handling errors, missing tools, and telemetry.
      */
-    async _executeSingleTool(call, traceId, rootSpanId, signal = null, resolveMeta = null) {
+    async _executeSingleTool(call, traceId, rootSpanId, signal = null, resolveMeta = null, { origin = 'model' } = {}) {
         signal?.throwIfAborted?.();
         const name = toolCallName(call);
         const callId = toolCallId(call);
@@ -271,6 +330,7 @@ export class Agent {
                 name: `tool_exec:${name || 'unknown'}`,
                 attributes: {
                     tool_name: name,
+                    origin,
                     error: `Failed to parse tool arguments: ${parseErr.message}`,
                 }
             });
@@ -283,8 +343,38 @@ export class Agent {
             };
         }
 
+        // Invoke approval hook if provided
+        if (typeof this.approveToolCall === 'function') {
+            try {
+                const approved = await this.approveToolCall({ name, args, callId, origin, signal });
+                if (approved === false) {
+                    throw new Error(`Tool call "${name}" rejected by approveToolCall hook.`);
+                }
+            } catch (approvalErr) {
+                this._emitTrace('tool:error', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        origin,
+                        error: approvalErr.message,
+                    }
+                });
+                if (this.onToolError === 'throw') throw approvalErr;
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: { error: approvalErr.message },
+                };
+            }
+        }
+
         // Check if this tool is a meta-tool handled by exposure policy
-        if (typeof resolveMeta === 'function' && RESERVED_META_TOOL_NAMES.has(name)) {
+        if (typeof resolveMeta === 'function' && RESERVED_META_TOOL_NAMES.has(name) && name !== 'run_tool_script') {
             this._emitTrace('tool:start', {
                 traceId,
                 spanId: toolSpanId,
@@ -293,6 +383,7 @@ export class Agent {
                 attributes: {
                     tool_name: name,
                     arguments: args,
+                    origin,
                 }
             });
             try {
@@ -306,6 +397,7 @@ export class Agent {
                         attributes: {
                             tool_name: name,
                             arguments: args,
+                            origin,
                             result_preview: JSON.stringify(metaResolution.result)?.slice(0, 100),
                         }
                     });
@@ -326,6 +418,7 @@ export class Agent {
                     attributes: {
                         tool_name: name,
                         arguments: args,
+                        origin,
                         error: metaErr.message,
                     }
                 });
@@ -335,6 +428,167 @@ export class Agent {
                     name,
                     args,
                     result: { error: `Meta-tool "${name}" execution failed: ${metaErr.message}` },
+                };
+            }
+        }
+
+        // Programmatic tool calling handler
+        if (name === 'run_tool_script') {
+            this._emitTrace('tool:start', {
+                traceId,
+                spanId: toolSpanId,
+                parentSpanId: rootSpanId,
+                name: `tool_exec:${name}`,
+                attributes: {
+                    tool_name: name,
+                    arguments: args,
+                    origin,
+                }
+            });
+
+            const code = typeof args?.code === 'string' ? args.code : '';
+            if (!code) {
+                const err = new Error("run_tool_script requires a non-empty 'code' string argument.");
+                this._emitTrace('tool:error', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        origin,
+                        error: err.message,
+                    }
+                });
+                if (this.onToolError === 'throw') throw err;
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: { error: err.message },
+                };
+            }
+
+            const activeSandbox = this._resolveSandbox();
+            const requestedTools = Array.isArray(args.tools) && args.tools.length > 0 ? new Set(args.tools) : null;
+            const allDeclarations = this.toolLoader ? this.toolLoader.getToolDeclarations() : [];
+            const targetDeclarations = allDeclarations.filter(d => {
+                const declName = d.name || d.type;
+                if (declName === 'run_tool_script') return false;
+                return requestedTools ? requestedTools.has(declName) : true;
+            });
+            const stubs = generateToolStubs(targetDeclarations);
+
+            let accumulatedNextState = null;
+            const onToolCall = async (toolName, toolArgs) => {
+                const innerCall = makeToolCall({
+                    name: toolName,
+                    args: toolArgs,
+                    callId: `sandboxed_${randomUUID()}`,
+                });
+                const execution = await this._executeSingleTool(
+                    innerCall,
+                    traceId,
+                    toolSpanId,
+                    signal,
+                    resolveMeta,
+                    { origin: 'sandbox' }
+                );
+                if (execution.nextExposureState) {
+                    accumulatedNextState = {
+                        ...accumulatedNextState,
+                        ...execution.nextExposureState,
+                    };
+                }
+                if (execution.result && typeof execution.result === 'object' && execution.result.error) {
+                    throw new Error(execution.result.error);
+                }
+                return execution.result;
+            };
+
+            try {
+                const { result, logs, error } = await activeSandbox.run(code, {
+                    stubs,
+                    signal,
+                    onToolCall,
+                });
+
+                if (error) {
+                    this._emitTrace('tool:error', {
+                        traceId,
+                        spanId: toolSpanId,
+                        parentSpanId: rootSpanId,
+                        name: `tool_exec:${name}`,
+                        attributes: {
+                            tool_name: name,
+                            arguments: args,
+                            origin,
+                            error: error.message,
+                            logs,
+                        }
+                    });
+                    if (this.onToolError === 'throw') throw error;
+                    return {
+                        callId,
+                        name,
+                        args,
+                        result: { error: error.message, logs: logs || undefined },
+                        nextExposureState: accumulatedNextState || undefined,
+                    };
+                }
+
+                const scriptResult = {};
+                if (result !== undefined) {
+                    scriptResult.result = result;
+                }
+                if (logs) {
+                    scriptResult.logs = logs;
+                }
+                if (result === undefined && !logs) {
+                    scriptResult.result = null;
+                }
+
+                this._emitTrace('tool:complete', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        origin,
+                        result_preview: JSON.stringify(scriptResult)?.slice(0, 100),
+                    }
+                });
+
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: scriptResult,
+                    nextExposureState: accumulatedNextState || undefined,
+                };
+            } catch (execErr) {
+                this._emitTrace('tool:error', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        origin,
+                        error: execErr.message,
+                    }
+                });
+                if (this.onToolError === 'throw') throw execErr;
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: { error: `run_tool_script failed: ${execErr.message}` },
+                    nextExposureState: accumulatedNextState || undefined,
                 };
             }
         }
@@ -350,6 +604,7 @@ export class Agent {
                 attributes: {
                     tool_name: name,
                     arguments: args,
+                    origin,
                     error: err.message,
                 }
             });
@@ -370,6 +625,7 @@ export class Agent {
             attributes: {
                 tool_name: name,
                 arguments: args,
+                origin,
             }
         });
 
@@ -383,6 +639,7 @@ export class Agent {
                 attributes: {
                     tool_name: name,
                     arguments: args,
+                    origin,
                     result_preview: JSON.stringify(result)?.slice(0, 100),
                 }
             });
@@ -401,6 +658,7 @@ export class Agent {
                 attributes: {
                     tool_name: name,
                     arguments: args,
+                    origin,
                     error: execErr.message,
                 }
             });
@@ -413,6 +671,7 @@ export class Agent {
             };
         }
     }
+
 
     /**
      * Starts the conversation loop and pauses after the first turn.
@@ -575,16 +834,23 @@ export class Agent {
         }
 
         const rawCatalog = this.toolLoader.getToolDeclarations() || [];
-        const activePolicy = options.toolExposure
-            ? resolveExposurePolicy(options.toolExposure, { ...this.toolExposureOptions, ...options.toolExposureOptions })
+        const isCodeModeActive = options.codeMode !== undefined ? Boolean(options.codeMode) : Boolean(this.codeMode);
+        const activePolicy = (options.toolExposure || (options.codeMode !== undefined && options.codeMode !== this.codeMode))
+            ? resolveExposurePolicy(options.toolExposure || this.toolExposure, {
+                ...this.toolExposureOptions,
+                ...options.toolExposureOptions,
+                codeMode: isCodeModeActive,
+            })
             : this.exposurePolicy;
 
         const exposureContext = {
             signal,
             maxContextTokens: this.maxContextTokens,
+            codeMode: isCodeModeActive,
             toolExposureOptions: {
                 ...this.toolExposureOptions,
                 ...options.toolExposureOptions,
+                codeMode: isCodeModeActive,
             },
             ...this.additionalOptions,
             ...options,
