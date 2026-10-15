@@ -11,6 +11,8 @@ export const RESERVED_META_TOOL_NAMES = Object.freeze(new Set([
     'enable_server',
     'disable_server',
     'run_tool_script',
+    'retrieve_tool_output',
+    'context_tree_query',
 ]));
 
 /**

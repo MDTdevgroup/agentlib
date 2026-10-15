@@ -8,6 +8,7 @@ import { ToolLoader, RESERVED_META_TOOL_NAMES } from "../loaders/tool-loader.js"
 import { resolveExposurePolicy } from "../tools/exposure.js";
 import { createSandbox, assertSandbox } from "../tools/sandbox/index.js";
 import { generateToolStubs } from "../tools/stubs.js";
+import { ToolOutputArchive, archiveContextToolOutputs } from "../tools/archive/index.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
@@ -61,6 +62,7 @@ export class Agent {
      * @param {boolean|object} [options.codeMode=false] - Whether to enable programmatic tool calling via run_tool_script, or sandbox options.
      * @param {Function} [options.approveToolCall=null] - Optional hook `({ name, args, callId, origin, signal }) => boolean | void` to authorize direct or sandboxed tool calls.
      * @param {object} [options.sandbox=null] - Custom sandbox conforming to the Sandbox contract.
+     * @param {boolean|object} [options.archiveToolOutputs=false] - Whether to archive completed tool outputs to disk and replace them with retrieval handles.
      * @param {...*} [options] - Additional options passed directly to the LLM service configuration.
      */
     constructor(llmService, {
@@ -84,6 +86,7 @@ export class Agent {
         codeMode = false,
         approveToolCall = null,
         sandbox = null,
+        archiveToolOutputs = false,
         ...options } = {}) {
 
         this.name = name;
@@ -128,10 +131,19 @@ export class Agent {
             this.sandbox = null;
         }
 
+        this.archiveToolOutputs = archiveToolOutputs;
+        if (archiveToolOutputs) {
+            const archiveOpts = typeof archiveToolOutputs === 'object' ? archiveToolOutputs : {};
+            this.toolOutputArchive = new ToolOutputArchive(archiveOpts);
+        } else {
+            this.toolOutputArchive = null;
+        }
+
         this.toolExposure = toolExposure;
         this.toolExposureOptions = {
             ...toolExposureOptions,
             codeMode: Boolean(codeMode),
+            archiveToolOutputs: Boolean(archiveToolOutputs),
         };
         this.exposurePolicy = resolveExposurePolicy(toolExposure, this.toolExposureOptions);
 
@@ -286,9 +298,12 @@ export class Agent {
     }
 
     /**
-     * Cleans up all MCP servers and agent resources.
+     * Cleans up all MCP servers, archives, and agent resources.
      */
     async cleanup() {
+        if (this.toolOutputArchive) {
+            await this.toolOutputArchive.cleanup();
+        }
         if (this.toolLoader) {
             await this.toolLoader.cleanup();
         }
@@ -374,7 +389,7 @@ export class Agent {
         }
 
         // Check if this tool is a meta-tool handled by exposure policy
-        if (typeof resolveMeta === 'function' && RESERVED_META_TOOL_NAMES.has(name) && name !== 'run_tool_script') {
+        if (typeof resolveMeta === 'function' && RESERVED_META_TOOL_NAMES.has(name) && name !== 'run_tool_script' && name !== 'retrieve_tool_output' && name !== 'context_tree_query') {
             this._emitTrace('tool:start', {
                 traceId,
                 spanId: toolSpanId,
@@ -589,6 +604,116 @@ export class Agent {
                     args,
                     result: { error: `run_tool_script failed: ${execErr.message}` },
                     nextExposureState: accumulatedNextState || undefined,
+                };
+            }
+        }
+
+        // On-demand tool output retrieval handler (Pi-style)
+        if (name === 'retrieve_tool_output' || name === 'context_tree_query') {
+            this._emitTrace('tool:start', {
+                traceId,
+                spanId: toolSpanId,
+                parentSpanId: rootSpanId,
+                name: `tool_exec:${name}`,
+                attributes: {
+                    tool_name: name,
+                    arguments: args,
+                    origin,
+                }
+            });
+
+            if (!this.toolOutputArchive) {
+                const err = new Error("ToolOutputArchive is not enabled on this agent.");
+                this._emitTrace('tool:error', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        origin,
+                        error: err.message,
+                    }
+                });
+                if (this.onToolError === 'throw') throw err;
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: { error: err.message },
+                };
+            }
+
+            const id = args?.id;
+            if (!id || typeof id !== 'string') {
+                const err = new Error(`${name} requires a valid "id" string (e.g. "t1").`);
+                this._emitTrace('tool:error', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        origin,
+                        error: err.message,
+                    }
+                });
+                if (this.onToolError === 'throw') throw err;
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: { error: err.message },
+                };
+            }
+
+            try {
+                const retrieval = await this.toolOutputArchive.retrieve(id, {
+                    query: args.query,
+                    offset: typeof args.offset === 'number' ? args.offset : 0,
+                    limit: typeof args.limit === 'number' ? args.limit : 100,
+                });
+
+                this._emitTrace('tool:complete', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        origin,
+                        result_preview: JSON.stringify(retrieval)?.slice(0, 100),
+                    }
+                });
+
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: retrieval,
+                };
+            } catch (retrieveErr) {
+                this._emitTrace('tool:error', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: args,
+                        origin,
+                        error: retrieveErr.message,
+                    }
+                });
+                if (this.onToolError === 'throw') throw retrieveErr;
+                return {
+                    callId,
+                    name,
+                    args,
+                    result: { error: `${name} failed: ${retrieveErr.message}` },
                 };
             }
         }
@@ -835,11 +960,13 @@ export class Agent {
 
         const rawCatalog = this.toolLoader.getToolDeclarations() || [];
         const isCodeModeActive = options.codeMode !== undefined ? Boolean(options.codeMode) : Boolean(this.codeMode);
-        const activePolicy = (options.toolExposure || (options.codeMode !== undefined && options.codeMode !== this.codeMode))
+        const isArchiveActive = options.archiveToolOutputs !== undefined ? Boolean(options.archiveToolOutputs) : Boolean(this.archiveToolOutputs);
+        const activePolicy = (options.toolExposure || (options.codeMode !== undefined && options.codeMode !== this.codeMode) || (options.archiveToolOutputs !== undefined && options.archiveToolOutputs !== this.archiveToolOutputs))
             ? resolveExposurePolicy(options.toolExposure || this.toolExposure, {
                 ...this.toolExposureOptions,
                 ...options.toolExposureOptions,
                 codeMode: isCodeModeActive,
+                archiveToolOutputs: isArchiveActive,
             })
             : this.exposurePolicy;
 
@@ -847,10 +974,12 @@ export class Agent {
             signal,
             maxContextTokens: this.maxContextTokens,
             codeMode: isCodeModeActive,
+            archiveToolOutputs: isArchiveActive,
             toolExposureOptions: {
                 ...this.toolExposureOptions,
                 ...options.toolExposureOptions,
                 codeMode: isCodeModeActive,
+                archiveToolOutputs: isArchiveActive,
             },
             ...this.additionalOptions,
             ...options,
@@ -1036,7 +1165,10 @@ export class Agent {
                 context: nextContext,
                 exposure: currentExposureState,
                 next: async (overrideContext = null, nextOptions = {}) => {
-                    const stateToPass = overrideContext || nextContext;
+                    let stateToPass = overrideContext || nextContext;
+                    if (this.toolOutputArchive) {
+                        stateToPass = await archiveContextToolOutputs(stateToPass, this.toolOutputArchive);
+                    }
                     const mergedOpts = { ...options, ...nextOptions };
                     const nextExposureState = nextOptions.exposureState || currentExposureState;
                     const nextFrame = {

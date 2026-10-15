@@ -187,6 +187,33 @@ export const META_TOOL_DECLARATIONS = Object.freeze({
             required: ['code'],
         },
     }),
+    retrieve_tool_output: Object.freeze({
+        type: 'function',
+        name: 'retrieve_tool_output',
+        description: 'Retrieves raw archived tool output from disk that was previously offloaded. Supports line slicing and keyword querying to inspect large outputs on demand without flooding context.',
+        parameters: {
+            type: 'object',
+            properties: {
+                id: {
+                    type: 'string',
+                    description: 'The archive identifier (e.g. "t1", "t2") found in the archived tool notice.',
+                },
+                query: {
+                    type: 'string',
+                    description: 'Optional substring to filter and search specific matching lines in the raw output.',
+                },
+                offset: {
+                    type: 'number',
+                    description: '0-indexed starting line number (default: 0).',
+                },
+                limit: {
+                    type: 'number',
+                    description: 'Maximum number of lines to return (default: 100).',
+                },
+            },
+            required: ['id'],
+        },
+    }),
 });
 
 /**
@@ -268,6 +295,9 @@ export async function exposeAll(catalog, exposureState = {}, context = {}, optio
     const metaTools = [];
     if (options.codeMode || context?.codeMode) {
         metaTools.push(META_TOOL_DECLARATIONS.run_tool_script);
+    }
+    if (options.archiveToolOutputs || context?.archiveToolOutputs) {
+        metaTools.push(META_TOOL_DECLARATIONS.retrieve_tool_output);
     }
     if (hasLazyServers || options.enableLazyServers) {
         metaTools.push(
@@ -354,6 +384,9 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
     }
     if (options.codeMode || context?.codeMode) {
         metaTools.push(META_TOOL_DECLARATIONS.run_tool_script);
+    }
+    if (options.archiveToolOutputs || context?.archiveToolOutputs) {
+        metaTools.push(META_TOOL_DECLARATIONS.retrieve_tool_output);
     }
 
     const toolLoader = context.toolLoader;
