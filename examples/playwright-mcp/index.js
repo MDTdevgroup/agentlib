@@ -18,9 +18,10 @@ async function run() {
   try {
     const promptsPath = fileURLToPath(new URL('./agentPrompts.md', import.meta.url));
     const promptLoader = await PromptLoader.create(promptsPath);
-    // Set up an agent with multiple MCP servers
+    // Set up an agent with multiple MCP servers and automatic progressive tool exposure
     const agent = new Agent(llm, {
       enableMCP: true,
+      toolExposure: 'auto',
       name: 'ScraperAgent',
       model: 'gpt-5.6'
     });

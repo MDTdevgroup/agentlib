@@ -6,6 +6,12 @@ import {
     assertSandbox,
     createSandbox,
 } from '../src/tools/sandbox/index.js';
+import { Agent } from '../src/core/agent.js';
+import { LLMService } from '../src/services/llm-service.js';
+import { registerProvider } from '../src/providers/registry.js';
+import { defineTool } from '../src/tools/define-tool.js';
+import { isToolResult } from '../src/memory/message.js';
+import * as FakeProvider from './helpers/fake-provider.js';
 
 describe('Sandbox Infrastructure (Contract, WorkerSandbox & Factory)', () => {
 
@@ -168,6 +174,81 @@ describe('Sandbox Infrastructure (Contract, WorkerSandbox & Factory)', () => {
             assert.equal(res.result, 'done');
             assert.match(res.logs, /\[\.\.\. truncated \d+ bytes \.\.\.\]/);
             assert.ok(Buffer.byteLength(res.logs, 'utf8') < 1000);
+        });
+    });
+
+    describe('Agent-level Code Mode with FakeProvider', () => {
+        test('executes scripted multi-tool workflow in WorkerSandbox without network', async () => {
+            const fakeProvider = FakeProvider.createFakeProvider();
+            registerProvider('fake', fakeProvider, 'Fake Provider');
+
+            const listItems = defineTool(
+                {
+                    name: 'list_items',
+                    description: 'List inventory items',
+                    parameters: {
+                        type: 'object',
+                        properties: {},
+                    },
+                },
+                async () => [
+                    { sku: 'A1', stock: 12 },
+                    { sku: 'B2', stock: 0 },
+                    { sku: 'C3', stock: 5 },
+                ]
+            );
+
+            const restockItem = defineTool(
+                {
+                    name: 'restock_item',
+                    description: 'Order restock for an out-of-stock SKU',
+                    parameters: {
+                        type: 'object',
+                        properties: {
+                            sku: { type: 'string' },
+                            quantity: { type: 'number' },
+                        },
+                        required: ['sku', 'quantity'],
+                    },
+                },
+                async ({ sku, quantity }) => ({ sku, ordered: quantity })
+            );
+
+            fakeProvider.enqueueResponse(FakeProvider.fakeToolCallResponse({
+                name: 'run_tool_script',
+                args: {
+                    code: `
+                        const items = await list_items();
+                        const outOfStock = items.filter(i => i.stock === 0);
+                        const orders = [];
+                        for (const item of outOfStock) {
+                            orders.push(await restock_item({ sku: item.sku, quantity: 20 }));
+                        }
+                        console.log("Restocked " + orders.length + " SKUs");
+                        return orders;
+                    `,
+                },
+                call_id: 'call_sandbox_agent_1',
+            }));
+
+            fakeProvider.enqueueResponse(FakeProvider.fakeTextResponse('Restocked SKU B2 with 20 units.'));
+
+            const llm = new LLMService({ provider: 'fake' });
+            const agent = new Agent(llm, {
+                name: 'sandbox-inventory-agent',
+                codeMode: true,
+                tools: [listItems, restockItem],
+            });
+            agent.addInput({ role: 'user', content: 'Restock any out-of-stock items with 20 units.' });
+
+            const history = await agent.run();
+            assert.equal(history.length, 2);
+
+            const toolResultMsg = history[0].context.getMessages().find(isToolResult);
+            assert.ok(toolResultMsg);
+            assert.deepEqual(toolResultMsg.output.result, [{ sku: 'B2', ordered: 20 }]);
+            assert.match(toolResultMsg.output.logs, /Restocked 1 SKUs/);
+            assert.equal(history[1].output, 'Restocked SKU B2 with 20 units.');
         });
     });
 });

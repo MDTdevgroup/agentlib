@@ -5,6 +5,7 @@ import {
     LocalToolSource,
     MCPToolSource,
     A2AToolSource,
+    createA2ASource,
 } from '../src/tools/sources/index.js';
 import { defineTool } from '../src/tools/define-tool.js';
 
@@ -240,6 +241,38 @@ describe('ToolSource Contract & Implementations', () => {
             const fused = source.toFusedTool();
             assert.equal(fused.name, 'analyst');
             assert.equal(typeof fused.func, 'function');
+        });
+
+        test('createA2ASource derives prefixed declarations from Agent Card skills and truncates >64 chars', async () => {
+            const longSkillId = 'a_very_long_remote_agent_skill_identifier_that_exceeds_sixty_four_chars_when_prefixed';
+            const source = createA2ASource('http://localhost:4000', {
+                id: 'peer',
+                client: {
+                    getAgentCard: async () => ({
+                        name: 'Peer Agent',
+                        description: 'Remote peer',
+                        skills: [
+                            { id: 'summarize', name: 'Summarize', description: 'Summarize text', tags: ['nlp'] },
+                            { id: longSkillId, name: 'Long Skill', description: 'Long skill' },
+                        ],
+                    }),
+                    sendMessage: async () => ({
+                        kind: 'message',
+                        parts: [{ kind: 'text', text: 'Done' }],
+                    }),
+                },
+            });
+
+            const declarations = await source.list();
+            assert.equal(declarations.length, 2);
+            assert.equal(declarations[0].name, 'peer_summarize');
+            assert.equal(declarations[0].source.kind, 'a2a');
+            assert.equal(declarations[0].source.serverName, 'peer');
+            assert.equal(declarations[0].source.remoteName, 'summarize');
+
+            assert.ok(declarations[1].name.length <= 64);
+            assert.equal(declarations[1].source.remoteName, longSkillId);
+            assert.equal(await source.invoke(declarations[1].name, { request: 'run' }), 'Done');
         });
     });
 });
