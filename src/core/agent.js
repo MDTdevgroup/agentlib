@@ -148,6 +148,12 @@ export class Agent {
             this.toolLoader.addTools(options.tools);
             delete options.tools;
         }
+        if (Array.isArray(options.sources)) {
+            for (const source of options.sources) {
+                this.toolLoader.addSource(source);
+            }
+            delete options.sources;
+        }
 
         this.additionalOptions = options;
         this.signal = options.signal || null;
@@ -205,6 +211,41 @@ export class Agent {
     }
 
     /**
+     * Registers a ToolSource (such as createA2ASource or MCPToolSource) with the agent.
+     * @param {object} source - ToolSource instance.
+     */
+    addSource(source) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return this.toolLoader.addSource(source);
+    }
+
+    /**
+     * Returns the full tool catalog across all registered sources, independent of progressive exposure state.
+     * @returns {Promise<Array<object>>}
+     */
+    async getCatalog() {
+        if (!this.toolLoader) return [];
+        if (typeof this.toolLoader.getCatalog === 'function') {
+            return await this.toolLoader.getCatalog();
+        }
+        return this.toolLoader.getToolDeclarations();
+    }
+
+    /**
+     * Synchronously returns the full tool catalog across all active sources.
+     * @returns {Array<object>}
+     */
+    getFullCatalog() {
+        if (!this.toolLoader) return [];
+        if (typeof this.toolLoader.getFullCatalog === 'function') {
+            return this.toolLoader.getFullCatalog();
+        }
+        return this.toolLoader.getToolDeclarations();
+    }
+
+    /**
      * Adds an MCP server connection to this agent.
      * @param {string} serverName - Identifier for the MCP server.
      * @param {Object} config - Configuration object for the MCP server.
@@ -214,6 +255,32 @@ export class Agent {
             throw new Error("ToolLoader is not initialized.");
         }
         return await this.toolLoader.addMCPServer(serverName, config);
+    }
+
+    /**
+     * Connects and indexes an A2A remote peer agent into the tool catalog.
+     * @param {string} serverName - Identifier for the A2A peer.
+     * @param {string|object} urlOrOptions - Remote agent URL or options.
+     * @param {object} [options={}]
+     */
+    async addA2AServer(serverName, urlOrOptions, options = {}) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return await this.toolLoader.addA2AServer(serverName, urlOrOptions, options);
+    }
+
+    /**
+     * Lazily registers an A2A remote peer agent without connecting immediately.
+     * @param {string} serverName - Identifier for the A2A peer.
+     * @param {string|object} urlOrOptions - Remote agent URL or options.
+     * @param {object} [options={}]
+     */
+    registerA2AServer(serverName, urlOrOptions, options = {}) {
+        if (!this.toolLoader) {
+            throw new Error("ToolLoader is not initialized.");
+        }
+        return this.toolLoader.registerA2AServer(serverName, urlOrOptions, options);
     }
 
     /**
@@ -233,7 +300,7 @@ export class Agent {
     }
 
     /**
-     * Programmatically enables a lazily registered MCP server.
+     * Programmatically enables a lazily registered MCP or A2A server.
      * @param {string} serverName - Identifier of the server to connect and enable.
      */
     async enableMCPServer(serverName) {
@@ -244,7 +311,7 @@ export class Agent {
     }
 
     /**
-     * Programmatically disables an active MCP server.
+     * Programmatically disables an active MCP or A2A server.
      * @param {string} serverName - Identifier of the server to disable.
      * @param {Object} [options={}] - Options for disabling.
      * @param {boolean} [options.disconnect=false] - Whether to disconnect the underlying transport.
@@ -833,6 +900,9 @@ export class Agent {
             };
         }
 
+        if (typeof this.toolLoader?.ensureConnected === 'function') {
+            await this.toolLoader.ensureConnected();
+        }
         const rawCatalog = this.toolLoader.getToolDeclarations() || [];
         const isCodeModeActive = options.codeMode !== undefined ? Boolean(options.codeMode) : Boolean(this.codeMode);
         const activePolicy = (options.toolExposure || (options.codeMode !== undefined && options.codeMode !== this.codeMode))

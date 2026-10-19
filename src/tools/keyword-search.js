@@ -20,7 +20,11 @@ function tokenize(text) {
  * @returns {{ nameTokens: Array<string>, descTokens: Array<string>, paramTokens: Array<string>, totalTokens: number }}
  */
 function extractDeclarationTokens(declaration) {
-    const nameTokens = tokenize(declaration.name || declaration.title || '');
+    const rawName = declaration.name || declaration.title || '';
+    const nameTokens = Array.from(new Set([
+        ...tokenize(rawName),
+        ...tokenize(rawName.replace(/_/g, ' ')),
+    ]));
     const descTokens = tokenize(declaration.description || '');
 
     const paramTokens = [];

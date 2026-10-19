@@ -2,6 +2,7 @@ import { MCPManager } from "../mcp/mcp-manager.js";
 import { assertToolSource } from "../tools/sources/tool-source.js";
 import { LocalToolSource } from "../tools/sources/local-tool-source.js";
 import { MCPToolSource } from "../tools/sources/mcp-tool-source.js";
+import { createA2ASource } from "../tools/sources/a2a-tool-source.js";
 
 export const RESERVED_META_TOOL_NAMES = Object.freeze(new Set([
     'search_tools',
@@ -45,7 +46,7 @@ export class ToolLoader {
     }
 
     /**
-     * Returns true if there are lazily registered MCP servers.
+     * Returns true if there are lazily registered MCP or A2A servers.
      * @returns {boolean}
      */
     hasLazyServers() {
@@ -73,18 +74,99 @@ export class ToolLoader {
 
     /**
      * Registers a custom ToolSource instance.
+     * If the source is marked lazy and not yet connected, registers it as a dormant server
+     * that can be discovered via search_servers and connected via enable_server.
+     *
      * @param {object} source - ToolSource instance satisfying the capability contract.
      */
     addSource(source) {
         assertToolSource(source);
+        const desc = source.describe() || {};
+
+        if (source.lazy && !desc.connected) {
+            const serverName = desc.id || source.id || source.toolName || 'remote_peer';
+            if (this.registeredServers.has(serverName)) {
+                throw new Error(`Server '${serverName}' is already registered.`);
+            }
+            this.registeredServers.set(serverName, {
+                serverName,
+                description: desc.description || source.description || '',
+                status: 'dormant',
+                source,
+                isLazy: true,
+                kind: desc.kind || 'a2a',
+            });
+            return;
+        }
+
         this._assertNoCollisions(source.getDeclarations());
         this.sources.push(source);
+        if (desc.id && (desc.kind === 'a2a' || desc.kind === 'mcp')) {
+            this.registeredServers.set(desc.id, {
+                serverName: desc.id,
+                description: desc.description || '',
+                status: 'active',
+                source,
+                isLazy: false,
+                kind: desc.kind,
+            });
+        }
         this._rebuildIndex();
     }
 
     /**
+     * Connects any eager (non-lazy) sources that have not yet connected and refreshes the index.
+     * @returns {Promise<void>}
+     */
+    async ensureConnected() {
+        let updated = false;
+        for (const source of this.sources) {
+            if (source === this.localSource) continue;
+            const desc = source.describe?.() || {};
+            if (!desc.connected && !source.lazy && typeof source.connect === 'function') {
+                await source.connect();
+                if (typeof source.list === 'function') {
+                    await source.list();
+                }
+                updated = true;
+            }
+        }
+        if (updated) {
+            this._rebuildIndex();
+        }
+    }
+
+    /**
+     * Returns the full tool catalog across all registered sources, independent of progressive exposure state.
+     * @returns {Promise<Array<object>>}
+     */
+    async getCatalog() {
+        await this.ensureConnected();
+        return this.getFullCatalog();
+    }
+
+    /**
+     * Synchronously returns the full tool catalog across all active sources.
+     * @returns {Array<object>}
+     */
+    getFullCatalog() {
+        const declarations = [];
+        const seen = new Set();
+        for (const source of this.sources) {
+            for (const decl of source.getDeclarations()) {
+                const key = decl.name || decl.type;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    declarations.push({ ...decl });
+                }
+            }
+        }
+        return declarations;
+    }
+
+    /**
      * Returns serializable tool declarations (metadata only, no executable functions).
-     * Local declarations are returned before MCP declarations.
+     * Local declarations are returned before MCP/A2A declarations.
      *
      * @returns {Array<object>} Array of tool declarations.
      */
@@ -124,13 +206,17 @@ export class ToolLoader {
 
     /**
      * Finds a tool by qualified or registered name.
-     * Checks local tools first, then MCP tools.
+     * Checks local tools first, then MCP/A2A tools.
      *
      * @param {string} name - Name of the tool to find.
      * @returns {object|null} Fused tool object including executable function, or null.
      */
     findTool(name) {
-        const entry = this.nameIndex.get(name);
+        let entry = this.nameIndex.get(name);
+        if (!entry) {
+            this._rebuildIndex();
+            entry = this.nameIndex.get(name);
+        }
         if (!entry) return null;
         if (entry.source === this.localSource) {
             return this.localSource.findTool(name);
@@ -253,6 +339,67 @@ export class ToolLoader {
     }
 
     /**
+     * Connects an A2A peer agent, derives its skill declarations, and indexes them into the catalog.
+     *
+     * @param {string} serverName - Unique identifier for this A2A peer.
+     * @param {string|object} urlOrOptions - Remote agent URL or A2A options.
+     * @param {object} [options={}]
+     * @returns {Promise<{ serverName: string, status: 'active', tools: Array<object>, toolCount: number }>}
+     */
+    async addA2AServer(serverName, urlOrOptions, options = {}) {
+        const opts = typeof urlOrOptions === 'string'
+            ? { ...options, remoteUrl: urlOrOptions }
+            : { ...urlOrOptions, ...options };
+        const prefix = opts.prefixToolNames !== undefined ? opts.prefixToolNames : this.prefixToolNames;
+
+        const source = createA2ASource(opts.remoteUrl || opts.url, {
+            ...opts,
+            id: serverName,
+            lazy: false,
+            prefixToolNames: prefix,
+        });
+
+        await source.connect();
+        const declarations = await source.list();
+        this.addSource(source);
+
+        return {
+            serverName,
+            status: 'active',
+            tools: declarations,
+            toolCount: declarations.length,
+        };
+    }
+
+    /**
+     * Lazily registers an A2A peer without connecting immediately.
+     *
+     * @param {string} serverName - Identifier for the A2A peer.
+     * @param {string|object} urlOrOptions - Remote agent URL or A2A options.
+     * @param {object} [options={}]
+     * @returns {{ serverName: string, status: 'dormant' }}
+     */
+    registerA2AServer(serverName, urlOrOptions, options = {}) {
+        if (!serverName || typeof serverName !== 'string') {
+            throw new TypeError("registerA2AServer requires a non-empty 'serverName' string.");
+        }
+        const opts = typeof urlOrOptions === 'string'
+            ? { ...options, remoteUrl: urlOrOptions }
+            : { ...urlOrOptions, ...options };
+        const prefix = opts.prefixToolNames !== undefined ? opts.prefixToolNames : this.prefixToolNames;
+
+        const source = createA2ASource(opts.remoteUrl || opts.url, {
+            ...opts,
+            id: serverName,
+            lazy: true,
+            prefixToolNames: prefix,
+        });
+
+        this.addSource(source);
+        return { serverName, status: 'dormant' };
+    }
+
+    /**
      * Lazily registers an MCP server configuration without connecting.
      * Deferring connection eliminates startup latency and child process overhead.
      *
@@ -276,7 +423,7 @@ export class ToolLoader {
 
         const isActivelyConnected = this.sources.some(s => {
             const desc = s.describe();
-            return desc.kind === 'mcp' && desc.id === serverName;
+            return (desc.kind === 'mcp' || desc.kind === 'a2a') && desc.id === serverName;
         });
         if (isActivelyConnected) {
             throw new Error(`MCP server '${serverName}' is already actively connected.`);
@@ -292,13 +439,14 @@ export class ToolLoader {
             status: 'dormant',
             source: null,
             isLazy: true,
+            kind: serverConfig.kind || 'mcp',
         });
 
         return { serverName, status: 'dormant' };
     }
 
     /**
-     * Connects and activates a registered MCP server mid-run, indexing its tools into the catalog.
+     * Connects and activates a registered MCP or A2A server mid-run, indexing its tools into the catalog.
      *
      * @param {string} serverName - Identifier of registered server to enable.
      * @returns {Promise<{ serverName: string, status: string, tools: Array<object>, toolCount: number }>}
@@ -367,7 +515,7 @@ export class ToolLoader {
     }
 
     /**
-     * Deactivates an active MCP server, removing its tools from active index.
+     * Deactivates an active MCP or A2A server, removing its tools from active index.
      * NOTE: Disabling drops tool definitions and invalidates prompt prefix cache.
      * Should be performed at conversation boundaries.
      *
@@ -383,7 +531,7 @@ export class ToolLoader {
         if (!foundSource) {
             const found = this.sources.find(s => {
                 const desc = s.describe();
-                return desc.kind === 'mcp' && desc.id === serverName;
+                return (desc.kind === 'mcp' || desc.kind === 'a2a') && desc.id === serverName;
             });
             if (found) foundSource = found;
         }
@@ -404,7 +552,9 @@ export class ToolLoader {
             }
             if (disconnect) {
                 await foundSource.close();
-                if (entry && entry.isLazy) entry.source = null;
+                if (entry && entry.isLazy && (entry.sourceFactory || entry.serverConfig)) {
+                    entry.source = null;
+                }
             }
         }
 
@@ -416,7 +566,7 @@ export class ToolLoader {
     }
 
     /**
-     * Returns a summary list of all registered (dormant, active, disabled) and eager MCP servers.
+     * Returns a summary list of all registered (dormant, active, disabled) and eager MCP/A2A servers.
      *
      * @returns {Array<{ name: string, description: string, status: 'dormant'|'active'|'disabled', toolCount: number }>}
      */
@@ -424,7 +574,9 @@ export class ToolLoader {
         const list = [];
         for (const [name, entry] of this.registeredServers) {
             const desc = entry.source ? entry.source.describe() : {};
-            const toolCount = entry.source ? entry.source.getDeclarations().length : 0;
+            const toolCount = (entry.status === 'active' && entry.source)
+                ? entry.source.getDeclarations().length
+                : 0;
             list.push({
                 name,
                 description: entry.description || desc.description || `MCP tools from server ${name}`,
@@ -456,7 +608,7 @@ export class ToolLoader {
         const instructions = [];
         for (const source of this.sources) {
             const desc = source.describe();
-            if (desc.kind === 'mcp' && desc.description && !desc.description.startsWith('MCP tools from server')) {
+            if ((desc.kind === 'mcp' || desc.kind === 'a2a') && desc.description && !desc.description.startsWith('MCP tools from server')) {
                 instructions.push(`[${desc.title} instructions]: ${desc.description}`);
             }
         }
@@ -476,7 +628,7 @@ export class ToolLoader {
     }
 
     /**
-     * Cleans up MCP resources and un-indexes MCP tools, preserving local tools.
+     * Cleans up MCP/A2A resources and un-indexes external tools, preserving local tools.
      * @returns {Promise<void>}
      */
     async cleanup() {
@@ -498,7 +650,9 @@ export class ToolLoader {
                     // Ignore close errors
                 }
                 if (entry.isLazy) {
-                    entry.source = null;
+                    if (entry.sourceFactory || entry.serverConfig) {
+                        entry.source = null;
+                    }
                     entry.status = 'dormant';
                 } else {
                     entry.status = 'disabled';

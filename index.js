@@ -5,7 +5,7 @@ export { Agent } from './src/core/agent.js';
 export { PromptLoader, Prompt } from './src/loaders/prompt-loader.js';
 export { ToolLoader } from "./src/loaders/tool-loader.js";
 export { defineTool, withValidation } from "./src/tools/define-tool.js";
-export { assertToolSource, LocalToolSource, MCPToolSource } from "./src/tools/sources/index.js";
+export { assertToolSource, LocalToolSource, MCPToolSource, A2AToolSource, createA2ASource } from "./src/tools/sources/index.js";
 export {
     exposeAll,
     exposeProgressive,

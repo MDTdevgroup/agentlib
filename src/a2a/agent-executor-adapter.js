@@ -1,6 +1,47 @@
 import { randomUUID } from 'node:crypto';
 import { messageText } from '../memory/message.js';
 
+const TASK_STATE_SUBMITTED = 1;
+const TASK_STATE_WORKING = 2;
+const TASK_STATE_COMPLETED = 3;
+const TASK_STATE_FAILED = 4;
+const ROLE_AGENT = 2;
+
+function extractUserMessageText(userMessage) {
+    const parts = userMessage?.parts;
+    if (!Array.isArray(parts)) return '';
+    for (const part of parts) {
+        if (!part) continue;
+        if (typeof part.text === 'string') return part.text;
+        if (part.content?.$case === 'text' && typeof part.content.value === 'string') {
+            return part.content.value;
+        }
+    }
+    return JSON.stringify(parts);
+}
+
+function buildAgentMessage(text, taskId, contextId) {
+    return {
+        messageId: randomUUID(),
+        taskId,
+        contextId,
+        role: ROLE_AGENT,
+        parts: [
+            {
+                kind: 'text',
+                text,
+                content: { $case: 'text', value: text },
+                mediaType: 'text/plain',
+                filename: '',
+                metadata: {},
+            },
+        ],
+        metadata: {},
+        extensions: [],
+        referenceTaskIds: [],
+    };
+}
+
 /**
  * Adapts an agentlib Agent to the A2A AgentExecutor interface.
  * This allows the agent to be run by the A2A server.
@@ -21,32 +62,57 @@ export class AgentExecutorAdapter {
      */
     async execute(requestContext, eventBus) {
         const { taskId, contextId, userMessage, task } = requestContext;
+        const isV1Bus = typeof EventTarget !== 'undefined' && eventBus instanceof EventTarget;
 
-        // Publish initial task state if not already present
-        if (!task) {
+        if (isV1Bus) {
+            const initialTask = task || {
+                id: taskId,
+                contextId,
+                status: {
+                    state: TASK_STATE_SUBMITTED,
+                    timestamp: new Date().toISOString(),
+                },
+                artifacts: [],
+                history: userMessage ? [userMessage] : [],
+                metadata: {},
+            };
             eventBus.publish({
                 kind: 'task',
-                id: taskId,
-                contextId: contextId,
-                status: { state: 'submitted', timestamp: new Date().toISOString() },
-                history: [userMessage],
+                data: initialTask,
+            });
+            eventBus.publish({
+                kind: 'statusUpdate',
+                data: {
+                    taskId,
+                    contextId,
+                    status: {
+                        state: TASK_STATE_WORKING,
+                        timestamp: new Date().toISOString(),
+                    },
+                    metadata: {},
+                },
+            });
+        } else {
+            if (!task) {
+                eventBus.publish({
+                    kind: 'task',
+                    id: taskId,
+                    contextId: contextId,
+                    status: { state: 'submitted', timestamp: new Date().toISOString() },
+                    history: [userMessage],
+                });
+            }
+            eventBus.publish({
+                kind: 'status-update',
+                taskId,
+                contextId,
+                status: { state: 'working', timestamp: new Date().toISOString() },
+                final: false,
             });
         }
 
-        // Publish 'working' status
-        eventBus.publish({
-            kind: 'status-update',
-            taskId,
-            contextId,
-            status: { state: 'working', timestamp: new Date().toISOString() },
-            final: false,
-        });
-
         try {
-            // Extract text content from the A2A message
-            // A2A messages have parts, usually 'text' kind.
-            const textPart = userMessage.parts.find(p => p.kind === 'text');
-            const inputContent = textPart ? textPart.text : JSON.stringify(userMessage.parts);
+            const inputContent = extractUserMessageText(userMessage);
 
             // Add to agent's input
             this.agent.addInput({ role: 'user', content: inputContent });
@@ -60,32 +126,60 @@ export class AgentExecutorAdapter {
             const lastMessage = messages[messages.length - 1];
             const responseText = messageText(finalTurn) || messageText(lastMessage) || "No response generated";
 
-            // Publish the response message
-            eventBus.publish({
-                kind: 'message',
-                messageId: randomUUID(),
-                role: 'agent',
-                parts: [{ kind: 'text', text: responseText }],
-                contextId: contextId,
-            });
-
-            // Mark as completed
-            eventBus.publish({
-                kind: 'status-update',
-                taskId,
-                contextId,
-                status: { state: 'completed', timestamp: new Date().toISOString() },
-                final: true,
-            });
-
+            if (isV1Bus) {
+                eventBus.publish({
+                    kind: 'statusUpdate',
+                    data: {
+                        taskId,
+                        contextId,
+                        status: {
+                            state: TASK_STATE_COMPLETED,
+                            message: buildAgentMessage(responseText, taskId, contextId),
+                            timestamp: new Date().toISOString(),
+                        },
+                        metadata: {},
+                    },
+                });
+            } else {
+                eventBus.publish({
+                    kind: 'message',
+                    messageId: randomUUID(),
+                    role: 'agent',
+                    parts: [{ kind: 'text', text: responseText }],
+                    contextId: contextId,
+                });
+                eventBus.publish({
+                    kind: 'status-update',
+                    taskId,
+                    contextId,
+                    status: { state: 'completed', timestamp: new Date().toISOString() },
+                    final: true,
+                });
+            }
         } catch (error) {
-            eventBus.publish({
-                kind: 'status-update',
-                taskId,
-                contextId,
-                status: { state: 'failed', timestamp: new Date().toISOString(), details: error.message },
-                final: true,
-            });
+            if (isV1Bus) {
+                eventBus.publish({
+                    kind: 'statusUpdate',
+                    data: {
+                        taskId,
+                        contextId,
+                        status: {
+                            state: TASK_STATE_FAILED,
+                            message: buildAgentMessage(error.message || String(error), taskId, contextId),
+                            timestamp: new Date().toISOString(),
+                        },
+                        metadata: {},
+                    },
+                });
+            } else {
+                eventBus.publish({
+                    kind: 'status-update',
+                    taskId,
+                    contextId,
+                    status: { state: 'failed', timestamp: new Date().toISOString(), details: error.message },
+                    final: true,
+                });
+            }
         } finally {
             eventBus.finished();
         }
