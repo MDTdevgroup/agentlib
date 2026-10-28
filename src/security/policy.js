@@ -12,8 +12,7 @@ const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 
 /**
  * Normalizes a hook return value into `{ allow: boolean, reason?: string }`.
- * Returning `undefined`, `null`, or `true` means allow.
- * Returning `false` or `{ allow: false, reason }` means deny.
+ * Returning `undefined`, `null`, or `true` means allow; `false` or `{ allow: false, reason }` means deny.
  */
 export function normalizeDecision(decision, defaultReason = 'Denied by security policy.') {
     if (decision === undefined || decision === null || decision === true) {
@@ -24,10 +23,7 @@ export function normalizeDecision(decision, defaultReason = 'Denied by security 
     }
     if (typeof decision === 'object') {
         if (decision.allow === false) {
-            return {
-                allow: false,
-                reason: decision.reason || defaultReason,
-            };
+            return { allow: false, reason: decision.reason || defaultReason };
         }
         return {
             allow: true,
@@ -41,46 +37,55 @@ export function normalizeDecision(decision, defaultReason = 'Denied by security 
 }
 
 /**
+ * Resolves an elicitation handler from a policy and/or server config.
+ */
+export function resolveElicitHandler(policy, server = null) {
+    if (typeof policy?.elicit === 'function') return policy.elicit.bind(policy);
+    if (typeof policy?.onElicitation === 'function') return policy.onElicitation.bind(policy);
+    if (typeof server?.elicit === 'function') return server.elicit.bind(server);
+    return null;
+}
+
+async function runDecisionChain(policies, hookName, args, defaultReason) {
+    for (const policy of policies) {
+        if (typeof policy[hookName] !== 'function') continue;
+        const raw = await policy[hookName](...args);
+        if (raw === undefined) continue;
+        const decision = normalizeDecision(raw, defaultReason);
+        if (!decision.allow) return decision;
+    }
+    return { allow: true };
+}
+
+/**
  * Composes multiple security policy objects into one policy.
- * - `approveServer`, `approveToolCall`, `allowUrl`: run in order; first explicit deny wins; `undefined` means allow.
- * - `inspectResult`: chains in order so each policy transforms the value handed to the next.
- * - `filterTools`: chains in order so each policy filters the tool catalog before ranking.
- * - `elicit`: only defined on the composed policy when at least one constituent policy supplies an `elicit` handler.
+ * - `approveServer`, `approveToolCall`, `allowUrl`: run in order; first explicit deny wins.
+ * - `inspectResult`, `filterTools`: chain in order so each policy transforms the value handed to the next.
+ * - `elicit`: only defined when at least one constituent policy supplies an `elicit` handler.
  */
 export function composePolicy(...policies) {
     const active = policies.flat(Infinity).filter(Boolean);
 
-    async function approveServer(descriptor) {
-        for (const policy of active) {
-            if (typeof policy.approveServer !== 'function') continue;
-            const raw = await policy.approveServer(descriptor);
-            if (raw === undefined) continue;
-            const decision = normalizeDecision(
-                raw,
-                `Server '${descriptor?.id || 'unknown'}' was rejected by security policy.`
-            );
-            if (!decision.allow) {
-                return decision;
-            }
-        }
-        return { allow: true };
-    }
+    const approveServer = (descriptor) => runDecisionChain(
+        active,
+        'approveServer',
+        [descriptor],
+        `Server '${descriptor?.id || 'unknown'}' was rejected by security policy.`
+    );
 
-    async function approveToolCall(call) {
-        for (const policy of active) {
-            if (typeof policy.approveToolCall !== 'function') continue;
-            const raw = await policy.approveToolCall(call);
-            if (raw === undefined) continue;
-            const decision = normalizeDecision(
-                raw,
-                `Tool call '${call?.name || 'unknown'}' was denied by security policy.`
-            );
-            if (!decision.allow) {
-                return decision;
-            }
-        }
-        return { allow: true };
-    }
+    const approveToolCall = (call) => runDecisionChain(
+        active,
+        'approveToolCall',
+        [call],
+        `Tool call '${call?.name || 'unknown'}' was denied by security policy.`
+    );
+
+    const allowUrl = (url, purpose) => runDecisionChain(
+        active,
+        'allowUrl',
+        [url, purpose],
+        `Outbound URL '${String(url)}' (${purpose || 'unknown'}) was denied by security policy.`
+    );
 
     async function inspectResult(result, call) {
         let current = result;
@@ -88,36 +93,11 @@ export function composePolicy(...policies) {
             if (typeof policy.inspectResult !== 'function') continue;
             const next = await policy.inspectResult(current, call);
             if (next === undefined) continue;
-            if (
-                next &&
-                typeof next === 'object' &&
-                next.allow === false &&
-                !('error' in next)
-            ) {
-                current = {
-                    error: next.reason || `Tool result from '${call?.name || 'unknown'}' was rejected by security policy.`,
-                };
-            } else {
-                current = next;
-            }
+            current = (next && typeof next === 'object' && next.allow === false && !('error' in next))
+                ? { error: next.reason || `Tool result from '${call?.name || 'unknown'}' was rejected by security policy.` }
+                : next;
         }
         return current;
-    }
-
-    async function allowUrl(url, purpose) {
-        for (const policy of active) {
-            if (typeof policy.allowUrl !== 'function') continue;
-            const raw = await policy.allowUrl(url, purpose);
-            if (raw === undefined) continue;
-            const decision = normalizeDecision(
-                raw,
-                `Outbound URL '${String(url)}' (${purpose || 'unknown'}) was denied by security policy.`
-            );
-            if (!decision.allow) {
-                return decision;
-            }
-        }
-        return { allow: true };
     }
 
     async function filterTools(catalog, context) {
@@ -125,24 +105,13 @@ export function composePolicy(...policies) {
         for (const policy of active) {
             if (typeof policy.filterTools !== 'function') continue;
             const next = await policy.filterTools(current, context);
-            if (Array.isArray(next)) {
-                current = next;
-            }
+            if (Array.isArray(next)) current = next;
         }
         return current;
     }
 
-    const elicitHandlers = active
-        .map(p => (typeof p.elicit === 'function' ? p.elicit.bind(p) : (typeof p.onElicitation === 'function' ? p.onElicitation.bind(p) : null)))
-        .filter(Boolean);
-
-    const composed = {
-        approveServer,
-        approveToolCall,
-        inspectResult,
-        allowUrl,
-        filterTools,
-    };
+    const elicitHandlers = active.map(p => resolveElicitHandler(p)).filter(Boolean);
+    const composed = { approveServer, approveToolCall, inspectResult, allowUrl, filterTools };
 
     if (elicitHandlers.length > 0) {
         composed.elicit = async function elicit(request, context) {
@@ -154,12 +123,8 @@ export function composePolicy(...policies) {
                     return { action: 'decline' };
                 }
                 if (response && typeof response === 'object' && typeof response.action === 'string') {
-                    if (response.action === 'decline' || response.action === 'cancel') {
-                        return response;
-                    }
-                    if (response.action === 'accept') {
-                        accepted = response;
-                    }
+                    if (response.action === 'decline' || response.action === 'cancel') return response;
+                    if (response.action === 'accept') accepted = response;
                 }
             }
             return accepted || { action: 'decline' };
@@ -496,21 +461,12 @@ export function createUrlCheckMiddleware(options = {}) {
     const basePurpose = options.purpose || 'mcp:http';
 
     return createMiddleware(async (next, input, init) => {
-        let currentInput = input;
         let currentUrl = input instanceof Request ? input.url : String(input);
-        let currentInit = init ? { ...init } : {};
+        let currentInit = init
+            ? { ...init }
+            : (input instanceof Request ? { method: input.method, headers: input.headers, signal: input.signal } : {});
 
-        if (input instanceof Request && !init) {
-            currentInit = {
-                method: input.method,
-                headers: input.headers,
-                signal: input.signal,
-            };
-        }
-
-        let hops = 0;
-
-        while (true) {
+        for (let hops = 0; ; hops += 1) {
             const isRedirect = hops > 0;
             const purpose = isRedirect ? 'redirect' : inferUrlPurpose(currentUrl, basePurpose);
 
@@ -520,25 +476,17 @@ export function createUrlCheckMiddleware(options = {}) {
                 allowLoopback: isRedirect ? false : (options.allowLoopback ?? true),
             });
 
-            const requestInit = {
+            const response = await next(hops === 0 ? input : currentUrl, {
                 ...currentInit,
                 redirect: 'manual',
-            };
+            });
 
-            const target = hops === 0 ? currentInput : currentUrl;
-            const response = await next(target, requestInit);
+            const location = REDIRECT_STATUS_CODES.has(response?.status)
+                ? response.headers?.get?.('location')
+                : null;
+            if (!location) return response;
 
-            if (!REDIRECT_STATUS_CODES.has(response?.status)) {
-                return response;
-            }
-
-            const location = response.headers?.get?.('location');
-            if (!location) {
-                return response;
-            }
-
-            hops += 1;
-            if (hops > maxRedirects) {
+            if (hops + 1 > maxRedirects) {
                 const error = new Error(`Maximum redirects (${maxRedirects}) exceeded while fetching '${currentUrl}'.`);
                 error.code = 'ERR_TOO_MANY_REDIRECTS';
                 throw error;
@@ -547,34 +495,23 @@ export function createUrlCheckMiddleware(options = {}) {
             const previousOrigin = new URL(currentUrl).origin;
             const resolvedNextUrl = new URL(location, currentUrl);
             currentUrl = resolvedNextUrl.href;
-            currentInput = currentUrl;
 
             const headers = new Headers(currentInit?.headers || undefined);
             if (resolvedNextUrl.origin !== previousOrigin) {
-                headers.delete('authorization');
-                headers.delete('cookie');
-                headers.delete('dpop');
+                for (const h of ['authorization', 'cookie', 'dpop']) headers.delete(h);
             }
 
             const method = (currentInit?.method || 'GET').toUpperCase();
-            if (
-                response.status === 303 ||
-                ((response.status === 301 || response.status === 302) && method === 'POST')
-            ) {
+            const downgradeToGet = response.status === 303 || ((response.status === 301 || response.status === 302) && method === 'POST');
+            if (downgradeToGet) {
                 headers.delete('content-type');
                 headers.delete('content-length');
-                currentInit = {
-                    ...currentInit,
-                    method: 'GET',
-                    body: undefined,
-                    headers,
-                };
-            } else {
-                currentInit = {
-                    ...currentInit,
-                    headers,
-                };
             }
+            currentInit = {
+                ...currentInit,
+                ...(downgradeToGet ? { method: 'GET', body: undefined } : {}),
+                headers,
+            };
         }
     });
 }
@@ -584,8 +521,7 @@ export function createUrlCheckMiddleware(options = {}) {
  * using `applyMiddlewares` from `@modelcontextprotocol/client`.
  */
 export function createSafeFetch(baseFetch = globalThis.fetch, options = {}) {
-    const middleware = createUrlCheckMiddleware(options);
-    return applyMiddlewares(middleware)(baseFetch);
+    return applyMiddlewares(createUrlCheckMiddleware(options))(baseFetch);
 }
 
 /**
@@ -597,23 +533,19 @@ export async function validateAgentCardUrls(agentCard, options = {}) {
         throw new Error('Invalid A2A agent card: expected an object.');
     }
 
-    if (typeof agentCard.url === 'string' && agentCard.url.trim().length > 0) {
-        await checkUrl(agentCard.url, 'a2a:card_url', options);
-    }
+    const targets = [
+        [agentCard.url, 'a2a:card_url'],
+        ...(Array.isArray(agentCard.additionalInterfaces)
+            ? agentCard.additionalInterfaces.map(i => [i?.url, 'a2a:additional_interface'])
+            : []),
+        ...(Array.isArray(agentCard.supportedInterfaces)
+            ? agentCard.supportedInterfaces.map(i => [i?.url, 'a2a:supported_interface'])
+            : []),
+    ];
 
-    if (Array.isArray(agentCard.additionalInterfaces)) {
-        for (const iface of agentCard.additionalInterfaces) {
-            if (iface && typeof iface.url === 'string' && iface.url.trim().length > 0) {
-                await checkUrl(iface.url, 'a2a:additional_interface', options);
-            }
-        }
-    }
-
-    if (Array.isArray(agentCard.supportedInterfaces)) {
-        for (const iface of agentCard.supportedInterfaces) {
-            if (iface && typeof iface.url === 'string' && iface.url.trim().length > 0) {
-                await checkUrl(iface.url, 'a2a:supported_interface', options);
-            }
+    for (const [url, purpose] of targets) {
+        if (typeof url === 'string' && url.trim().length > 0) {
+            await checkUrl(url, purpose, options);
         }
     }
 

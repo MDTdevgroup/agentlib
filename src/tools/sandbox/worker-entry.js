@@ -5,14 +5,14 @@
 
 import { parentPort, workerData } from 'node:worker_threads';
 import vm from 'node:vm';
+import { normalizeUserCode } from './worker-sandbox.js';
 
 if (!parentPort) {
     throw new Error("worker-entry must be executed as a Worker thread.");
 }
 
 function formatArg(val) {
-    if (val === null) return 'null';
-    if (val === undefined) return 'undefined';
+    if (val === null || val === undefined) return String(val);
     if (typeof val === 'object') {
         try {
             return JSON.stringify(val);
@@ -21,16 +21,6 @@ function formatArg(val) {
         }
     }
     return String(val);
-}
-
-function normalizeUserCode(rawCode = '') {
-    if (typeof rawCode !== 'string') return '';
-    // Strip leading whitespace and comments to inspect whether the script is a standalone async IIFE
-    const stripped = rawCode.replace(/^(?:\s+|\/\/[^\n]*\n?|\/\*[\s\S]*?\*\/)+/, '').trim();
-    if (/^\(\s*async\b[\s\S]*\)\s*\(\s*\)\s*;?$/.test(stripped)) {
-        return `return await ${stripped}`;
-    }
-    return rawCode;
 }
 
 async function main() {

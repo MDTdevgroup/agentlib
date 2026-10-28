@@ -344,12 +344,9 @@ export class ToolLoader {
         const removed = await this.mcpManager.removeServer(serverName);
         if (removed) {
             this.registeredServers.delete(serverName);
-            const index = this.sources.findIndex(s => {
-                const desc = s.describe();
-                return desc.kind === 'mcp' && desc.id === serverName;
-            });
-            if (index !== -1) {
-                const [source] = this.sources.splice(index, 1);
+            const source = this._findRemoteSource(serverName, 'mcp');
+            if (source) {
+                this.sources.splice(this.sources.indexOf(source), 1);
                 await source.close();
                 this._rebuildIndex();
             }
@@ -357,28 +354,24 @@ export class ToolLoader {
         return removed;
     }
 
-    /**
-     * Connects an A2A peer agent, derives its skill declarations, and indexes them into the catalog.
-     *
-     * @param {string} serverName - Unique identifier for this A2A peer.
-     * @param {string|object} urlOrOptions - Remote agent URL or A2A options.
-     * @param {object} [options={}]
-     * @returns {Promise<{ serverName: string, status: 'active', tools: Array<object>, toolCount: number }>}
-     */
-    async addA2AServer(serverName, urlOrOptions, options = {}) {
+    _buildA2ASource(serverName, urlOrOptions, options = {}, lazy = false) {
         const opts = typeof urlOrOptions === 'string'
             ? { ...options, remoteUrl: urlOrOptions }
             : { ...urlOrOptions, ...options };
-        const prefix = opts.prefixToolNames !== undefined ? opts.prefixToolNames : this.prefixToolNames;
-
-        const source = createA2ASource(opts.remoteUrl || opts.url, {
+        return createA2ASource(opts.remoteUrl || opts.url, {
             ...opts,
             id: serverName,
-            lazy: false,
-            prefixToolNames: prefix,
+            lazy,
+            prefixToolNames: opts.prefixToolNames !== undefined ? opts.prefixToolNames : this.prefixToolNames,
             policy: opts.policy ?? this.policy,
         });
+    }
 
+    /**
+     * Connects an A2A peer agent, derives its skill declarations, and indexes them into the catalog.
+     */
+    async addA2AServer(serverName, urlOrOptions, options = {}) {
+        const source = this._buildA2ASource(serverName, urlOrOptions, options, false);
         await source.connect();
         const declarations = await source.list();
         this.addSource(source);
@@ -393,43 +386,17 @@ export class ToolLoader {
 
     /**
      * Lazily registers an A2A peer without connecting immediately.
-     *
-     * @param {string} serverName - Identifier for the A2A peer.
-     * @param {string|object} urlOrOptions - Remote agent URL or A2A options.
-     * @param {object} [options={}]
-     * @returns {{ serverName: string, status: 'dormant' }}
      */
     registerA2AServer(serverName, urlOrOptions, options = {}) {
         if (!serverName || typeof serverName !== 'string') {
             throw new TypeError("registerA2AServer requires a non-empty 'serverName' string.");
         }
-        const opts = typeof urlOrOptions === 'string'
-            ? { ...options, remoteUrl: urlOrOptions }
-            : { ...urlOrOptions, ...options };
-        const prefix = opts.prefixToolNames !== undefined ? opts.prefixToolNames : this.prefixToolNames;
-
-        const source = createA2ASource(opts.remoteUrl || opts.url, {
-            ...opts,
-            id: serverName,
-            lazy: true,
-            prefixToolNames: prefix,
-            policy: opts.policy ?? this.policy,
-        });
-
-        this.addSource(source);
+        this.addSource(this._buildA2ASource(serverName, urlOrOptions, options, true));
         return { serverName, status: 'dormant' };
     }
 
     /**
      * Lazily registers an MCP server configuration without connecting.
-     * Deferring connection eliminates startup latency and child process overhead.
-     *
-     * @param {string} serverName - Identifier for the MCP server.
-     * @param {object} serverConfig - Server configuration blueprint (e.g. transport, command, url).
-     * @param {object} [options={}]
-     * @param {string} [options.description=''] - Natural language description of server capabilities.
-     * @param {boolean} [options.prefixToolNames] - Override default tool name prefixing.
-     * @returns {{ serverName: string, status: 'dormant' }}
      */
     registerMCPServer(serverName, serverConfig, { description = '', prefixToolNames, sourceFactory = null } = {}) {
         if (!serverName || typeof serverName !== 'string') {
@@ -441,21 +408,15 @@ export class ToolLoader {
         if (this.registeredServers.has(serverName)) {
             throw new Error(`MCP server '${serverName}' is already registered.`);
         }
-
-        const isActivelyConnected = this.sources.some(s => {
-            const desc = s.describe();
-            return (desc.kind === 'mcp' || desc.kind === 'a2a') && desc.id === serverName;
-        });
-        if (isActivelyConnected) {
+        if (this._findRemoteSource(serverName)) {
             throw new Error(`MCP server '${serverName}' is already actively connected.`);
         }
 
-        const prefix = prefixToolNames !== undefined ? prefixToolNames : this.prefixToolNames;
         this.registeredServers.set(serverName, {
             serverName,
             serverConfig,
             description,
-            prefixToolNames: prefix,
+            prefixToolNames: prefixToolNames !== undefined ? prefixToolNames : this.prefixToolNames,
             sourceFactory,
             status: 'dormant',
             source: null,
@@ -468,9 +429,6 @@ export class ToolLoader {
 
     /**
      * Connects and activates a registered MCP or A2A server mid-run, indexing its tools into the catalog.
-     *
-     * @param {string} serverName - Identifier of registered server to enable.
-     * @returns {Promise<{ serverName: string, status: string, tools: Array<object>, toolCount: number }>}
      */
     async enableMCPServer(serverName) {
         if (!this.registeredServers.has(serverName)) {
@@ -480,12 +438,7 @@ export class ToolLoader {
         const entry = this.registeredServers.get(serverName);
         if (entry.status === 'active' && entry.source) {
             const decls = entry.source.getDeclarations();
-            return {
-                serverName,
-                status: 'active',
-                tools: decls,
-                toolCount: decls.length,
-            };
+            return { serverName, status: 'active', tools: decls, toolCount: decls.length };
         }
 
         const createSource = entry.sourceFactory || this.mcpSourceFactory || (opts => new MCPToolSource(opts));
@@ -501,7 +454,6 @@ export class ToolLoader {
         try {
             await source.connect();
             const declarations = await source.list();
-
             this._assertNoCollisions(declarations, 'MCP tool');
 
             if (!this.sources.includes(source)) {
@@ -520,12 +472,7 @@ export class ToolLoader {
                 });
             }
 
-            return {
-                serverName,
-                status: 'active',
-                tools: declarations,
-                toolCount: declarations.length,
-            };
+            return { serverName, status: 'active', tools: declarations, toolCount: declarations.length };
         } catch (error) {
             try {
                 await source.close();
@@ -538,33 +485,13 @@ export class ToolLoader {
 
     /**
      * Deactivates an active MCP or A2A server, removing its tools from active index.
-     * NOTE: Disabling drops tool definitions and invalidates prompt prefix cache.
-     * Should be performed at conversation boundaries.
-     *
-     * @param {string} serverName - Server to disable.
-     * @param {object} [options={}]
-     * @param {boolean} [options.disconnect=false] - Whether to close the underlying connection.
-     * @returns {Promise<boolean>}
      */
     async disableMCPServer(serverName, { disconnect = false } = {}) {
         const entry = this.registeredServers.get(serverName);
-        let foundSource = entry?.source;
+        const foundSource = entry?.source || this._findRemoteSource(serverName);
 
-        if (!foundSource) {
-            const found = this.sources.find(s => {
-                const desc = s.describe();
-                return (desc.kind === 'mcp' || desc.kind === 'a2a') && desc.id === serverName;
-            });
-            if (found) foundSource = found;
-        }
-
-        if (!entry && !foundSource) {
-            return false;
-        }
-
-        if (entry) {
-            entry.status = 'disabled';
-        }
+        if (!entry && !foundSource) return false;
+        if (entry) entry.status = 'disabled';
 
         if (foundSource) {
             const index = this.sources.indexOf(foundSource);
@@ -574,7 +501,7 @@ export class ToolLoader {
             }
             if (disconnect) {
                 await foundSource.close();
-                if (entry && entry.isLazy && (entry.sourceFactory || entry.serverConfig)) {
+                if (entry?.isLazy && (entry.sourceFactory || entry.serverConfig)) {
                     entry.source = null;
                 }
             }
@@ -583,7 +510,6 @@ export class ToolLoader {
         if (this.events) {
             this.events.emit('mcp:server_disabled', { serverName });
         }
-
         return true;
     }
 
@@ -694,6 +620,14 @@ export class ToolLoader {
     }
 
     // --- Internals ---
+
+    _findRemoteSource(serverName, kind = null) {
+        return this.sources.find(s => {
+            const desc = s.describe();
+            const matchesKind = kind ? desc.kind === kind : (desc.kind === 'mcp' || desc.kind === 'a2a');
+            return matchesKind && desc.id === serverName;
+        }) || null;
+    }
 
     _rebuildIndex() {
         this.nameIndex.clear();

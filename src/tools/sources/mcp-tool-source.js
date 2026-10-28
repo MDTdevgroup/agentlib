@@ -1,17 +1,9 @@
 import { createHash } from "node:crypto";
 import MCPClient from "../../mcp/mcp-client.js";
-import { getMCPToolNameSeparator, getMaxToolDescriptionChars } from "../../config.js";
+import { getMCPToolNameSeparator, capDescription } from "../../config.js";
 
 export const TOOL_NAME_SEPARATOR = getMCPToolNameSeparator();
 export const MAX_TOOL_NAME_LENGTH = 64;
-
-function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
-    if (typeof description !== 'string') return description;
-    if (maxChars > 0 && description.length > maxChars) {
-        return description.slice(0, maxChars);
-    }
-    return description;
-}
 
 /**
  * ToolSource wrapping an MCP server connection.

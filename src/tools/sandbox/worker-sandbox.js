@@ -31,19 +31,23 @@ const WORKER_ENTRY_PATH = join(__dirname, 'worker-entry.js');
 
 /**
  * Truncates log output string to maxBytes if needed.
- * @param {string} logs
- * @param {number} maxBytes
- * @returns {string}
  */
-function truncateLogs(logs = '', maxBytes = getDefaultMaxSandboxLogBytes()) {
+export function truncateLogs(logs = '', maxBytes = getDefaultMaxSandboxLogBytes()) {
     if (!logs || typeof logs !== 'string') return '';
     const byteLength = Buffer.byteLength(logs, 'utf8');
     if (byteLength <= maxBytes) return logs;
+    return `${logs.slice(0, maxBytes)}\n[... truncated ${byteLength - maxBytes} bytes ...]`;
+}
 
-    // Slice approximately by byte budget
-    const truncated = logs.slice(0, maxBytes);
-    const excess = byteLength - maxBytes;
-    return `${truncated}\n[... truncated ${excess} bytes ...]`;
+/**
+ * Normalizes user script code so standalone async IIFEs return their promise result.
+ */
+export function normalizeUserCode(rawCode = '') {
+    if (typeof rawCode !== 'string') return '';
+    const stripped = rawCode.replace(/^(?:\s+|\/\/[^\n]*\n?|\/\*[\s\S]*?\*\/)+/, '').trim();
+    return /^\(\s*async\b[\s\S]*\)\s*\(\s*\)\s*;?$/.test(stripped)
+        ? `return await ${stripped}`
+        : rawCode;
 }
 
 export class WorkerSandbox {

@@ -36,67 +36,58 @@ function createMockLLM(responses) {
     let callIndex = 0;
     return {
         provider: 'openai',
-        chat: async () => {
+        chat: async (messages) => {
             const fn = responses[Math.min(callIndex++, responses.length - 1)];
-            return typeof fn === 'function' ? fn() : fn;
+            return typeof fn === 'function' ? fn(messages) : fn;
         },
         fromProvider: (raw) => raw?.output || [],
     };
 }
 
+const toolTurn = (name, args = {}, callId = 'call_1') => ({
+    output: '',
+    rawResponse: { output: [makeToolCall({ name, args, callId })] },
+});
+
+const textTurn = (text) => ({
+    output: text,
+    rawResponse: { output: [makeTextMessage({ role: 'assistant', text })] },
+});
+
+async function createElicitServer(name) {
+    const server = new McpServer({ name, version: '1.0.0' });
+    server.registerTool('ask_user', { description: 'Asks the user for confirmation.' }, async () => {
+        const res = await server.server.elicitInput({
+            mode: 'form',
+            message: 'Confirm action?',
+            requestedSchema: { type: 'object', properties: { confirm: { type: 'boolean' } } },
+        });
+        return { content: [{ type: 'text', text: JSON.stringify(res) }] };
+    });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    return { server, clientTransport };
+}
+
 describe('Phase 7: Security Policy Object & Composition', () => {
     it('denial from approveToolCall produces a tool result the model can read and recover from rather than ending the run', async () => {
-        let turnCount = 0;
         let sawDenialInContext = false;
-
-        const llm = {
-            provider: 'openai',
-            chat: async (messages) => {
-                turnCount += 1;
-                if (turnCount === 1) {
-                    return {
-                        output: '',
-                        rawResponse: {
-                            output: [
-                                makeToolCall({
-                                    name: 'delete_database',
-                                    args: { target: 'prod' },
-                                    callId: 'call_deny_1',
-                                }),
-                            ],
-                        },
-                    };
-                }
+        const llm = createMockLLM([
+            toolTurn('delete_database', { target: 'prod' }, 'call_deny_1'),
+            (messages) => {
                 const toolOutputs = messages.filter(isToolResult);
-                if (
-                    toolOutputs.length === 1 &&
-                    toolOutputs[0].output?.error?.includes('Deleting production is forbidden')
-                ) {
+                if (toolOutputs.length === 1 && toolOutputs[0].output?.error?.includes('Deleting production is forbidden')) {
                     sawDenialInContext = true;
                 }
-                return {
-                    output: 'I could not delete the database because policy forbade it.',
-                    rawResponse: {
-                        output: [
-                            makeTextMessage({
-                                role: 'assistant',
-                                text: 'I could not delete the database because policy forbade it.',
-                            }),
-                        ],
-                    },
-                };
+                return textTurn('I could not delete the database because policy forbade it.');
             },
-            fromProvider: (raw) => raw?.output || [],
-        };
+        ]);
 
         let toolExecuted = false;
         const policy = {
             async approveToolCall(call) {
                 if (call.name === 'delete_database') {
-                    return {
-                        allow: false,
-                        reason: 'Deleting production is forbidden by deployment policy.',
-                    };
+                    return { allow: false, reason: 'Deleting production is forbidden by deployment policy.' };
                 }
             },
         };
@@ -121,22 +112,14 @@ describe('Phase 7: Security Policy Object & Composition', () => {
 
         assert.equal(toolExecuted, false, 'Denied tool must not execute');
         assert.equal(sawDenialInContext, true, 'Model must receive denial reason as tool result');
-        assert.equal(
-            history.at(-1).output,
-            'I could not delete the database because policy forbade it.'
-        );
+        assert.equal(history.at(-1).output, 'I could not delete the database because policy forbade it.');
     });
 
     it('routes sandbox-originated calls to approveToolCall with origin: "sandbox"', async () => {
         const recordedCalls = [];
-
         const policy = {
             async approveToolCall(call) {
-                recordedCalls.push({
-                    name: call.name,
-                    origin: call.origin,
-                    sourceKind: call.source?.kind,
-                });
+                recordedCalls.push({ name: call.name, origin: call.origin, sourceKind: call.source?.kind });
                 if (call.origin === 'sandbox' && call.name === 'restricted_tool') {
                     return { allow: false, reason: 'Sandbox may not invoke restricted_tool' };
                 }
@@ -145,34 +128,14 @@ describe('Phase 7: Security Policy Object & Composition', () => {
         };
 
         const llm = createMockLLM([
-            {
-                output: '',
-                rawResponse: {
-                    output: [
-                        makeToolCall({
-                            name: 'run_tool_script',
-                            args: {
-                                code: `
-                                    const ok = await allowed_tool({ value: 21 });
-                                    try {
-                                        await restricted_tool({});
-                                    } catch (err) {
-                                        console.log("caught:", err.message);
-                                    }
-                                    return ok;
-                                `,
-                            },
-                            callId: 'call_script_1',
-                        }),
-                    ],
-                },
-            },
-            {
-                output: 'Done',
-                rawResponse: {
-                    output: [makeTextMessage({ role: 'assistant', text: 'Done' })],
-                },
-            },
+            toolTurn('run_tool_script', {
+                code: `
+                    const ok = await allowed_tool({ value: 21 });
+                    try { await restricted_tool({}); } catch (err) { console.log("caught:", err.message); }
+                    return ok;
+                `,
+            }, 'call_script_1'),
+            textTurn('Done'),
         ]);
 
         const agent = new Agent(llm, {
@@ -198,22 +161,11 @@ describe('Phase 7: Security Policy Object & Composition', () => {
         agent.addInput('Run the script.');
         const history = await agent.run();
 
-        assert.equal(recordedCalls.length, 3);
-        assert.deepEqual(recordedCalls[0], {
-            name: 'run_tool_script',
-            origin: 'model',
-            sourceKind: 'meta',
-        });
-        assert.deepEqual(recordedCalls[1], {
-            name: 'allowed_tool',
-            origin: 'sandbox',
-            sourceKind: 'local',
-        });
-        assert.deepEqual(recordedCalls[2], {
-            name: 'restricted_tool',
-            origin: 'sandbox',
-            sourceKind: 'local',
-        });
+        assert.deepEqual(recordedCalls, [
+            { name: 'run_tool_script', origin: 'model', sourceKind: 'meta' },
+            { name: 'allowed_tool', origin: 'sandbox', sourceKind: 'local' },
+            { name: 'restricted_tool', origin: 'sandbox', sourceKind: 'local' },
+        ]);
 
         const toolResultMsg = history[0].context.getMessages().find(isToolResult);
         assert.deepEqual(toolResultMsg.output.result, { doubled: 42 });
@@ -222,73 +174,48 @@ describe('Phase 7: Security Policy Object & Composition', () => {
 
     it('chains inspectResult hooks in order and carries source provenance onto makeToolResult', async () => {
         const order = [];
-        const p1 = {
-            async inspectResult(result, call) {
-                order.push(`p1:${call.source?.serverName || call.source?.kind}`);
-                return `${result} -> p1`;
+        const composed = composePolicy(
+            {
+                async inspectResult(result, call) {
+                    order.push(`p1:${call.source?.serverName || call.source?.kind}`);
+                    return `${result} -> p1`;
+                },
             },
-        };
-        const p2 = {
-            async inspectResult(_result) {
-                // Returning undefined means no opinion / pass through unchanged
-                order.push('p2:noop');
-                return undefined;
+            {
+                async inspectResult() {
+                    order.push('p2:noop');
+                    return undefined;
+                },
             },
-        };
-        const p3 = {
-            async inspectResult(result, call) {
-                order.push(`p3:${call.origin}`);
-                return `${result} -> p3`;
-            },
-        };
-
-        const composed = composePolicy(p1, p2, p3);
+            {
+                async inspectResult(result, call) {
+                    order.push(`p3:${call.origin}`);
+                    return `${result} -> p3`;
+                },
+            }
+        );
 
         const toolLoader = new ToolLoader(false, { policy: composed });
-        const mcpSource = new MCPToolSource({
+        toolLoader.addSource(new MCPToolSource({
             serverName: 'UntrustedServer',
-            tools: [
-                {
-                    name: 'read_note',
-                    description: 'Reads a note from the untrusted server.',
-                    inputSchema: { type: 'object', properties: {} },
-                    func: async () => 'raw_payload',
-                },
-            ],
-        });
-        toolLoader.addSource(mcpSource);
+            tools: [{
+                name: 'read_note',
+                description: 'Reads a note from the untrusted server.',
+                inputSchema: { type: 'object', properties: {} },
+                func: async () => 'raw_payload',
+            }],
+        }));
 
         const llm = createMockLLM([
-            {
-                output: '',
-                rawResponse: {
-                    output: [
-                        makeToolCall({
-                            name: 'UntrustedServer_read_note',
-                            args: {},
-                            callId: 'call_prov_1',
-                        }),
-                    ],
-                },
-            },
-            {
-                output: 'Completed',
-                rawResponse: {
-                    output: [makeTextMessage({ role: 'assistant', text: 'Completed' })],
-                },
-            },
+            toolTurn('UntrustedServer_read_note', {}, 'call_prov_1'),
+            textTurn('Completed'),
         ]);
 
-        const agent = new Agent(llm, {
-            toolLoader,
-            policy: composed,
-        });
-
+        const agent = new Agent(llm, { toolLoader, policy: composed });
         agent.addInput('Read the note.');
         const history = await agent.run();
 
         assert.deepEqual(order, ['p1:UntrustedServer', 'p2:noop', 'p3:model']);
-
         const resultItem = history[0].context.getMessages().find(isToolResult);
         assert.equal(resultItem.output, 'raw_payload -> p1 -> p3');
         assert.deepEqual(toolResultSource(resultItem), {
@@ -614,24 +541,8 @@ describe('Phase 8: Process and Network Defaults', () => {
 
         const hugeArg = 'A'.repeat(2000);
         const llm = createMockLLM([
-            {
-                output: '',
-                rawResponse: {
-                    output: [
-                        makeToolCall({
-                            name: 'fetch_secret',
-                            args: { payload: hugeArg },
-                            callId: 'call_tel_1',
-                        }),
-                    ],
-                },
-            },
-            {
-                output: 'Done',
-                rawResponse: {
-                    output: [makeTextMessage({ role: 'assistant', text: 'Done' })],
-                },
-            },
+            toolTurn('fetch_secret', { payload: hugeArg }, 'call_tel_1'),
+            textTurn('Done'),
         ]);
 
         const agent = new Agent(llm, {
@@ -754,24 +665,8 @@ describe('Phase 9: Untrusted Text and Server-Initiated Requests', () => {
         const giantOutput = 'Line of untrusted server output that goes on and on.\n'.repeat(100);
 
         const llm = createMockLLM([
-            {
-                output: '',
-                rawResponse: {
-                    output: [
-                        makeToolCall({
-                            name: 'dump_logs',
-                            args: {},
-                            callId: 'call_huge_1',
-                        }),
-                    ],
-                },
-            },
-            {
-                output: 'Summarized',
-                rawResponse: {
-                    output: [makeTextMessage({ role: 'assistant', text: 'Summarized' })],
-                },
-            },
+            toolTurn('dump_logs', {}, 'call_huge_1'),
+            textTurn('Summarized'),
         ]);
 
         const agent = new Agent(llm, {
@@ -800,27 +695,7 @@ describe('Phase 9: Untrusted Text and Server-Initiated Requests', () => {
 
     it('declares elicitation only when policy supplies a handler and returns { action: "decline" } otherwise', async () => {
         // 1. Without an elicit handler on policy, elicitation capability is NOT declared
-        const server1 = new McpServer({ name: 'elicit-server-1', version: '1.0.0' });
-        server1.registerTool(
-            'ask_user',
-            {
-                description: 'Asks the user for confirmation.',
-            },
-            async () => {
-                const res = await server1.server.elicitInput({
-                    mode: 'form',
-                    message: 'Confirm action?',
-                    requestedSchema: {
-                        type: 'object',
-                        properties: { confirm: { type: 'boolean' } },
-                    },
-                });
-                return { content: [{ type: 'text', text: JSON.stringify(res) }] };
-            }
-        );
-
-        const [clientTransport1, serverTransport1] = InMemoryTransport.createLinkedPair();
-        await server1.connect(serverTransport1);
+        const { server: server1, clientTransport: clientTransport1 } = await createElicitServer('elicit-server-1');
 
         const clientNoElicit = new MCPClient({ policy: strictPolicy() });
         await clientNoElicit.connectToServer({
@@ -829,12 +704,7 @@ describe('Phase 9: Untrusted Text and Server-Initiated Requests', () => {
             versionNegotiationMode: 'legacy',
         });
 
-        // Direct fallback returns { action: 'decline' } when no handler exists
-        assert.deepEqual(await clientNoElicit.handleElicitation({ message: 'test' }), {
-            action: 'decline',
-        });
-
-        // Server attempting elicitation against a client that did not declare the capability fails
+        assert.deepEqual(await clientNoElicit.handleElicitation({ message: 'test' }), { action: 'decline' });
         await assert.rejects(
             () => clientNoElicit.executeTool('ask_user', {}),
             /elicitation|Capability|Method not found/i
@@ -843,36 +713,13 @@ describe('Phase 9: Untrusted Text and Server-Initiated Requests', () => {
         await server1.close();
 
         // 2. When policy supplies an elicit handler, elicitation is declared and handled
-        const server2 = new McpServer({ name: 'elicit-server-2', version: '1.0.0' });
-        server2.registerTool(
-            'ask_user',
-            {
-                description: 'Asks the user for confirmation.',
-            },
-            async () => {
-                const res = await server2.server.elicitInput({
-                    mode: 'form',
-                    message: 'Confirm action?',
-                    requestedSchema: {
-                        type: 'object',
-                        properties: { confirm: { type: 'boolean' } },
-                    },
-                });
-                return { content: [{ type: 'text', text: JSON.stringify(res) }] };
-            }
-        );
-
-        const [clientTransport2, serverTransport2] = InMemoryTransport.createLinkedPair();
-        await server2.connect(serverTransport2);
+        const { server: server2, clientTransport: clientTransport2 } = await createElicitServer('elicit-server-2');
 
         let shouldAccept = false;
         const policyWithElicit = composePolicy(strictPolicy(), {
             async elicit(params) {
                 assert.equal(params.message, 'Confirm action?');
-                if (shouldAccept) {
-                    return { action: 'accept', content: { confirm: true } };
-                }
-                return undefined; // No approval -> defaults to { action: 'decline' }
+                return shouldAccept ? { action: 'accept', content: { confirm: true } } : undefined;
             },
         });
 
@@ -888,10 +735,7 @@ describe('Phase 9: Untrusted Text and Server-Initiated Requests', () => {
 
         shouldAccept = true;
         const acceptedRes = await clientWithElicit.executeTool('ask_user', {});
-        assert.deepEqual(JSON.parse(acceptedRes[0].text), {
-            action: 'accept',
-            content: { confirm: true },
-        });
+        assert.deepEqual(JSON.parse(acceptedRes[0].text), { action: 'accept', content: { confirm: true } });
 
         await clientWithElicit.disconnect();
         await server2.close();

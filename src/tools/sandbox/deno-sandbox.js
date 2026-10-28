@@ -14,6 +14,7 @@ import {
     getDefaultSandboxTimeoutMS,
     getDefaultMaxSandboxLogBytes,
 } from '../../config.js';
+import { truncateLogs, normalizeUserCode } from './worker-sandbox.js';
 
 /**
  * Checks whether the 'deno' binary is available on PATH.
@@ -21,17 +22,12 @@ import {
  */
 export function isDenoAvailable() {
     try {
-        const check = spawnSync('deno', ['--version'], { stdio: 'ignore' });
-        return check.status === 0;
+        return spawnSync('deno', ['--version'], { stdio: 'ignore' }).status === 0;
     } catch {
         return false;
     }
 }
 
-/**
- * Asserts that the 'deno' binary is available on the system.
- * @throws {Exception} With code 'MissingDependency' if missing.
- */
 function assertDenoInstalled() {
     if (!isDenoAvailable()) {
         throw makeException(
@@ -39,18 +35,6 @@ function assertDenoInstalled() {
             "DenoSandbox requires the 'deno' executable to be installed on your system PATH.\nInstall with: curl -fsSL https://deno.land/install.sh | sh (or 'brew install deno')."
         );
     }
-}
-
-/**
- * Truncates logs to maxBytes.
- */
-function truncateLogs(logs = '', maxBytes = getDefaultMaxSandboxLogBytes()) {
-    if (!logs || typeof logs !== 'string') return '';
-    const byteLength = Buffer.byteLength(logs, 'utf8');
-    if (byteLength <= maxBytes) return logs;
-    const truncated = logs.slice(0, maxBytes);
-    const excess = byteLength - maxBytes;
-    return `${truncated}\n[... truncated ${excess} bytes ...]`;
 }
 
 export class DenoSandbox {
@@ -89,12 +73,7 @@ export class DenoSandbox {
         signal?.throwIfAborted?.();
         assertDenoInstalled();
 
-        const strippedCode = typeof code === 'string'
-            ? code.replace(/^(?:\s+|\/\/[^\n]*\n?|\/\*[\s\S]*?\*\/)+/, '').trim()
-            : '';
-        const normalizedCode = /^\(\s*async\b[\s\S]*\)\s*\(\s*\)\s*;?$/.test(strippedCode)
-            ? `return await ${strippedCode}`
-            : code;
+        const normalizedCode = normalizeUserCode(code);
 
         // Runner harness executed by Deno
         const runnerScript = `

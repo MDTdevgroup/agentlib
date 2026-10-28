@@ -4,27 +4,15 @@ import {
     getDefaultToolExposureThreshold,
     getDefaultToolExposureMode,
     getDefaultMaxContextTokens,
-    getMaxToolDescriptionChars,
+    capDescription,
 } from "../config.js";
 import { normalizeDecision } from "../security/policy.js";
 
-function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
-    if (typeof description !== 'string') return description;
-    if (maxChars > 0 && description.length > maxChars) {
-        return description.slice(0, maxChars);
-    }
-    return description;
-}
-
 function sanitizeDeclaration(decl) {
     if (!decl || typeof decl !== 'object') return decl;
-    if (typeof decl.description === 'string') {
-        return {
-            ...decl,
-            description: capDescription(decl.description),
-        };
-    }
-    return { ...decl };
+    return typeof decl.description === 'string'
+        ? { ...decl, description: capDescription(decl.description) }
+        : { ...decl };
 }
 
 async function applyCatalogFilter(catalog, context = {}, options = {}, filterMeta = {}) {
@@ -298,33 +286,34 @@ async function resolveServerMetaTool(name, args, { toolLoader, ranker = rankKeyw
     return { handled: false };
 }
 
-/**
- * Eager Exposure Policy: Returns every declaration in the catalog upfront.
- *
- * @param {Array<object>} catalog - Full list of tool declarations.
- * @param {object} [exposureState={}] - Current turn's exposure state.
- * @param {object} [context={}] - Execution context.
- * @param {object} [options={}] - Additional options.
- * @returns {Promise<{ declarations: Array<object>, metaTools: Array<object>, resolve: Function, nextState: object }>}
- */
-export async function exposeAll(catalog, exposureState = {}, context = {}, options = {}) {
-    const filteredCatalog = await applyCatalogFilter(catalog, context, options, { action: 'exposeAll' });
-    const toolLoader = context?.toolLoader;
-    const hasLazyServers = toolLoader && typeof toolLoader.hasLazyServers === 'function'
+function detectLazyServers(toolLoader, options) {
+    const hasLazy = typeof toolLoader?.hasLazyServers === 'function'
         ? toolLoader.hasLazyServers()
         : Boolean(toolLoader?.registeredServers?.size > 0);
+    return hasLazy || Boolean(options?.enableLazyServers);
+}
 
-    const metaTools = [];
+function appendCommonMetaTools(metaTools, context, options, includeLazyServers) {
     if (options.codeMode || context?.codeMode) {
         metaTools.push(META_TOOL_DECLARATIONS.run_tool_script);
     }
-    if (hasLazyServers || options.enableLazyServers) {
+    if (includeLazyServers) {
         metaTools.push(
             META_TOOL_DECLARATIONS.search_servers,
             META_TOOL_DECLARATIONS.enable_server,
             META_TOOL_DECLARATIONS.disable_server,
         );
     }
+    return metaTools;
+}
+
+/**
+ * Eager Exposure Policy: Returns every declaration in the catalog upfront.
+ */
+export async function exposeAll(catalog, exposureState = {}, context = {}, options = {}) {
+    const filteredCatalog = await applyCatalogFilter(catalog, context, options, { action: 'exposeAll' });
+    const includeLazyServers = detectLazyServers(context?.toolLoader, options);
+    const metaTools = appendCommonMetaTools([], context, options, includeLazyServers);
 
     let nextEnabledServersList = Array.isArray(exposureState?.enabledServers)
         ? [...exposureState.enabledServers]
@@ -332,27 +321,21 @@ export async function exposeAll(catalog, exposureState = {}, context = {}, optio
 
     const makeState = (overrides = {}) => {
         const state = { ...exposureState, ...overrides };
-        if (exposureState?.enabledServers !== undefined || hasLazyServers || options.enableLazyServers) {
+        if (exposureState?.enabledServers !== undefined || includeLazyServers) {
             state.enabledServers = [...nextEnabledServersList];
         }
         return state;
     };
 
     async function resolve(name, args = {}, execContext = {}) {
-        const currentLoader = context.toolLoader || execContext.toolLoader;
         const serverResolution = await resolveServerMetaTool(name, args, {
-            toolLoader: currentLoader,
+            toolLoader: context.toolLoader || execContext.toolLoader,
             ranker: rankKeywords,
             enabledServers: nextEnabledServersList,
         });
-
         if (serverResolution.handled) {
             nextEnabledServersList = serverResolution.nextEnabledServers;
-            return {
-                handled: true,
-                result: serverResolution.result,
-                nextState: makeState(),
-            };
+            return { handled: true, result: serverResolution.result, nextState: makeState() };
         }
         return { handled: false };
     }
@@ -367,76 +350,39 @@ export async function exposeAll(catalog, exposureState = {}, context = {}, optio
 
 /**
  * Progressive Tool Exposure Policy: Exposes meta-tools and discovered tools.
- *
- * @param {Array<object>} catalog - Full list of tool declarations.
- * @param {object} [exposureState={}] - Current turn's exposure state.
- * @param {object} [context={}] - Execution context (toolLoader, signal, etc.).
- * @param {object} [options={}]
- * @param {'expand'|'facade'} [options.mode='expand'] - Prompt caching strategy.
- * @param {Function} [options.rank=null] - Injectable ranking function (query, entries) => Promise<scored>.
- * @returns {Promise<{ declarations: Array<object>, metaTools: Array<object>, resolve: Function, nextState: object }>}
  */
 export async function exposeProgressive(catalog, exposureState = {}, context = {}, options = {}) {
     const mode = exposureState?.mode || options.mode || context?.mode || context?.toolExposureOptions?.mode || getDefaultToolExposureMode();
     const ranker = options.rank || context?.rank || context?.toolExposureOptions?.rank || rankKeywords;
     const filteredCatalog = await applyCatalogFilter(catalog, context, options, { action: 'exposeProgressive' });
 
-    // Separate native LLM tools (e.g. { type: 'web_search' }) from function tools
     const nativeTools = filteredCatalog.filter(d => d.type && d.type !== 'function');
     const functionTools = filteredCatalog.filter(d => !d.type || d.type === 'function');
 
-    const discoveredList = Array.isArray(exposureState?.discovered)
-        ? [...exposureState.discovered]
-        : [];
-    const discoveredSet = new Set(discoveredList);
+    const nextDiscoveredList = Array.isArray(exposureState?.discovered) ? [...exposureState.discovered] : [];
+    const discoveredSet = new Set(nextDiscoveredList);
+    let nextEnabledServersList = Array.isArray(exposureState?.enabledServers) ? [...exposureState.enabledServers] : [];
 
-    const enabledServersList = Array.isArray(exposureState?.enabledServers)
-        ? [...exposureState.enabledServers]
-        : [];
-    let nextEnabledServersList = [...enabledServersList];
+    const includeLazyServers = detectLazyServers(context?.toolLoader, options);
+    const metaTools = appendCommonMetaTools(
+        [
+            META_TOOL_DECLARATIONS.search_tools,
+            META_TOOL_DECLARATIONS.get_tool_details,
+            ...(mode === 'facade' ? [META_TOOL_DECLARATIONS.call_tool] : []),
+        ],
+        context,
+        options,
+        includeLazyServers
+    );
 
-    const metaTools = [
-        META_TOOL_DECLARATIONS.search_tools,
-        META_TOOL_DECLARATIONS.get_tool_details,
-    ];
-    if (mode === 'facade') {
-        metaTools.push(META_TOOL_DECLARATIONS.call_tool);
-    }
-    if (options.codeMode || context?.codeMode) {
-        metaTools.push(META_TOOL_DECLARATIONS.run_tool_script);
-    }
+    const discoveredDeclarations = mode === 'facade'
+        ? []
+        : nextDiscoveredList
+            .map(name => functionTools.find(t => t.name === name))
+            .filter(Boolean)
+            .map(found => ({ ...found }));
 
-    const toolLoader = context.toolLoader;
-    const hasLazyServers = toolLoader && typeof toolLoader.hasLazyServers === 'function'
-        ? toolLoader.hasLazyServers()
-        : Boolean(toolLoader?.registeredServers?.size > 0);
-
-    if (hasLazyServers || options.enableLazyServers) {
-        metaTools.push(
-            META_TOOL_DECLARATIONS.search_servers,
-            META_TOOL_DECLARATIONS.enable_server,
-            META_TOOL_DECLARATIONS.disable_server,
-        );
-    }
-
-    // Determine wire declarations array for this turn
-    let wireDeclarations = [];
-    if (mode === 'facade') {
-        // Facade mode: wire array is strictly fixed metaTools + nativeTools
-        wireDeclarations = [...metaTools, ...nativeTools];
-    } else {
-        // Expand mode: metaTools + nativeTools + discovered tools appended in order
-        const discoveredDeclarations = [];
-        for (const name of discoveredList) {
-            const found = functionTools.find(t => t.name === name);
-            if (found) {
-                discoveredDeclarations.push({ ...found });
-            }
-        }
-        wireDeclarations = [...metaTools, ...nativeTools, ...discoveredDeclarations];
-    }
-
-    let nextDiscoveredList = [...discoveredList];
+    const wireDeclarations = [...metaTools, ...nativeTools, ...discoveredDeclarations];
 
     const makeState = (overrides = {}) => ({
         ...exposureState,
@@ -446,9 +392,6 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
         ...overrides,
     });
 
-    /**
-     * Resolves meta-tool invocations.
-     */
     async function resolve(name, args = {}, execContext = {}) {
         if (name === 'search_tools') {
             const query = args.query || '';
@@ -462,31 +405,20 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
                 { action: 'search_tools', query }
             );
             const scoredMatches = await ranker(query, rankableTools, { limit });
-            const matchedTools = scoredMatches.map(m => m.entry || m);
-
-            // Group matched tools by source server/provider
             const groupedBySource = {};
             const results = [];
 
-            for (const tool of matchedTools) {
+            for (const item of scoredMatches) {
+                const tool = item.entry || item;
                 const formatted = formatToolByDetail(tool, detailLevel);
                 results.push(formatted);
-
                 const src = getToolSource(tool);
-                if (!groupedBySource[src]) {
-                    groupedBySource[src] = [];
-                }
-                groupedBySource[src].push(formatted);
+                (groupedBySource[src] ??= []).push(formatted);
             }
 
             return {
                 handled: true,
-                result: {
-                    query,
-                    totalMatches: results.length,
-                    results,
-                    groupedBySource,
-                },
+                result: { query, totalMatches: results.length, results, groupedBySource },
                 nextState: makeState(),
             };
         }
@@ -497,32 +429,25 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
                 ? rawNames
                 : (typeof rawNames === 'string' ? [rawNames] : []);
 
-            const details = [];
-            for (const toolName of requestedNames) {
+            const details = requestedNames.map(toolName => {
                 let tool = functionTools.find(t => t.name === toolName);
                 if (!tool) {
                     const candidates = functionTools.filter(t => t.source?.remoteName === toolName);
-                    if (candidates.length === 1) {
-                        tool = candidates[0];
-                    }
+                    if (candidates.length === 1) tool = candidates[0];
                 }
-
-                if (tool) {
-                    details.push({ ...tool });
-                    if (!discoveredSet.has(tool.name)) {
-                        discoveredSet.add(tool.name);
-                        nextDiscoveredList.push(tool.name);
-                    }
-                } else {
-                    details.push({ name: toolName, error: `Tool '${toolName}' not found in catalog.` });
+                if (!tool) {
+                    return { name: toolName, error: `Tool '${toolName}' not found in catalog.` };
                 }
-            }
+                if (!discoveredSet.has(tool.name)) {
+                    discoveredSet.add(tool.name);
+                    nextDiscoveredList.push(tool.name);
+                }
+                return { ...tool };
+            });
 
             return {
                 handled: true,
-                result: {
-                    tools: details,
-                },
+                result: { tools: details },
                 nextState: makeState(),
             };
         }
@@ -538,8 +463,7 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
                 }
             }
             const toolLoader = context.toolLoader || execContext.toolLoader;
-
-            if (!toolLoader || typeof toolLoader.findTool !== 'function') {
+            if (typeof toolLoader?.findTool !== 'function') {
                 throw new Error("ToolLoader not available in execution context for call_tool.");
             }
 
@@ -550,7 +474,7 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
 
             const canonicalName = tool.name || targetToolName;
             const activePolicy = options?.policy || context?.policy || execContext?.policy || null;
-            if (activePolicy && typeof activePolicy.approveToolCall === 'function') {
+            if (typeof activePolicy?.approveToolCall === 'function') {
                 const decision = normalizeDecision(
                     await activePolicy.approveToolCall({
                         name: canonicalName,
@@ -564,11 +488,7 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
                     `Tool call '${canonicalName}' was denied by security policy.`
                 );
                 if (!decision.allow) {
-                    return {
-                        handled: true,
-                        result: { error: decision.reason },
-                        nextState: makeState(),
-                    };
+                    return { handled: true, result: { error: decision.reason }, nextState: makeState() };
                 }
             }
 
@@ -578,27 +498,17 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
             }
 
             const toolResult = await tool.func(targetArgs, execContext);
-            return {
-                handled: true,
-                result: toolResult,
-                nextState: makeState(),
-            };
+            return { handled: true, result: toolResult, nextState: makeState() };
         }
 
-        const currentLoader = context.toolLoader || execContext.toolLoader;
         const serverResolution = await resolveServerMetaTool(name, args, {
-            toolLoader: currentLoader,
+            toolLoader: context.toolLoader || execContext.toolLoader,
             ranker,
             enabledServers: nextEnabledServersList,
         });
-
         if (serverResolution.handled) {
             nextEnabledServersList = serverResolution.nextEnabledServers;
-            return {
-                handled: true,
-                result: serverResolution.result,
-                nextState: makeState(),
-            };
+            return { handled: true, result: serverResolution.result, nextState: makeState() };
         }
 
         return { handled: false };

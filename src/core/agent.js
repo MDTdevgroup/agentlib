@@ -415,30 +415,18 @@ export class Agent {
         const chunkSize = Math.max(64, Math.floor(maxChars / 4));
         const segments = [];
         for (let i = 0; i < serialized.length; i += chunkSize) {
-            segments.push({
-                role: 'user',
-                content: serialized.slice(i, i + chunkSize),
-            });
+            segments.push({ role: 'user', content: serialized.slice(i, i + chunkSize) });
         }
 
-        const keptSegments = truncateToBudget(segments, maxTokens);
-        let truncatedText = keptSegments.map(s => s.content).join('');
-        if (truncatedText.length === 0 || estimateTokens(truncatedText) > maxTokens) {
-            truncatedText = serialized.slice(0, maxChars);
-        }
+        const keptText = truncateToBudget(segments, maxTokens).map(s => s.content).join('');
+        const truncatedText = (keptText.length === 0 || estimateTokens(keptText) > maxTokens)
+            ? serialized.slice(0, maxChars)
+            : keptText;
 
         const suffix = `\n...[truncated to ${maxTokens} token budget]`;
-        const allowedBodyChars = Math.max(0, maxChars - suffix.length);
-        const finalString = truncatedText.slice(0, allowedBodyChars) + suffix;
+        const finalString = truncatedText.slice(0, Math.max(0, maxChars - suffix.length)) + suffix;
 
-        if (isString) {
-            return finalString;
-        }
-        return {
-            truncated: true,
-            maxTokens,
-            content: finalString,
-        };
+        return isString ? finalString : { truncated: true, maxTokens, content: finalString };
     }
 
     /**
@@ -446,21 +434,18 @@ export class Agent {
      */
     _capForTelemetry(value, maxChars = 512) {
         if (value === undefined || value === null) return value;
-        const cappedByBudget = this._capResultToBudget(value, Math.max(32, Math.ceil(maxChars / 4)));
-        if (typeof cappedByBudget === 'string') {
-            return cappedByBudget.length > maxChars
-                ? `${cappedByBudget.slice(0, maxChars)}...[truncated]`
-                : cappedByBudget;
+        const capped = this._capResultToBudget(value, Math.max(32, Math.ceil(maxChars / 4)));
+        if (typeof capped === 'string') {
+            return capped.length > maxChars ? `${capped.slice(0, maxChars)}...[truncated]` : capped;
         }
         try {
-            const json = JSON.stringify(cappedByBudget);
-            if (typeof json === 'string' && json.length > maxChars) {
-                return `${json.slice(0, maxChars)}...[truncated]`;
-            }
+            const json = JSON.stringify(capped);
+            return typeof json === 'string' && json.length > maxChars
+                ? `${json.slice(0, maxChars)}...[truncated]`
+                : capped;
         } catch {
             return '[Unserializable]';
         }
-        return cappedByBudget;
     }
 
     /**
@@ -469,24 +454,63 @@ export class Agent {
      */
     async _finalizeToolResult(rawResult, callDescriptor) {
         let current = this._capResultToBudget(rawResult);
-        if (this.policy && typeof this.policy.inspectResult === 'function') {
+        if (typeof this.policy?.inspectResult === 'function') {
             const inspected = await this.policy.inspectResult(current, callDescriptor);
             if (inspected !== undefined) {
-                if (
-                    inspected &&
-                    typeof inspected === 'object' &&
-                    inspected.allow === false &&
-                    !('error' in inspected)
-                ) {
-                    current = {
-                        error: inspected.reason || `Tool result from "${callDescriptor.name}" was rejected by security policy.`,
-                    };
-                } else {
-                    current = inspected;
-                }
+                current = (inspected && typeof inspected === 'object' && inspected.allow === false && !('error' in inspected))
+                    ? { error: inspected.reason || `Tool result from "${callDescriptor.name}" was rejected by security policy.` }
+                    : inspected;
             }
         }
         return this._capResultToBudget(current);
+    }
+
+    _failToolCall(err, ctx, { errorMessage, extraResult, extraAttributes, nextExposureState } = {}) {
+        this._emitTrace('tool:error', {
+            traceId: ctx.traceId,
+            spanId: ctx.toolSpanId,
+            parentSpanId: ctx.rootSpanId,
+            name: `tool_exec:${ctx.name || 'unknown'}`,
+            attributes: {
+                tool_name: ctx.name,
+                ...(ctx.telemetryArgs !== undefined ? { arguments: ctx.telemetryArgs } : {}),
+                origin: ctx.origin,
+                error: errorMessage && !ctx.telemetryArgs ? errorMessage : err.message,
+                ...extraAttributes,
+            },
+        });
+        if (this.onToolError === 'throw') throw err;
+        return {
+            callId: ctx.callId,
+            name: ctx.name,
+            args: ctx.args,
+            source: ctx.source,
+            result: { error: errorMessage || err.message, ...extraResult },
+            ...(nextExposureState !== undefined ? { nextExposureState } : {}),
+        };
+    }
+
+    _completeToolCall(result, ctx, nextExposureState) {
+        this._emitTrace('tool:complete', {
+            traceId: ctx.traceId,
+            spanId: ctx.toolSpanId,
+            parentSpanId: ctx.rootSpanId,
+            name: `tool_exec:${ctx.name}`,
+            attributes: {
+                tool_name: ctx.name,
+                arguments: ctx.telemetryArgs,
+                origin: ctx.origin,
+                result_preview: JSON.stringify(this._capForTelemetry(result))?.slice(0, 100),
+            },
+        });
+        return {
+            callId: ctx.callId,
+            name: ctx.name,
+            args: ctx.args,
+            source: ctx.source,
+            result,
+            ...(nextExposureState !== undefined ? { nextExposureState } : {}),
+        };
     }
 
     /**
@@ -505,30 +529,13 @@ export class Agent {
 
         let args;
         try {
-            args = toolCallArgs(call);
-            if (args === undefined) {
-                args = {};
-            }
+            args = toolCallArgs(call) ?? {};
         } catch (parseErr) {
-            this._emitTrace('tool:error', {
-                traceId,
-                spanId: toolSpanId,
-                parentSpanId: rootSpanId,
-                name: `tool_exec:${name || 'unknown'}`,
-                attributes: {
-                    tool_name: name,
-                    origin,
-                    error: `Failed to parse tool arguments: ${parseErr.message}`,
-                }
-            });
-            if (this.onToolError === 'throw') throw parseErr;
-            return {
-                callId,
-                name,
-                args: {},
-                source,
-                result: { error: `Failed to parse tool arguments: ${parseErr.message}` },
-            };
+            return this._failToolCall(
+                parseErr,
+                { callId, name, args: {}, source, origin, traceId, toolSpanId, rootSpanId },
+                { errorMessage: `Failed to parse tool arguments: ${parseErr.message}` }
+            );
         }
 
         const callDescriptor = {
@@ -542,110 +549,40 @@ export class Agent {
             ...(registeredTool?.sensitive !== undefined ? { sensitive: Boolean(registeredTool.sensitive) } : {}),
         };
         const telemetryArgs = this._capForTelemetry(args);
+        const traceCtx = { callId, name, args, source, origin, traceId, toolSpanId, rootSpanId, telemetryArgs };
 
-        // 1. Check security policy approveToolCall hook if provided
-        if (this.policy && typeof this.policy.approveToolCall === 'function') {
-            try {
-                const rawDecision = await this.policy.approveToolCall(callDescriptor);
-                const decision = normalizeDecision(
-                    rawDecision,
-                    `Tool call "${name}" denied by security policy.`
-                );
-                if (!decision.allow) {
-                    const denialError = new Error(decision.reason);
-                    this._emitTrace('tool:error', {
-                        traceId,
-                        spanId: toolSpanId,
-                        parentSpanId: rootSpanId,
-                        name: `tool_exec:${name}`,
-                        attributes: {
-                            tool_name: name,
-                            arguments: telemetryArgs,
-                            origin,
-                            error: denialError.message,
-                        }
-                    });
-                    if (this.onToolError === 'throw') throw denialError;
-                    return {
-                        callId,
-                        name,
-                        args,
-                        source,
-                        result: { error: denialError.message },
-                    };
-                }
-            } catch (policyErr) {
-                this._emitTrace('tool:error', {
-                    traceId,
-                    spanId: toolSpanId,
-                    parentSpanId: rootSpanId,
-                    name: `tool_exec:${name}`,
-                    attributes: {
-                        tool_name: name,
-                        arguments: telemetryArgs,
-                        origin,
-                        error: policyErr.message,
-                    }
-                });
-                if (this.onToolError === 'throw') throw policyErr;
-                return {
-                    callId,
-                    name,
-                    args,
-                    source,
-                    result: { error: policyErr.message },
-                };
-            }
-        }
+        const emitToolStart = () => this._emitTrace('tool:start', {
+            traceId,
+            spanId: toolSpanId,
+            parentSpanId: rootSpanId,
+            name: `tool_exec:${name}`,
+            attributes: { tool_name: name, arguments: telemetryArgs, origin },
+        });
 
-        // 2. Invoke legacy approveToolCall hook if provided
-        if (typeof this.approveToolCall === 'function') {
+        // 1. Check security policy and legacy approveToolCall hooks if provided
+        const approvalHooks = [
+            typeof this.policy?.approveToolCall === 'function'
+                ? [this.policy.approveToolCall.bind(this.policy), `Tool call "${name}" denied by security policy.`]
+                : null,
+            typeof this.approveToolCall === 'function'
+                ? [this.approveToolCall.bind(this), `Tool call "${name}" rejected by approveToolCall hook.`]
+                : null,
+        ].filter(Boolean);
+
+        for (const [hook, defaultReason] of approvalHooks) {
             try {
-                const approved = await this.approveToolCall(callDescriptor);
-                const decision = normalizeDecision(
-                    approved,
-                    `Tool call "${name}" rejected by approveToolCall hook.`
-                );
+                const decision = normalizeDecision(await hook(callDescriptor), defaultReason);
                 if (!decision.allow) {
-                    throw new Error(decision.reason);
+                    return this._failToolCall(new Error(decision.reason), traceCtx);
                 }
             } catch (approvalErr) {
-                this._emitTrace('tool:error', {
-                    traceId,
-                    spanId: toolSpanId,
-                    parentSpanId: rootSpanId,
-                    name: `tool_exec:${name}`,
-                    attributes: {
-                        tool_name: name,
-                        arguments: telemetryArgs,
-                        origin,
-                        error: approvalErr.message,
-                    }
-                });
-                if (this.onToolError === 'throw') throw approvalErr;
-                return {
-                    callId,
-                    name,
-                    args,
-                    source,
-                    result: { error: approvalErr.message },
-                };
+                return this._failToolCall(approvalErr, traceCtx);
             }
         }
 
-        // Check if this tool is a meta-tool handled by exposure policy
+        // 2. Check if this tool is a meta-tool handled by exposure policy
         if (typeof resolveMeta === 'function' && RESERVED_META_TOOL_NAMES.has(name) && name !== 'run_tool_script') {
-            this._emitTrace('tool:start', {
-                traceId,
-                spanId: toolSpanId,
-                parentSpanId: rootSpanId,
-                name: `tool_exec:${name}`,
-                attributes: {
-                    tool_name: name,
-                    arguments: telemetryArgs,
-                    origin,
-                }
-            });
+            emitToolStart();
             try {
                 const metaResolution = await resolveMeta(name, args, {
                     signal,
@@ -655,88 +592,21 @@ export class Agent {
                 });
                 if (metaResolution && metaResolution.handled) {
                     const finalMetaResult = await this._finalizeToolResult(metaResolution.result, callDescriptor);
-                    this._emitTrace('tool:complete', {
-                        traceId,
-                        spanId: toolSpanId,
-                        parentSpanId: rootSpanId,
-                        name: `tool_exec:${name}`,
-                        attributes: {
-                            tool_name: name,
-                            arguments: telemetryArgs,
-                            origin,
-                            result_preview: JSON.stringify(this._capForTelemetry(finalMetaResult))?.slice(0, 100),
-                        }
-                    });
-                    return {
-                        callId,
-                        name,
-                        args,
-                        source,
-                        result: finalMetaResult,
-                        nextExposureState: metaResolution.nextState,
-                    };
+                    return this._completeToolCall(finalMetaResult, traceCtx, metaResolution.nextState);
                 }
             } catch (metaErr) {
-                this._emitTrace('tool:error', {
-                    traceId,
-                    spanId: toolSpanId,
-                    parentSpanId: rootSpanId,
-                    name: `tool_exec:${name}`,
-                    attributes: {
-                        tool_name: name,
-                        arguments: telemetryArgs,
-                        origin,
-                        error: metaErr.message,
-                    }
+                return this._failToolCall(metaErr, traceCtx, {
+                    errorMessage: `Meta-tool "${name}" execution failed: ${metaErr.message}`,
                 });
-                if (this.onToolError === 'throw') throw metaErr;
-                return {
-                    callId,
-                    name,
-                    args,
-                    source,
-                    result: { error: `Meta-tool "${name}" execution failed: ${metaErr.message}` },
-                };
             }
         }
 
-        // Programmatic tool calling handler
+        // 3. Programmatic tool calling handler
         if (name === 'run_tool_script') {
-            this._emitTrace('tool:start', {
-                traceId,
-                spanId: toolSpanId,
-                parentSpanId: rootSpanId,
-                name: `tool_exec:${name}`,
-                attributes: {
-                    tool_name: name,
-                    arguments: telemetryArgs,
-                    origin,
-                }
-            });
-
+            emitToolStart();
             const code = typeof args?.code === 'string' ? args.code : '';
             if (!code) {
-                const err = new Error("run_tool_script requires a non-empty 'code' string argument.");
-                this._emitTrace('tool:error', {
-                    traceId,
-                    spanId: toolSpanId,
-                    parentSpanId: rootSpanId,
-                    name: `tool_exec:${name}`,
-                    attributes: {
-                        tool_name: name,
-                        arguments: telemetryArgs,
-                        origin,
-                        error: err.message,
-                    }
-                });
-                if (this.onToolError === 'throw') throw err;
-                return {
-                    callId,
-                    name,
-                    args,
-                    source,
-                    result: { error: err.message },
-                };
+                return this._failToolCall(new Error("run_tool_script requires a non-empty 'code' string argument."), traceCtx);
             }
 
             const activeSandbox = this._resolveSandbox();
@@ -744,8 +614,7 @@ export class Agent {
             const allDeclarations = this.toolLoader ? this.toolLoader.getToolDeclarations() : [];
             const targetDeclarations = allDeclarations.filter(d => {
                 const declName = d.name || d.type;
-                if (declName === 'run_tool_script') return false;
-                return requestedTools ? requestedTools.has(declName) : true;
+                return declName !== 'run_tool_script' && (requestedTools ? requestedTools.has(declName) : true);
             });
             const stubs = generateToolStubs(targetDeclarations);
 
@@ -765,10 +634,7 @@ export class Agent {
                     { origin: 'sandbox' }
                 );
                 if (execution.nextExposureState) {
-                    accumulatedNextState = {
-                        ...accumulatedNextState,
-                        ...execution.nextExposureState,
-                    };
+                    accumulatedNextState = { ...accumulatedNextState, ...execution.nextExposureState };
                 }
                 if (execution.result && typeof execution.result === 'object' && execution.result.error) {
                     throw new Error(execution.result.error);
@@ -777,176 +643,48 @@ export class Agent {
             };
 
             try {
-                const { result, logs, error } = await activeSandbox.run(code, {
-                    stubs,
-                    signal,
-                    onToolCall,
-                });
-
+                const { result, logs, error } = await activeSandbox.run(code, { stubs, signal, onToolCall });
                 if (error) {
-                    this._emitTrace('tool:error', {
-                        traceId,
-                        spanId: toolSpanId,
-                        parentSpanId: rootSpanId,
-                        name: `tool_exec:${name}`,
-                        attributes: {
-                            tool_name: name,
-                            arguments: telemetryArgs,
-                            origin,
-                            error: error.message,
-                            logs,
-                        }
-                    });
-                    if (this.onToolError === 'throw') throw error;
-                    return {
-                        callId,
-                        name,
-                        args,
-                        source,
-                        result: { error: error.message, logs: logs || undefined },
+                    return this._failToolCall(error, traceCtx, {
+                        extraResult: { logs: logs || undefined },
+                        extraAttributes: { logs },
                         nextExposureState: accumulatedNextState || undefined,
-                    };
+                    });
                 }
 
-                const scriptResult = {};
-                if (result !== undefined) {
-                    scriptResult.result = result;
-                }
-                if (logs) {
-                    scriptResult.logs = logs;
-                }
-                if (result === undefined && !logs) {
-                    scriptResult.result = null;
-                }
-
+                const scriptResult = {
+                    ...(result !== undefined ? { result } : (!logs ? { result: null } : {})),
+                    ...(logs ? { logs } : {}),
+                };
                 const finalScriptResult = await this._finalizeToolResult(scriptResult, callDescriptor);
-
-                this._emitTrace('tool:complete', {
-                    traceId,
-                    spanId: toolSpanId,
-                    parentSpanId: rootSpanId,
-                    name: `tool_exec:${name}`,
-                    attributes: {
-                        tool_name: name,
-                        arguments: telemetryArgs,
-                        origin,
-                        result_preview: JSON.stringify(this._capForTelemetry(finalScriptResult))?.slice(0, 100),
-                    }
-                });
-
-                return {
-                    callId,
-                    name,
-                    args,
-                    source,
-                    result: finalScriptResult,
-                    nextExposureState: accumulatedNextState || undefined,
-                };
+                return this._completeToolCall(finalScriptResult, traceCtx, accumulatedNextState || undefined);
             } catch (execErr) {
-                this._emitTrace('tool:error', {
-                    traceId,
-                    spanId: toolSpanId,
-                    parentSpanId: rootSpanId,
-                    name: `tool_exec:${name}`,
-                    attributes: {
-                        tool_name: name,
-                        arguments: telemetryArgs,
-                        origin,
-                        error: execErr.message,
-                    }
-                });
-                if (this.onToolError === 'throw') throw execErr;
-                return {
-                    callId,
-                    name,
-                    args,
-                    source,
-                    result: { error: `run_tool_script failed: ${execErr.message}` },
+                return this._failToolCall(execErr, traceCtx, {
+                    errorMessage: `run_tool_script failed: ${execErr.message}`,
                     nextExposureState: accumulatedNextState || undefined,
-                };
+                });
             }
         }
 
+        // 4. Standard tool execution
         const tool = registeredTool || this.toolLoader.findTool(name);
         if (!tool || typeof tool.func !== 'function') {
-            const err = new Error(`Tool "${name}" not found or missing implementation.`);
-            this._emitTrace('tool:error', {
-                traceId,
-                spanId: toolSpanId,
-                parentSpanId: rootSpanId,
-                name: `tool_exec:${name}`,
-                attributes: {
-                    tool_name: name,
-                    arguments: telemetryArgs,
-                    origin,
-                    error: err.message,
-                }
-            });
-            if (this.onToolError === 'throw') throw err;
-            return {
-                callId,
-                name,
-                args,
-                source,
-                result: { error: `Tool "${name}" not found.` },
-            };
+            return this._failToolCall(
+                new Error(`Tool "${name}" not found or missing implementation.`),
+                traceCtx,
+                { errorMessage: `Tool "${name}" not found.` }
+            );
         }
 
-        this._emitTrace('tool:start', {
-            traceId,
-            spanId: toolSpanId,
-            parentSpanId: rootSpanId,
-            name: `tool_exec:${name}`,
-            attributes: {
-                tool_name: name,
-                arguments: telemetryArgs,
-                origin,
-            }
-        });
-
+        emitToolStart();
         try {
             const rawResult = await tool.func(args, { signal });
             const result = await this._finalizeToolResult(rawResult, callDescriptor);
-            this._emitTrace('tool:complete', {
-                traceId,
-                spanId: toolSpanId,
-                parentSpanId: rootSpanId,
-                name: `tool_exec:${name}`,
-                attributes: {
-                    tool_name: name,
-                    arguments: telemetryArgs,
-                    origin,
-                    result_preview: JSON.stringify(this._capForTelemetry(result))?.slice(0, 100),
-                }
-            });
-            return {
-                callId,
-                name,
-                args,
-                source,
-                result,
-            };
+            return this._completeToolCall(result, traceCtx);
         } catch (execErr) {
-            this._emitTrace('tool:error', {
-                traceId,
-                spanId: toolSpanId,
-                parentSpanId: rootSpanId,
-                name: `tool_exec:${name}`,
-                attributes: {
-                    tool_name: name,
-                    arguments: telemetryArgs,
-                    origin,
-                    error: execErr.message,
-                }
+            return this._failToolCall(execErr, traceCtx, {
+                errorMessage: `Tool "${name}" execution failed: ${execErr.message}`,
             });
-            if (this.onToolError === 'throw') throw execErr;
-            return {
-                callId,
-                name,
-                args,
-                source,
-                result: { error: `Tool "${name}" execution failed: ${execErr.message}` },
-            };
         }
     }
 

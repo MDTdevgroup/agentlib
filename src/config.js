@@ -127,6 +127,11 @@ export function getMaxToolDescriptionChars() {
     return 1024;
 }
 
+export function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
+    if (typeof description !== 'string') return description;
+    return maxChars > 0 && description.length > maxChars ? description.slice(0, maxChars) : description;
+}
+
 export function getDefaultRetrySpec() {
     return {
         maxRetries: 3,

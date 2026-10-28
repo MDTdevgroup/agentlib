@@ -13,6 +13,8 @@
  *   node --env-file=.env examples/sandbox-tools/index.js
  */
 
+import readline from 'node:readline/promises';
+import { stdin as input, stdout as output } from 'node:process';
 import {
   Agent,
   LLMService,
@@ -102,14 +104,21 @@ const llm = new LLMService({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+const rl = readline.createInterface({ input, output });
+
 const policy = composePolicy(
   strictPolicy(),
   createApprovalPolicy({
     level: 'sensitive',
     treatSandboxAsSensitive: false, // Prompt only when the tool itself is marked sensitive
     confirm: async (call) => {
-      console.log(`[Policy Confirm] origin=${call.origin} tool=${call.name} args=${JSON.stringify(call.args)}`);
-      return { allow: true };
+      const answer = await rl.question(
+        `\n[Policy Confirm] Allow ${call.origin} call to '${call.name}' with args ${JSON.stringify(call.args)}? (y/n): `
+      );
+      const approved = answer.trim().toLowerCase().startsWith('y');
+      return approved
+        ? { allow: true }
+        : { allow: false, reason: `User denied '${call.name}'.` };
     },
   })
 );
@@ -117,7 +126,7 @@ const policy = composePolicy(
 const agent = new Agent(llm, {
   name: 'SandboxDemoAgent',
   codeMode: true,
-  sandbox: new WorkerSandbox({ timeoutMS: 5000, memoryMB: 64 }),
+  sandbox: new WorkerSandbox({ timeoutMS: 60000, memoryMB: 64 }),
   policy,
   tools: [getLogsTool, createIssueTool],
 });
@@ -139,6 +148,7 @@ agent.addInput({
 });
 
 const history = await agent.run();
+rl.close();
 
 console.log('\n=== Created Tickets ===');
 console.log(createdTickets);

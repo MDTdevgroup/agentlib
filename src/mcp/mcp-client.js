@@ -12,26 +12,19 @@ import {
     getDefaultMCPListMaxPages,
     getMCPClientIdentity,
     getDefaultMCPCallTimeoutMS,
-    getMaxToolDescriptionChars,
+    capDescription,
 } from "../config.js";
 import {
     buildStdioEnv,
     buildServerDescriptor,
     normalizeDecision,
     createUrlCheckMiddleware,
+    resolveElicitHandler,
 } from "../security/policy.js";
 
 export const DEFAULT_LIST_MAX_PAGES = getDefaultMCPListMaxPages();
 
 export const DEFAULT_CLIENT_INFO = getMCPClientIdentity();
-
-function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
-    if (typeof description !== 'string') return description;
-    if (maxChars > 0 && description.length > maxChars) {
-        return description.slice(0, maxChars);
-    }
-    return description;
-}
 
 /**
  * Client wrapper for Model Context Protocol (MCP) servers using SDK v2.
@@ -115,6 +108,16 @@ class MCPClient {
         const serverId = server.id || server.name || this.serverName || 'default';
         const descriptor = buildServerDescriptor(serverId, server, 'mcp');
 
+        const assertApproved = async () => {
+            if (activePolicy && typeof activePolicy.approveServer === 'function') {
+                const decision = normalizeDecision(
+                    await activePolicy.approveServer(descriptor),
+                    `Server '${descriptor.id}' was rejected by security policy.`
+                );
+                if (!decision.allow) throw new Error(decision.reason);
+            }
+        };
+
         switch (server.type) {
             case "stdio": {
                 if (this.events) {
@@ -127,72 +130,39 @@ class MCPClient {
                         descriptor,
                     });
                 }
-
-                if (activePolicy && typeof activePolicy.approveServer === 'function') {
-                    const decision = normalizeDecision(
-                        await activePolicy.approveServer(descriptor),
-                        `Server '${descriptor.id}' was rejected by security policy.`
-                    );
-                    if (!decision.allow) {
-                        throw new Error(decision.reason);
-                    }
-                }
-
-                const safeEnv = buildStdioEnv(server.env);
+                await assertApproved();
                 this.transport = new StdioClientTransport({
                     ...server,
-                    env: safeEnv,
+                    env: buildStdioEnv(server.env),
                 });
                 break;
             }
             case "http":
             case "streamableHttp": {
                 const url = this._validateUrl(server.url, "Streamable HTTP");
-
-                if (activePolicy && typeof activePolicy.approveServer === 'function') {
-                    const decision = normalizeDecision(
-                        await activePolicy.approveServer(descriptor),
-                        `Server '${descriptor.id}' was rejected by security policy.`
-                    );
-                    if (!decision.allow) {
-                        throw new Error(decision.reason);
-                    }
-                }
+                await assertApproved();
 
                 const transportOpts = { ...(server.transportOptions || {}) };
-                if (server.authProvider && !transportOpts.authProvider) {
-                    transportOpts.authProvider = server.authProvider;
-                }
-                if (server.requestInit && !transportOpts.requestInit) {
-                    transportOpts.requestInit = server.requestInit;
-                }
-                if (server.reconnectionOptions && !transportOpts.reconnectionOptions) {
-                    transportOpts.reconnectionOptions = server.reconnectionOptions;
-                }
-                if (server.onInsufficientScope && !transportOpts.onInsufficientScope) {
-                    transportOpts.onInsufficientScope = server.onInsufficientScope;
+                for (const key of ['authProvider', 'requestInit', 'reconnectionOptions', 'onInsufficientScope']) {
+                    if (server[key] && !transportOpts[key]) {
+                        transportOpts[key] = server[key];
+                    }
                 }
 
                 const baseFetch = server.fetch || transportOpts.fetch || globalThis.fetch;
                 const isInMemoryHandlerTest =
-                    !activePolicy &&
-                    !server.lookup &&
-                    !server.checkUrl &&
-                    typeof server.fetch === 'function' &&
-                    url.hostname === 'test.local';
+                    !activePolicy && !server.lookup && !server.checkUrl &&
+                    typeof server.fetch === 'function' && url.hostname === 'test.local';
 
-                if (isInMemoryHandlerTest) {
-                    transportOpts.fetch = baseFetch;
-                } else {
-                    const urlMiddleware = createUrlCheckMiddleware({
+                transportOpts.fetch = isInMemoryHandlerTest
+                    ? baseFetch
+                    : applyMiddlewares(createUrlCheckMiddleware({
                         policy: activePolicy,
                         lookup: server.lookup,
                         allowLoopback: server.allowLoopback,
                         maxRedirects: server.maxRedirects,
                         purpose: 'mcp:http',
-                    });
-                    transportOpts.fetch = applyMiddlewares(urlMiddleware)(baseFetch);
-                }
+                    }))(baseFetch);
 
                 this.transport = new StreamableHTTPClientTransport(url, transportOpts);
                 if (server.scope !== undefined && this.transport._scope === undefined) {
@@ -204,15 +174,7 @@ class MCPClient {
                 if (!server.transport) {
                     throw new Error("inMemory server type requires a transport instance in server.transport.");
                 }
-                if (activePolicy && typeof activePolicy.approveServer === 'function') {
-                    const decision = normalizeDecision(
-                        await activePolicy.approveServer(descriptor),
-                        `Server '${descriptor.id}' was rejected by security policy.`
-                    );
-                    if (!decision.allow) {
-                        throw new Error(decision.reason);
-                    }
-                }
+                await assertApproved();
                 this.transport = server.transport;
                 break;
             }
@@ -220,59 +182,46 @@ class MCPClient {
                 throw new Error(`Invalid server type: ${server.type}`);
         }
 
-        const elicitHandler =
-            (typeof activePolicy?.elicit === 'function' ? activePolicy.elicit.bind(activePolicy) : null) ||
-            (typeof activePolicy?.onElicitation === 'function' ? activePolicy.onElicitation.bind(activePolicy) : null) ||
-            (typeof server.elicit === 'function' ? server.elicit.bind(server) : null);
+        const elicitHandler = resolveElicitHandler(activePolicy, server);
+        const samplingHandler = server.enableSampling === true
+            ? (typeof activePolicy?.sample === 'function'
+                ? activePolicy.sample.bind(activePolicy)
+                : (typeof server.samplingHandler === 'function'
+                    ? server.samplingHandler.bind(server)
+                    : (typeof server.onSampling === 'function' ? server.onSampling.bind(server) : null)))
+            : null;
 
-        const samplingHandler =
-            server.enableSampling === true
-                ? (typeof activePolicy?.sample === 'function'
-                    ? activePolicy.sample.bind(activePolicy)
-                    : (typeof server.samplingHandler === 'function'
-                        ? server.samplingHandler.bind(server)
-                        : (typeof server.onSampling === 'function' ? server.onSampling.bind(server) : null)))
-                : null;
-
-        const capabilities = {};
-        if (elicitHandler) {
-            capabilities.elicitation = {};
-        }
-        if (samplingHandler) {
-            capabilities.sampling = {};
-        }
+        const capabilities = {
+            ...(elicitHandler ? { elicitation: {} } : {}),
+            ...(samplingHandler ? { sampling: {} } : {}),
+        };
 
         const clientOptions = {
             listMaxPages: this.listMaxPages,
             listChanged: {
                 tools: {
-                    onChanged: (error, tools) => {
-                        this._handleToolsChanged(error, tools);
-                    },
+                    onChanged: (error, tools) => this._handleToolsChanged(error, tools),
                 },
             },
             versionNegotiation: {
                 mode: server.versionNegotiationMode || 'auto',
             },
+            ...(Object.keys(capabilities).length > 0
+                ? { capabilities, inputRequired: { autoFulfill: true } }
+                : {}),
         };
-
-        if (Object.keys(capabilities).length > 0) {
-            clientOptions.capabilities = capabilities;
-            clientOptions.inputRequired = { autoFulfill: true };
-        }
 
         this.mcp = new Client(this.clientInfo, clientOptions);
 
         if (elicitHandler) {
-            this.mcp.setRequestHandler('elicitation/create', async (request, ctx) => {
-                return this.handleElicitation(request, ctx, elicitHandler);
-            });
+            this.mcp.setRequestHandler('elicitation/create', (request, ctx) =>
+                this.handleElicitation(request, ctx, elicitHandler)
+            );
         }
-
         if (samplingHandler) {
-            this.mcp.setRequestHandler('sampling/createMessage', async (request, ctx) => {
-                return samplingHandler(request?.params ?? request, ctx);
-            });
+            this.mcp.setRequestHandler('sampling/createMessage', (request, ctx) =>
+                samplingHandler(request?.params ?? request, ctx)
+            );
         }
 
         await this.mcp.connect(this.transport);
@@ -288,12 +237,7 @@ class MCPClient {
      */
     async handleElicitation(request, ctx = {}, handler = null) {
         const activePolicy = this.serverConfig?.policy ?? this.policy;
-        const fn =
-            handler ||
-            (typeof activePolicy?.elicit === 'function' ? activePolicy.elicit.bind(activePolicy) : null) ||
-            (typeof activePolicy?.onElicitation === 'function' ? activePolicy.onElicitation.bind(activePolicy) : null) ||
-            (typeof this.serverConfig?.elicit === 'function' ? this.serverConfig.elicit.bind(this.serverConfig) : null);
-
+        const fn = handler || resolveElicitHandler(activePolicy, this.serverConfig);
         if (typeof fn !== 'function') {
             return { action: 'decline' };
         }
@@ -305,14 +249,9 @@ class MCPClient {
             serverName: this.serverName || this.serverConfig?.id || 'default',
         });
 
-        if (
-            response &&
-            typeof response === 'object' &&
-            (response.action === 'accept' || response.action === 'decline' || response.action === 'cancel')
-        ) {
+        if (response && typeof response === 'object' && ['accept', 'decline', 'cancel'].includes(response.action)) {
             return response;
         }
-
         return { action: 'decline' };
     }
 
@@ -363,22 +302,27 @@ class MCPClient {
         return false;
     }
 
+    _toDeclaration(tool) {
+        return {
+            type: "function",
+            name: tool.name,
+            description: capDescription(tool.description),
+            parameters: tool.inputSchema,
+            ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
+            ...(tool.annotations ? { annotations: { ...tool.annotations } } : {}),
+            ...(tool.sensitive !== undefined ? { sensitive: Boolean(tool.sensitive) } : {}),
+        };
+    }
+
     /**
      * Maps an MCP SDK tool representation to an internal fused tool object.
      * @private
      */
     _mapTool(tool) {
         return {
-            type: "function",
-            name: tool.name,
-            description: capDescription(tool.description),
-            parameters: tool.inputSchema,
+            ...this._toDeclaration(tool),
             outputSchema: tool.outputSchema,
-            ...(tool.annotations ? { annotations: { ...tool.annotations } } : {}),
-            ...(tool.sensitive !== undefined ? { sensitive: Boolean(tool.sensitive) } : {}),
-            func: async (args, context = {}) => {
-                return await this.executeTool(tool.name, args, context);
-            },
+            func: async (args, context = {}) => this.executeTool(tool.name, args, context),
         };
     }
 
@@ -531,18 +475,8 @@ class MCPClient {
      * @returns {Array<object>}
      */
     listDeclarations() {
-        if (!this.isConnected) {
-            return [];
-        }
-        return this.rawTools.map(t => ({
-            type: 'function',
-            name: t.name,
-            description: capDescription(t.description),
-            parameters: t.inputSchema,
-            ...(t.outputSchema ? { outputSchema: t.outputSchema } : {}),
-            ...(t.annotations ? { annotations: { ...t.annotations } } : {}),
-            ...(t.sensitive !== undefined ? { sensitive: Boolean(t.sensitive) } : {}),
-        }));
+        if (!this.isConnected) return [];
+        return this.rawTools.map(t => this._toDeclaration(t));
     }
 
     /**

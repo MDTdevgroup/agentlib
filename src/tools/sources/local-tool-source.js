@@ -1,12 +1,4 @@
-import { getMaxToolDescriptionChars } from '../../config.js';
-
-function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
-    if (typeof description !== 'string') return description;
-    if (maxChars > 0 && description.length > maxChars) {
-        return description.slice(0, maxChars);
-    }
-    return description;
-}
+import { capDescription } from '../../config.js';
 
 /**
  * ToolSource implementing in-process local tools.
@@ -167,27 +159,15 @@ export class LocalToolSource {
 
     _normalizeTool(tool) {
         const isFunction = !tool.type || tool.type === 'function';
-        if (isFunction) {
-            const { func, ...declaration } = tool;
-            return {
-                declaration: {
-                    type: 'function',
-                    ...declaration,
-                    ...(declaration.description !== undefined ? { description: capDescription(declaration.description) } : {}),
-                    source: { kind: 'local' },
-                },
-                implementation: func,
-            };
-        }
-
-        const { func: _ignored, ...declaration } = tool;
+        const { func, ...declaration } = tool;
         return {
             declaration: {
+                ...(isFunction ? { type: 'function' } : {}),
                 ...declaration,
                 ...(declaration.description !== undefined ? { description: capDescription(declaration.description) } : {}),
                 source: { kind: 'local' },
             },
-            implementation: null,
+            implementation: isFunction ? func : null,
         };
     }
 

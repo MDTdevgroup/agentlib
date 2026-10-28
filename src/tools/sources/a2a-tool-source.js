@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { loadOptional } from '../../util/optional-dep.js';
 import { sleep } from '../../util/async.js';
 import { defineTool, withValidation } from '../define-tool.js';
-import { getMaxToolDescriptionChars } from '../../config.js';
+import { capDescription } from '../../config.js';
 import {
     checkUrl,
     createSafeFetch,
@@ -23,14 +23,6 @@ export const TERMINAL_TASK_STATES = Object.freeze(new Set([
 ]));
 
 const MAX_TOOL_NAME_LENGTH = 64;
-
-function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
-    if (typeof description !== 'string') return description;
-    if (maxChars > 0 && description.length > maxChars) {
-        return description.slice(0, maxChars);
-    }
-    return description;
-}
 
 /**
  * Validates arguments passed to a standard A2A tool.
@@ -181,6 +173,33 @@ function buildQualifiedSkillName(peerId, rawSkillId, prefixToolNames) {
         qualified = `${qualified.slice(0, 55)}_${hash}`;
     }
     return qualified;
+}
+
+const TIMEOUT_SENTINEL = Symbol('A2A_TIMEOUT');
+
+async function raceWithBudget(promise, budgetMs) {
+    let timeoutId;
+    try {
+        const timeoutPromise = new Promise((resolve) => {
+            timeoutId = setTimeout(() => resolve(TIMEOUT_SENTINEL), Math.max(1, budgetMs));
+            timeoutId.unref?.();
+        });
+        return await Promise.race([promise, timeoutPromise]);
+    } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+    }
+}
+
+function formatPendingTask(task, timeoutMs) {
+    const pendingState = normalizeTaskState(task?.status?.state) || 'working';
+    return {
+        status: 'pending',
+        taskId: task.id,
+        id: task.id,
+        state: pendingState,
+        ...(task.contextId ? { contextId: task.contextId } : {}),
+        message: `Remote task ${task.id} did not complete within ${timeoutMs}ms (state: ${pendingState}).`,
+    };
 }
 
 /**
@@ -490,21 +509,15 @@ export class A2AToolSource {
 
     /**
      * Polls or streams a non-terminal A2A task until completion or timeout.
-     * @param {object} initialTask
-     * @param {object} options
-     * @returns {Promise<any>}
      */
     async _waitForTask(initialTask, { timeoutMs, pollIntervalMs, signal }) {
         let currentTask = initialTask;
-        const initialState = normalizeTaskState(currentTask.status?.state);
-
-        if (TERMINAL_TASK_STATES.has(initialState)) {
+        if (TERMINAL_TASK_STATES.has(normalizeTaskState(currentTask.status?.state))) {
             return this._resolveTerminalTask(currentTask);
         }
 
         const deadline = Date.now() + timeoutMs;
 
-        // If client provides resubscribeTask stream and not getTask, consume stream
         if (typeof this.client.getTask !== 'function' && typeof this.client.resubscribeTask === 'function') {
             return await this._consumeTaskStream(
                 this.client.resubscribeTask({ id: currentTask.id }, signal ? { signal } : undefined),
@@ -518,52 +531,27 @@ export class A2AToolSource {
                 const remaining = deadline - Date.now();
                 if (remaining <= 0) break;
 
-                const delay = Math.min(pollIntervalMs, remaining);
-                await sleep(delay, signal);
-
+                await sleep(Math.min(pollIntervalMs, remaining), signal);
                 if (Date.now() >= deadline) break;
 
-                let timeoutId;
-                try {
-                    const pollBudget = Math.max(1, deadline - Date.now());
-                    const pollPromise = this.client.getTask({ id: currentTask.id }, signal ? { signal } : undefined);
-                    const timeoutPromise = new Promise((_, reject) => {
-                        timeoutId = setTimeout(() => reject(new Error('__A2A_POLL_TIMEOUT__')), pollBudget);
-                        if (timeoutId.unref) timeoutId.unref();
-                    });
-                    currentTask = await Promise.race([pollPromise, timeoutPromise]);
-                } catch (err) {
-                    if (err?.message === '__A2A_POLL_TIMEOUT__') {
-                        break;
-                    }
-                    throw err;
-                } finally {
-                    if (timeoutId !== undefined) clearTimeout(timeoutId);
-                }
+                const polled = await raceWithBudget(
+                    this.client.getTask({ id: currentTask.id }, signal ? { signal } : undefined),
+                    deadline - Date.now()
+                );
+                if (polled === TIMEOUT_SENTINEL) break;
+                currentTask = polled;
 
-                const state = normalizeTaskState(currentTask?.status?.state);
-                if (TERMINAL_TASK_STATES.has(state)) {
+                if (TERMINAL_TASK_STATES.has(normalizeTaskState(currentTask?.status?.state))) {
                     return this._resolveTerminalTask(currentTask);
                 }
             }
         }
 
-        const pendingState = normalizeTaskState(currentTask?.status?.state) || 'working';
-        return {
-            status: 'pending',
-            taskId: currentTask.id,
-            id: currentTask.id,
-            state: pendingState,
-            ...(currentTask.contextId ? { contextId: currentTask.contextId } : {}),
-            message: `Remote task ${currentTask.id} did not complete within ${timeoutMs}ms (state: ${pendingState}).`,
-        };
+        return formatPendingTask(currentTask, timeoutMs);
     }
 
     /**
      * Consumes an A2A event stream until completion or timeout.
-     * @param {AsyncIterable<object>} stream
-     * @param {object} options
-     * @returns {Promise<any>}
      */
     async _consumeTaskStream(stream, { timeoutMs, signal, initialTask = null }) {
         let currentTask = initialTask || { id: 'unknown', status: { state: 'working' } };
@@ -577,31 +565,14 @@ export class A2AToolSource {
                 const remaining = deadline - Date.now();
                 if (remaining <= 0) break;
 
-                let timeoutId;
-                let nextItem;
-                try {
-                    const timeoutPromise = new Promise((_, reject) => {
-                        timeoutId = setTimeout(() => reject(new Error('__A2A_STREAM_TIMEOUT__')), remaining);
-                        if (timeoutId.unref) timeoutId.unref();
-                    });
-                    nextItem = await Promise.race([iterator.next(), timeoutPromise]);
-                } catch (err) {
-                    if (err?.message === '__A2A_STREAM_TIMEOUT__') {
-                        break;
-                    }
-                    throw err;
-                } finally {
-                    if (timeoutId !== undefined) clearTimeout(timeoutId);
-                }
+                const nextItem = await raceWithBudget(iterator.next(), remaining);
+                if (nextItem === TIMEOUT_SENTINEL) break;
 
                 if (!nextItem || nextItem.done) {
-                    const currentState = normalizeTaskState(currentTask.status?.state);
-                    if (TERMINAL_TASK_STATES.has(currentState)) {
+                    if (TERMINAL_TASK_STATES.has(normalizeTaskState(currentTask.status?.state))) {
                         return this._resolveTerminalTask(currentTask, streamedParts);
                     }
-                    if (streamedParts.length > 0) {
-                        return streamedParts.join('\n');
-                    }
+                    if (streamedParts.length > 0) return streamedParts.join('\n');
                     break;
                 }
 
@@ -610,17 +581,14 @@ export class A2AToolSource {
 
                 const event = rawEvent.payload?.$case
                     ? { kind: rawEvent.payload.$case, ...rawEvent.payload.value }
-                    : (rawEvent.data && rawEvent.kind
-                        ? { kind: rawEvent.kind, ...rawEvent.data }
-                        : rawEvent);
+                    : (rawEvent.data && rawEvent.kind ? { kind: rawEvent.kind, ...rawEvent.data } : rawEvent);
 
                 if (event.kind === 'message') {
                     const text = extractPartsText(event.parts);
                     if (text) streamedParts.push(text);
                 } else if (event.kind === 'task') {
                     currentTask = event;
-                    const taskState = normalizeTaskState(currentTask.status?.state);
-                    if (TERMINAL_TASK_STATES.has(taskState)) {
+                    if (TERMINAL_TASK_STATES.has(normalizeTaskState(currentTask.status?.state))) {
                         return this._resolveTerminalTask(currentTask, streamedParts);
                     }
                 } else if (event.kind === 'artifact-update' || event.kind === 'artifactUpdate') {
@@ -633,31 +601,20 @@ export class A2AToolSource {
                         contextId: event.contextId || currentTask.contextId,
                         status: event.status || currentTask.status,
                     };
-                    const statusState = normalizeTaskState(event.status?.state);
-                    if (event.final || TERMINAL_TASK_STATES.has(statusState)) {
+                    if (event.final || TERMINAL_TASK_STATES.has(normalizeTaskState(event.status?.state))) {
                         return this._resolveTerminalTask(currentTask, streamedParts);
                     }
                 }
             }
         } finally {
-            if (typeof iterator.return === 'function') {
-                try {
-                    await iterator.return();
-                } catch {
-                    // ignore stream cleanup error
-                }
+            try {
+                await iterator.return?.();
+            } catch {
+                // ignore stream cleanup error
             }
         }
 
-        const pendingState = normalizeTaskState(currentTask?.status?.state) || 'working';
-        return {
-            status: 'pending',
-            taskId: currentTask.id,
-            id: currentTask.id,
-            state: pendingState,
-            ...(currentTask.contextId ? { contextId: currentTask.contextId } : {}),
-            message: `Remote task ${currentTask.id} did not complete within ${timeoutMs}ms (state: ${pendingState}).`,
-        };
+        return formatPendingTask(currentTask, timeoutMs);
     }
 
     /**
