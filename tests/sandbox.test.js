@@ -175,6 +175,34 @@ describe('Sandbox Infrastructure (Contract, WorkerSandbox & Factory)', () => {
             assert.match(res.logs, /\[\.\.\. truncated \d+ bytes \.\.\.\]/);
             assert.ok(Buffer.byteLength(res.logs, 'utf8') < 1000);
         });
+
+        test('awaits standalone async IIFE written by model and drains sequential tool calls', async () => {
+            const sandbox = new WorkerSandbox();
+            const stubs = `async function stepTool(args) { return __callTool("stepTool", args); }`;
+            const code = `
+                // Model wraps its code in an un-awaited async IIFE
+                (async () => {
+                    const a = await stepTool({ n: 1 });
+                    const b = await stepTool({ n: 2 });
+                    console.log("completed both steps");
+                    return { sum: a + b };
+                })();
+            `;
+
+            const seen = [];
+            const res = await sandbox.run(code, {
+                stubs,
+                onToolCall: async (_name, args) => {
+                    seen.push(args.n);
+                    return args.n * 10;
+                },
+            });
+
+            assert.equal(res.error, null);
+            assert.deepEqual(seen, [1, 2]);
+            assert.deepEqual(res.result, { sum: 30 });
+            assert.match(res.logs, /completed both steps/);
+        });
     });
 
     describe('Agent-level Code Mode with FakeProvider', () => {

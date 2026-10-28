@@ -93,11 +93,12 @@ export function makeToolCall({ name, args = {}, arguments: rawArguments, callId,
  * @param {string} [params.name] - Associated tool name
  * @param {any} [params.value] - Execution result value
  * @param {any} [params.output] - Alias for value
+ * @param {object} [params.source] - Provenance metadata ({ kind, serverName, remoteName })
  * @param {string} [params.thoughtSignature] - Optional thought signature
  * @param {string} [params.signature] - Alias for thought signature
  * @returns {object} Canonical tool output item
  */
-export function makeToolResult({ callId, name, value, output, thoughtSignature, signature } = {}) {
+export function makeToolResult({ callId, name, value, output, source, thoughtSignature, signature } = {}) {
     const val = value !== undefined ? value : output;
     const item = {
         type: 'function_call_output',
@@ -105,6 +106,7 @@ export function makeToolResult({ callId, name, value, output, thoughtSignature, 
         output: val,
     };
     if (name !== undefined) item.name = name;
+    if (source !== undefined) item.source = { ...source };
     const sig = thoughtSignature || signature;
     if (sig !== undefined) {
         item.thoughtSignature = sig;
@@ -174,6 +176,10 @@ export function toolCallId(item) {
 
 export function toolCallSignature(item) {
     return isToolCall(item) ? (item.thoughtSignature || item.signature) : undefined;
+}
+
+export function toolResultSource(item) {
+    return isToolResult(item) ? item.source : undefined;
 }
 
 export function toolCallArgs(item) {

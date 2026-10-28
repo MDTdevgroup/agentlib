@@ -2,6 +2,14 @@ import { randomUUID, createHash } from 'node:crypto';
 import { loadOptional } from '../../util/optional-dep.js';
 import { sleep } from '../../util/async.js';
 import { defineTool, withValidation } from '../define-tool.js';
+import { getMaxToolDescriptionChars } from '../../config.js';
+import {
+    checkUrl,
+    createSafeFetch,
+    validateAgentCardUrls,
+    buildServerDescriptor,
+    normalizeDecision,
+} from '../../security/policy.js';
 
 const A2A_INSTALL_CMD = 'npm install @a2a-js/sdk express';
 const A2A_CUSTOM_MSG = "The A2A client requires '@a2a-js/sdk'.\nInstall with: npm install @a2a-js/sdk";
@@ -15,6 +23,14 @@ export const TERMINAL_TASK_STATES = Object.freeze(new Set([
 ]));
 
 const MAX_TOOL_NAME_LENGTH = 64;
+
+function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
+    if (typeof description !== 'string') return description;
+    if (maxChars > 0 && description.length > maxChars) {
+        return description.slice(0, maxChars);
+    }
+    return description;
+}
 
 /**
  * Validates arguments passed to a standard A2A tool.
@@ -185,6 +201,10 @@ export class A2AToolSource {
      * @param {object} [options.client=null] - Pre-configured or mock A2A client.
      * @param {object} [options.agentCard=null] - Pre-fetched or mock A2A Agent Card.
      * @param {Function} [options.clientFactory=null] - Optional factory (url) => Promise<client>.
+     * @param {object|null} [options.policy=null] - Optional security policy.
+     * @param {Function} [options.fetch] - Optional custom fetch implementation.
+     * @param {Function} [options.lookup] - Optional custom DNS lookup function.
+     * @param {boolean} [options.allowLoopback=true] - Whether loopback HTTP/IP is allowed.
      */
     constructor({
         remoteUrl,
@@ -201,6 +221,10 @@ export class A2AToolSource {
         client = null,
         agentCard = null,
         clientFactory = null,
+        policy = null,
+        fetch: fetchImpl = null,
+        lookup = null,
+        allowLoopback = true,
     } = {}) {
         const resolvedUrl = remoteUrl || url;
         if (!resolvedUrl || typeof resolvedUrl !== 'string') {
@@ -212,7 +236,7 @@ export class A2AToolSource {
         this.id = resolvedId;
         this.serverName = resolvedId;
         this.toolName = toolName || resolvedId;
-        this.description = description;
+        this.description = capDescription(description);
         this.lazy = Boolean(lazy);
         this.deriveSkills = Boolean(deriveSkills);
         this.prefixToolNames = Boolean(prefixToolNames);
@@ -221,6 +245,10 @@ export class A2AToolSource {
         this.client = client;
         this.agentCard = agentCard || client?.agentCard || null;
         this.clientFactory = clientFactory;
+        this.policy = policy;
+        this.fetchImpl = fetchImpl;
+        this.lookup = lookup;
+        this.allowLoopback = allowLoopback;
         this.factory = null;
         this.skillMap = new Map();
         this.cachedDeclarations = null;
@@ -351,7 +379,7 @@ export class A2AToolSource {
             const decl = {
                 name: qualifiedName,
                 type: 'function',
-                description: `${baseDesc}${tagSuffix}`,
+                description: capDescription(`${baseDesc}${tagSuffix}`),
                 parameters,
                 source: {
                     kind: 'a2a',
@@ -661,6 +689,31 @@ export class A2AToolSource {
      * @returns {Promise<void>}
      */
     async connect() {
+        const descriptor = buildServerDescriptor(
+            this.toolName,
+            { type: 'http', url: this.remoteUrl },
+            'a2a'
+        );
+
+        if (this.policy && typeof this.policy.approveServer === 'function') {
+            const decision = normalizeDecision(
+                await this.policy.approveServer(descriptor),
+                `A2A peer '${this.toolName}' at '${this.remoteUrl}' was rejected by security policy.`
+            );
+            if (!decision.allow) {
+                throw new Error(decision.reason);
+            }
+        }
+
+        const urlOptions = {
+            policy: this.policy,
+            ...(this.lookup ? { lookup: this.lookup } : {}),
+            allowLoopback: this.allowLoopback,
+            purpose: 'a2a:card',
+        };
+
+        await checkUrl(this.remoteUrl, 'a2a:card', urlOptions);
+
         if (!this.client) {
             if (typeof this.clientFactory === 'function') {
                 this.client = await this.clientFactory(this.remoteUrl);
@@ -680,25 +733,35 @@ export class A2AToolSource {
                     }
                 );
 
+                const safeFetch = createSafeFetch(this.fetchImpl || globalThis.fetch, {
+                    ...urlOptions,
+                    purpose: 'a2a:http',
+                });
+
                 const transports = (JsonRpcTransportFactory && RestTransportFactory)
                     ? [
-                        new JsonRpcTransportFactory({ legacyCompat: { enabled: true } }),
-                        new RestTransportFactory({ legacyCompat: { enabled: true } }),
+                        new JsonRpcTransportFactory({ fetchImpl: safeFetch, legacyCompat: { enabled: true } }),
+                        new RestTransportFactory({ fetchImpl: safeFetch, legacyCompat: { enabled: true } }),
                     ]
                     : (ClientFactoryOptions?.default?.transports ?? []);
 
                 let cardResolver;
                 if (DefaultAgentCardResolver) {
-                    const baseResolver = new DefaultAgentCardResolver({ legacyCompat: { enabled: true } });
+                    const baseResolver = new DefaultAgentCardResolver({
+                        fetchImpl: safeFetch,
+                        legacyCompat: { enabled: true },
+                    });
                     cardResolver = {
                         resolve: async (baseUrl, path) => {
                             const agentCardUrl = new URL(path ?? '.well-known/agent-card.json', baseUrl);
-                            const res = await fetch(agentCardUrl);
+                            const res = await safeFetch(agentCardUrl);
                             if (!res.ok) {
                                 throw new Error(`Failed to fetch Agent Card from ${agentCardUrl}: ${res.status}`);
                             }
                             const rawCard = await res.json();
-                            return cardResolver.normalizeAgentCard(rawCard);
+                            const normalizedCard = cardResolver.normalizeAgentCard(rawCard);
+                            await validateAgentCardUrls(normalizedCard, urlOptions);
+                            return normalizedCard;
                         },
                         normalizeAgentCard: (rawCard) => {
                             if (rawCard && typeof rawCard === 'object' && Array.isArray(rawCard.skills)) {
@@ -745,6 +808,7 @@ export class A2AToolSource {
         }
 
         if (this.agentCard) {
+            await validateAgentCardUrls(this.agentCard, urlOptions);
             this._buildDeclarationsFromCard(this.agentCard);
         }
     }

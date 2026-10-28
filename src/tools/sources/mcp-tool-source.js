@@ -1,8 +1,17 @@
 import { createHash } from "node:crypto";
 import MCPClient from "../../mcp/mcp-client.js";
+import { getMCPToolNameSeparator, getMaxToolDescriptionChars } from "../../config.js";
 
-export const TOOL_NAME_SEPARATOR = '_';
+export const TOOL_NAME_SEPARATOR = getMCPToolNameSeparator();
 export const MAX_TOOL_NAME_LENGTH = 64;
+
+function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
+    if (typeof description !== 'string') return description;
+    if (maxChars > 0 && description.length > maxChars) {
+        return description.slice(0, maxChars);
+    }
+    return description;
+}
 
 /**
  * ToolSource wrapping an MCP server connection.
@@ -16,6 +25,7 @@ export class MCPToolSource {
      * @param {Array<object>} [options.tools=null] - Pre-fetched or mock tools array.
      * @param {boolean} [options.prefixToolNames=true] - Whether to prefix tool names with `${serverName}_`.
      * @param {EventEmitter} [options.eventEmitter=null] - Event emitter for MCP events.
+     * @param {object|null} [options.policy=null] - Optional security policy.
      */
     constructor({
         serverName,
@@ -25,6 +35,7 @@ export class MCPToolSource {
         tools = null,
         prefixToolNames = true,
         eventEmitter = null,
+        policy = null,
     } = {}) {
         if (!serverName || typeof serverName !== 'string') {
             throw new TypeError("MCPToolSource requires a non-empty 'serverName' string.");
@@ -35,6 +46,7 @@ export class MCPToolSource {
         this.serverConfig = serverConfig;
         this.prefixToolNames = prefixToolNames;
         this.events = eventEmitter;
+        this.policy = policy;
         this.cachedDeclarations = null;
         this.nameMapping = new Map();
 
@@ -81,10 +93,19 @@ export class MCPToolSource {
     }
 
     /**
-     * Returns serializable tool declarations.
+     * Returns serializable tool declarations, refreshing first if the server's `ttlMs` cache hint has expired.
      * @returns {Promise<Array<object>>}
      */
     async list() {
+        if (
+            this.client &&
+            typeof this.client.isToolsCacheExpired === 'function' &&
+            this.client.isToolsCacheExpired() &&
+            typeof this.client.refreshTools === 'function'
+        ) {
+            await this.client.refreshTools();
+            this.cachedDeclarations = null;
+        }
         return this.getDeclarations();
     }
 
@@ -121,6 +142,7 @@ export class MCPToolSource {
                 ...decl,
                 type: 'function',
                 name: qualifiedName,
+                description: capDescription(decl.description),
                 source: {
                     kind: 'mcp',
                     serverName: this.serverName,
@@ -160,7 +182,11 @@ export class MCPToolSource {
      */
     async connect() {
         if (!this.client && this.serverConfig) {
-            this.client = new MCPClient({ eventEmitter: this.events });
+            this.client = new MCPClient({
+                eventEmitter: this.events,
+                policy: this.policy,
+                serverName: this.serverName,
+            });
             if (typeof this.client.onToolsChanged === 'function') {
                 this.client.onToolsChanged(this._toolsChangedHandler);
             }

@@ -4,7 +4,50 @@ import {
     getDefaultToolExposureThreshold,
     getDefaultToolExposureMode,
     getDefaultMaxContextTokens,
+    getMaxToolDescriptionChars,
 } from "../config.js";
+import { normalizeDecision } from "../security/policy.js";
+
+function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
+    if (typeof description !== 'string') return description;
+    if (maxChars > 0 && description.length > maxChars) {
+        return description.slice(0, maxChars);
+    }
+    return description;
+}
+
+function sanitizeDeclaration(decl) {
+    if (!decl || typeof decl !== 'object') return decl;
+    if (typeof decl.description === 'string') {
+        return {
+            ...decl,
+            description: capDescription(decl.description),
+        };
+    }
+    return { ...decl };
+}
+
+async function applyCatalogFilter(catalog, context = {}, options = {}, filterMeta = {}) {
+    let current = Array.isArray(catalog) ? catalog.map(sanitizeDeclaration) : [];
+    const policy = options?.policy || context?.policy || context?.toolExposureOptions?.policy || null;
+    const filterFn = options?.filterCatalog || context?.filterCatalog || context?.toolExposureOptions?.filterCatalog || null;
+
+    if (policy && typeof policy.filterTools === 'function') {
+        const next = await policy.filterTools(current, { ...context, ...filterMeta });
+        if (Array.isArray(next)) {
+            current = next.map(sanitizeDeclaration);
+        }
+    }
+
+    if (typeof filterFn === 'function') {
+        const next = await filterFn(current, { ...context, ...filterMeta });
+        if (Array.isArray(next)) {
+            current = next.map(sanitizeDeclaration);
+        }
+    }
+
+    return current;
+}
 
 /**
  * Heuristically estimates the token count for a JSON Schema declaration or list of declarations.
@@ -44,16 +87,21 @@ function getToolSource(declaration) {
  * @returns {object}
  */
 function formatToolByDetail(decl, detail = 'name_and_description') {
+    const sourceId = getToolSource(decl);
     switch (detail) {
         case 'name_only':
             return { name: decl.name };
         case 'full_schema':
-            return { ...decl };
+            return {
+                ...sanitizeDeclaration(decl),
+                source: decl.source || { kind: sourceId },
+            };
         case 'name_and_description':
         default:
             return {
                 name: decl.name,
-                description: decl.description || '',
+                description: capDescription(decl.description || ''),
+                source: sourceId,
             };
     }
 }
@@ -176,7 +224,7 @@ export const META_TOOL_DECLARATIONS = Object.freeze({
             properties: {
                 code: {
                     type: 'string',
-                    description: 'The JavaScript code to execute in the sandbox. The script has access to asynchronous tool functions and can use console.log to output results.',
+                    description: 'The JavaScript code body to execute in the sandbox (runs inside an async function: use top-level await, return, and console.log directly; do not wrap in an un-awaited IIFE).',
                 },
                 tools: {
                     type: 'array',
@@ -260,6 +308,7 @@ async function resolveServerMetaTool(name, args, { toolLoader, ranker = rankKeyw
  * @returns {Promise<{ declarations: Array<object>, metaTools: Array<object>, resolve: Function, nextState: object }>}
  */
 export async function exposeAll(catalog, exposureState = {}, context = {}, options = {}) {
+    const filteredCatalog = await applyCatalogFilter(catalog, context, options, { action: 'exposeAll' });
     const toolLoader = context?.toolLoader;
     const hasLazyServers = toolLoader && typeof toolLoader.hasLazyServers === 'function'
         ? toolLoader.hasLazyServers()
@@ -309,7 +358,7 @@ export async function exposeAll(catalog, exposureState = {}, context = {}, optio
     }
 
     return {
-        declarations: [...metaTools, ...catalog.map(d => ({ ...d }))],
+        declarations: [...metaTools, ...filteredCatalog.map(d => ({ ...d }))],
         metaTools,
         resolve,
         nextState: makeState(),
@@ -330,10 +379,11 @@ export async function exposeAll(catalog, exposureState = {}, context = {}, optio
 export async function exposeProgressive(catalog, exposureState = {}, context = {}, options = {}) {
     const mode = exposureState?.mode || options.mode || context?.mode || context?.toolExposureOptions?.mode || getDefaultToolExposureMode();
     const ranker = options.rank || context?.rank || context?.toolExposureOptions?.rank || rankKeywords;
+    const filteredCatalog = await applyCatalogFilter(catalog, context, options, { action: 'exposeProgressive' });
 
     // Separate native LLM tools (e.g. { type: 'web_search' }) from function tools
-    const nativeTools = catalog.filter(d => d.type && d.type !== 'function');
-    const functionTools = catalog.filter(d => !d.type || d.type === 'function');
+    const nativeTools = filteredCatalog.filter(d => d.type && d.type !== 'function');
+    const functionTools = filteredCatalog.filter(d => !d.type || d.type === 'function');
 
     const discoveredList = Array.isArray(exposureState?.discovered)
         ? [...exposureState.discovered]
@@ -405,7 +455,13 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
             const detailLevel = args.detail || 'name_and_description';
             const limit = typeof args.limit === 'number' ? args.limit : 10;
 
-            const scoredMatches = await ranker(query, functionTools, { limit });
+            const rankableTools = await applyCatalogFilter(
+                functionTools,
+                { ...context, ...execContext },
+                options,
+                { action: 'search_tools', query }
+            );
+            const scoredMatches = await ranker(query, rankableTools, { limit });
             const matchedTools = scoredMatches.map(m => m.entry || m);
 
             // Group matched tools by source server/provider
@@ -493,6 +549,29 @@ export async function exposeProgressive(catalog, exposureState = {}, context = {
             }
 
             const canonicalName = tool.name || targetToolName;
+            const activePolicy = options?.policy || context?.policy || execContext?.policy || null;
+            if (activePolicy && typeof activePolicy.approveToolCall === 'function') {
+                const decision = normalizeDecision(
+                    await activePolicy.approveToolCall({
+                        name: canonicalName,
+                        args: targetArgs,
+                        source: tool.source || { kind: 'local' },
+                        origin: execContext?.origin || 'model',
+                        signal: execContext?.signal,
+                        ...(tool.annotations ? { annotations: { ...tool.annotations } } : {}),
+                        ...(tool.sensitive !== undefined ? { sensitive: Boolean(tool.sensitive) } : {}),
+                    }),
+                    `Tool call '${canonicalName}' was denied by security policy.`
+                );
+                if (!decision.allow) {
+                    return {
+                        handled: true,
+                        result: { error: decision.reason },
+                        nextState: makeState(),
+                    };
+                }
+            }
+
             if (!discoveredSet.has(canonicalName)) {
                 discoveredSet.add(canonicalName);
                 nextDiscoveredList.push(canonicalName);

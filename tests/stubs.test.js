@@ -120,6 +120,46 @@ describe('Tool Stub Generator (generateToolStub & generateToolStubs)', () => {
                 message: /missing a name or type/i,
             });
         });
+
+        test('formats outputSchema into the @returns JSDoc annotation when provided', () => {
+            const declaration = {
+                name: 'logging_getLogs',
+                description: 'Fetch structured log entries.',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        level: { type: 'string' },
+                        since: { type: 'number' },
+                    },
+                    required: ['level', 'since'],
+                },
+                outputSchema: {
+                    type: 'object',
+                    properties: {
+                        entries: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    timestamp: { type: 'string' },
+                                    message: { type: 'string' },
+                                    level: { type: 'string' },
+                                },
+                                required: ['timestamp', 'message'],
+                            },
+                        },
+                    },
+                    required: ['entries'],
+                },
+            };
+
+            const stub = generateToolStub(declaration);
+
+            assert.match(
+                stub,
+                /@returns \{Promise<\{ entries: Array<\{ timestamp: string, message: string, level\?: string \}> \}>\}/
+            );
+        });
     });
 
     describe('generateToolStubs', () => {

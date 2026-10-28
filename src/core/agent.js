@@ -2,12 +2,14 @@ import {
     getDefaultMaxToolCalls,
     getDefaultToolConcurrency,
     getDefaultToolExposure,
+    getDefaultMaxToolResultTokens,
 } from "../config.js";
 import { getModelContextLimit, getDefaultModel } from "../providers/registry.js";
 import { ToolLoader, RESERVED_META_TOOL_NAMES } from "../loaders/tool-loader.js";
 import { resolveExposurePolicy } from "../tools/exposure.js";
 import { createSandbox, assertSandbox } from "../tools/sandbox/index.js";
 import { generateToolStubs } from "../tools/stubs.js";
+import { normalizeDecision } from "../security/policy.js";
 import { randomUUID } from 'node:crypto';
 import EventEmitter from 'events';
 import { DomainObservability } from "../services/observability.js";
@@ -82,7 +84,9 @@ export class Agent {
         toolExposure = getDefaultToolExposure(),
         toolExposureOptions = {},
         codeMode = false,
+        policy = null,
         approveToolCall = null,
+        maxToolResultTokens = getDefaultMaxToolResultTokens(),
         sandbox = null,
         ...options } = {}) {
 
@@ -98,9 +102,17 @@ export class Agent {
             }
         }
         this.model = model;
-        this.toolLoader = toolLoader || new ToolLoader(enableMCP, { eventEmitter: this.events });
+        this.policy = policy;
+        this.maxToolResultTokens = maxToolResultTokens;
+        this.toolLoader = toolLoader || new ToolLoader(enableMCP, {
+            eventEmitter: this.events,
+            policy: this.policy,
+        });
         if (this.toolLoader && typeof this.toolLoader.setEventEmitter === 'function' && !this.toolLoader.events) {
             this.toolLoader.setEventEmitter(this.events);
+        }
+        if (this.toolLoader && typeof this.toolLoader.setPolicy === 'function' && this.policy && !this.toolLoader.policy) {
+            this.toolLoader.setPolicy(this.policy);
         }
         this.outputSchema = outputSchema;
         this.toolConcurrency = toolConcurrency;
@@ -132,6 +144,7 @@ export class Agent {
         this.toolExposureOptions = {
             ...toolExposureOptions,
             codeMode: Boolean(codeMode),
+            ...(this.policy ? { policy: this.policy } : {}),
         };
         this.exposurePolicy = resolveExposurePolicy(toolExposure, this.toolExposureOptions);
 
@@ -375,6 +388,108 @@ export class Agent {
     }
 
     /**
+     * Caps a tool result to `this.maxToolResultTokens` using `estimateTokens` and `truncateToBudget`.
+     */
+    _capResultToBudget(value, maxTokens = this.maxToolResultTokens) {
+        if (!maxTokens || maxTokens <= 0 || value === undefined || value === null) {
+            return value;
+        }
+
+        const isString = typeof value === 'string';
+        let serialized;
+        try {
+            serialized = isString ? value : JSON.stringify(value);
+        } catch {
+            return value;
+        }
+        if (typeof serialized !== 'string') {
+            return value;
+        }
+
+        const tokenCount = estimateTokens(serialized);
+        if (tokenCount <= maxTokens) {
+            return value;
+        }
+
+        const maxChars = maxTokens * 4;
+        const chunkSize = Math.max(64, Math.floor(maxChars / 4));
+        const segments = [];
+        for (let i = 0; i < serialized.length; i += chunkSize) {
+            segments.push({
+                role: 'user',
+                content: serialized.slice(i, i + chunkSize),
+            });
+        }
+
+        const keptSegments = truncateToBudget(segments, maxTokens);
+        let truncatedText = keptSegments.map(s => s.content).join('');
+        if (truncatedText.length === 0 || estimateTokens(truncatedText) > maxTokens) {
+            truncatedText = serialized.slice(0, maxChars);
+        }
+
+        const suffix = `\n...[truncated to ${maxTokens} token budget]`;
+        const allowedBodyChars = Math.max(0, maxChars - suffix.length);
+        const finalString = truncatedText.slice(0, allowedBodyChars) + suffix;
+
+        if (isString) {
+            return finalString;
+        }
+        return {
+            truncated: true,
+            maxTokens,
+            content: finalString,
+        };
+    }
+
+    /**
+     * Caps an arbitrary payload (arguments or result) before emitting to telemetry sinks.
+     */
+    _capForTelemetry(value, maxChars = 512) {
+        if (value === undefined || value === null) return value;
+        const cappedByBudget = this._capResultToBudget(value, Math.max(32, Math.ceil(maxChars / 4)));
+        if (typeof cappedByBudget === 'string') {
+            return cappedByBudget.length > maxChars
+                ? `${cappedByBudget.slice(0, maxChars)}...[truncated]`
+                : cappedByBudget;
+        }
+        try {
+            const json = JSON.stringify(cappedByBudget);
+            if (typeof json === 'string' && json.length > maxChars) {
+                return `${json.slice(0, maxChars)}...[truncated]`;
+            }
+        } catch {
+            return '[Unserializable]';
+        }
+        return cappedByBudget;
+    }
+
+    /**
+     * Passes a tool result through `policy.inspectResult(result, call)` and caps its size
+     * with `estimateTokens` and `truncateToBudget` before it enters context or telemetry.
+     */
+    async _finalizeToolResult(rawResult, callDescriptor) {
+        let current = this._capResultToBudget(rawResult);
+        if (this.policy && typeof this.policy.inspectResult === 'function') {
+            const inspected = await this.policy.inspectResult(current, callDescriptor);
+            if (inspected !== undefined) {
+                if (
+                    inspected &&
+                    typeof inspected === 'object' &&
+                    inspected.allow === false &&
+                    !('error' in inspected)
+                ) {
+                    current = {
+                        error: inspected.reason || `Tool result from "${callDescriptor.name}" was rejected by security policy.`,
+                    };
+                } else {
+                    current = inspected;
+                }
+            }
+        }
+        return this._capResultToBudget(current);
+    }
+
+    /**
      * Executes a single tool call, handling errors, missing tools, and telemetry.
      */
     async _executeSingleTool(call, traceId, rootSpanId, signal = null, resolveMeta = null, { origin = 'model' } = {}) {
@@ -382,6 +497,11 @@ export class Agent {
         const name = toolCallName(call);
         const callId = toolCallId(call);
         const toolSpanId = "tool_call:" + name + "-" + randomUUID();
+        const isMetaTool = RESERVED_META_TOOL_NAMES.has(name);
+        const registeredTool = !isMetaTool && this.toolLoader ? this.toolLoader.findTool(name) : null;
+        const source = registeredTool?.source
+            ? { ...registeredTool.source }
+            : (isMetaTool ? { kind: 'meta' } : { kind: 'local' });
 
         let args;
         try {
@@ -406,16 +526,88 @@ export class Agent {
                 callId,
                 name,
                 args: {},
+                source,
                 result: { error: `Failed to parse tool arguments: ${parseErr.message}` },
             };
         }
 
-        // Invoke approval hook if provided
+        const callDescriptor = {
+            name,
+            args,
+            callId,
+            source,
+            origin,
+            signal,
+            ...(registeredTool?.annotations ? { annotations: { ...registeredTool.annotations } } : {}),
+            ...(registeredTool?.sensitive !== undefined ? { sensitive: Boolean(registeredTool.sensitive) } : {}),
+        };
+        const telemetryArgs = this._capForTelemetry(args);
+
+        // 1. Check security policy approveToolCall hook if provided
+        if (this.policy && typeof this.policy.approveToolCall === 'function') {
+            try {
+                const rawDecision = await this.policy.approveToolCall(callDescriptor);
+                const decision = normalizeDecision(
+                    rawDecision,
+                    `Tool call "${name}" denied by security policy.`
+                );
+                if (!decision.allow) {
+                    const denialError = new Error(decision.reason);
+                    this._emitTrace('tool:error', {
+                        traceId,
+                        spanId: toolSpanId,
+                        parentSpanId: rootSpanId,
+                        name: `tool_exec:${name}`,
+                        attributes: {
+                            tool_name: name,
+                            arguments: telemetryArgs,
+                            origin,
+                            error: denialError.message,
+                        }
+                    });
+                    if (this.onToolError === 'throw') throw denialError;
+                    return {
+                        callId,
+                        name,
+                        args,
+                        source,
+                        result: { error: denialError.message },
+                    };
+                }
+            } catch (policyErr) {
+                this._emitTrace('tool:error', {
+                    traceId,
+                    spanId: toolSpanId,
+                    parentSpanId: rootSpanId,
+                    name: `tool_exec:${name}`,
+                    attributes: {
+                        tool_name: name,
+                        arguments: telemetryArgs,
+                        origin,
+                        error: policyErr.message,
+                    }
+                });
+                if (this.onToolError === 'throw') throw policyErr;
+                return {
+                    callId,
+                    name,
+                    args,
+                    source,
+                    result: { error: policyErr.message },
+                };
+            }
+        }
+
+        // 2. Invoke legacy approveToolCall hook if provided
         if (typeof this.approveToolCall === 'function') {
             try {
-                const approved = await this.approveToolCall({ name, args, callId, origin, signal });
-                if (approved === false) {
-                    throw new Error(`Tool call "${name}" rejected by approveToolCall hook.`);
+                const approved = await this.approveToolCall(callDescriptor);
+                const decision = normalizeDecision(
+                    approved,
+                    `Tool call "${name}" rejected by approveToolCall hook.`
+                );
+                if (!decision.allow) {
+                    throw new Error(decision.reason);
                 }
             } catch (approvalErr) {
                 this._emitTrace('tool:error', {
@@ -425,7 +617,7 @@ export class Agent {
                     name: `tool_exec:${name}`,
                     attributes: {
                         tool_name: name,
-                        arguments: args,
+                        arguments: telemetryArgs,
                         origin,
                         error: approvalErr.message,
                     }
@@ -435,6 +627,7 @@ export class Agent {
                     callId,
                     name,
                     args,
+                    source,
                     result: { error: approvalErr.message },
                 };
             }
@@ -449,13 +642,19 @@ export class Agent {
                 name: `tool_exec:${name}`,
                 attributes: {
                     tool_name: name,
-                    arguments: args,
+                    arguments: telemetryArgs,
                     origin,
                 }
             });
             try {
-                const metaResolution = await resolveMeta(name, args, { signal, toolLoader: this.toolLoader });
+                const metaResolution = await resolveMeta(name, args, {
+                    signal,
+                    toolLoader: this.toolLoader,
+                    policy: this.policy,
+                    origin,
+                });
                 if (metaResolution && metaResolution.handled) {
+                    const finalMetaResult = await this._finalizeToolResult(metaResolution.result, callDescriptor);
                     this._emitTrace('tool:complete', {
                         traceId,
                         spanId: toolSpanId,
@@ -463,16 +662,17 @@ export class Agent {
                         name: `tool_exec:${name}`,
                         attributes: {
                             tool_name: name,
-                            arguments: args,
+                            arguments: telemetryArgs,
                             origin,
-                            result_preview: JSON.stringify(metaResolution.result)?.slice(0, 100),
+                            result_preview: JSON.stringify(this._capForTelemetry(finalMetaResult))?.slice(0, 100),
                         }
                     });
                     return {
                         callId,
                         name,
                         args,
-                        result: metaResolution.result,
+                        source,
+                        result: finalMetaResult,
                         nextExposureState: metaResolution.nextState,
                     };
                 }
@@ -484,7 +684,7 @@ export class Agent {
                     name: `tool_exec:${name}`,
                     attributes: {
                         tool_name: name,
-                        arguments: args,
+                        arguments: telemetryArgs,
                         origin,
                         error: metaErr.message,
                     }
@@ -494,6 +694,7 @@ export class Agent {
                     callId,
                     name,
                     args,
+                    source,
                     result: { error: `Meta-tool "${name}" execution failed: ${metaErr.message}` },
                 };
             }
@@ -508,7 +709,7 @@ export class Agent {
                 name: `tool_exec:${name}`,
                 attributes: {
                     tool_name: name,
-                    arguments: args,
+                    arguments: telemetryArgs,
                     origin,
                 }
             });
@@ -523,7 +724,7 @@ export class Agent {
                     name: `tool_exec:${name}`,
                     attributes: {
                         tool_name: name,
-                        arguments: args,
+                        arguments: telemetryArgs,
                         origin,
                         error: err.message,
                     }
@@ -533,6 +734,7 @@ export class Agent {
                     callId,
                     name,
                     args,
+                    source,
                     result: { error: err.message },
                 };
             }
@@ -589,7 +791,7 @@ export class Agent {
                         name: `tool_exec:${name}`,
                         attributes: {
                             tool_name: name,
-                            arguments: args,
+                            arguments: telemetryArgs,
                             origin,
                             error: error.message,
                             logs,
@@ -600,6 +802,7 @@ export class Agent {
                         callId,
                         name,
                         args,
+                        source,
                         result: { error: error.message, logs: logs || undefined },
                         nextExposureState: accumulatedNextState || undefined,
                     };
@@ -616,6 +819,8 @@ export class Agent {
                     scriptResult.result = null;
                 }
 
+                const finalScriptResult = await this._finalizeToolResult(scriptResult, callDescriptor);
+
                 this._emitTrace('tool:complete', {
                     traceId,
                     spanId: toolSpanId,
@@ -623,9 +828,9 @@ export class Agent {
                     name: `tool_exec:${name}`,
                     attributes: {
                         tool_name: name,
-                        arguments: args,
+                        arguments: telemetryArgs,
                         origin,
-                        result_preview: JSON.stringify(scriptResult)?.slice(0, 100),
+                        result_preview: JSON.stringify(this._capForTelemetry(finalScriptResult))?.slice(0, 100),
                     }
                 });
 
@@ -633,7 +838,8 @@ export class Agent {
                     callId,
                     name,
                     args,
-                    result: scriptResult,
+                    source,
+                    result: finalScriptResult,
                     nextExposureState: accumulatedNextState || undefined,
                 };
             } catch (execErr) {
@@ -644,7 +850,7 @@ export class Agent {
                     name: `tool_exec:${name}`,
                     attributes: {
                         tool_name: name,
-                        arguments: args,
+                        arguments: telemetryArgs,
                         origin,
                         error: execErr.message,
                     }
@@ -654,13 +860,14 @@ export class Agent {
                     callId,
                     name,
                     args,
+                    source,
                     result: { error: `run_tool_script failed: ${execErr.message}` },
                     nextExposureState: accumulatedNextState || undefined,
                 };
             }
         }
 
-        const tool = this.toolLoader.findTool(name);
+        const tool = registeredTool || this.toolLoader.findTool(name);
         if (!tool || typeof tool.func !== 'function') {
             const err = new Error(`Tool "${name}" not found or missing implementation.`);
             this._emitTrace('tool:error', {
@@ -670,7 +877,7 @@ export class Agent {
                 name: `tool_exec:${name}`,
                 attributes: {
                     tool_name: name,
-                    arguments: args,
+                    arguments: telemetryArgs,
                     origin,
                     error: err.message,
                 }
@@ -680,6 +887,7 @@ export class Agent {
                 callId,
                 name,
                 args,
+                source,
                 result: { error: `Tool "${name}" not found.` },
             };
         }
@@ -691,13 +899,14 @@ export class Agent {
             name: `tool_exec:${name}`,
             attributes: {
                 tool_name: name,
-                arguments: args,
+                arguments: telemetryArgs,
                 origin,
             }
         });
 
         try {
-            const result = await tool.func(args, { signal });
+            const rawResult = await tool.func(args, { signal });
+            const result = await this._finalizeToolResult(rawResult, callDescriptor);
             this._emitTrace('tool:complete', {
                 traceId,
                 spanId: toolSpanId,
@@ -705,15 +914,16 @@ export class Agent {
                 name: `tool_exec:${name}`,
                 attributes: {
                     tool_name: name,
-                    arguments: args,
+                    arguments: telemetryArgs,
                     origin,
-                    result_preview: JSON.stringify(result)?.slice(0, 100),
+                    result_preview: JSON.stringify(this._capForTelemetry(result))?.slice(0, 100),
                 }
             });
             return {
                 callId,
                 name,
                 args,
+                source,
                 result,
             };
         } catch (execErr) {
@@ -724,7 +934,7 @@ export class Agent {
                 name: `tool_exec:${name}`,
                 attributes: {
                     tool_name: name,
-                    arguments: args,
+                    arguments: telemetryArgs,
                     origin,
                     error: execErr.message,
                 }
@@ -734,6 +944,7 @@ export class Agent {
                 callId,
                 name,
                 args,
+                source,
                 result: { error: `Tool "${name}" execution failed: ${execErr.message}` },
             };
         }
@@ -917,10 +1128,12 @@ export class Agent {
             signal,
             maxContextTokens: this.maxContextTokens,
             codeMode: isCodeModeActive,
+            policy: options.policy || this.policy,
             toolExposureOptions: {
                 ...this.toolExposureOptions,
                 ...options.toolExposureOptions,
                 codeMode: isCodeModeActive,
+                ...(this.policy ? { policy: this.policy } : {}),
             },
             ...this.additionalOptions,
             ...options,
@@ -1056,7 +1269,7 @@ export class Agent {
                 const originalCall = functionCalls[i];
                 const callSig = originalCall?.thoughtSignature || originalCall?.signature;
                 if (settled.status === 'fulfilled') {
-                    const { callId, name, args, result, nextExposureState } = settled.value;
+                    const { callId, name, args, source, result, nextExposureState } = settled.value;
                     if (nextExposureState) {
                         currentExposureState = {
                             ...currentExposureState,
@@ -1076,6 +1289,7 @@ export class Agent {
                         callId,
                         name,
                         value: result,
+                        ...(source !== undefined ? { source } : {}),
                         thoughtSignature: callSig,
                     });
                     nextContext = nextContext.addInput(functionMessage);
@@ -1087,10 +1301,15 @@ export class Agent {
                         throw error;
                     }
                     newExecutedTools.push({ name, args: {} });
+                    const fallbackTool = this.toolLoader ? this.toolLoader.findTool(name) : null;
+                    const fallbackSource = fallbackTool?.source
+                        ? { ...fallbackTool.source }
+                        : (RESERVED_META_TOOL_NAMES.has(name) ? { kind: 'meta' } : { kind: 'local' });
                     const functionMessage = makeToolResult({
                         callId,
                         name,
                         value: { error: error.message },
+                        source: fallbackSource,
                         thoughtSignature: callSig,
                     });
                     nextContext = nextContext.addInput(functionMessage);

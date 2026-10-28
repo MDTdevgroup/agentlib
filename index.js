@@ -40,11 +40,28 @@ export {
     toolCallId,
     toolCallArgs,
     toolCallSignature,
+    toolResultSource,
     messageText,
     messageSpeaker,
     messageRole,
     deepFreeze,
 } from "./src/memory/message.js";
+export {
+    composePolicy,
+    strictPolicy,
+    createApprovalPolicy,
+    isSensitiveToolCall,
+    normalizeDecision,
+    buildStdioEnv,
+    detectCommandWarnings,
+    buildServerDescriptor,
+    createIpBlockList,
+    validateUrl,
+    checkUrl,
+    createUrlCheckMiddleware,
+    createSafeFetch,
+    validateAgentCardUrls,
+} from "./src/security/policy.js";
 export {
     WorkerSandbox,
     DenoSandbox,

@@ -35,6 +35,52 @@ function toJSDocType(propSchema = {}) {
 }
 
 /**
+ * Formats an MCP `outputSchema` into a rich JSDoc return type annotation (up to depth 2).
+ * Falls back to `'any'` when no `outputSchema` is provided.
+ * @param {object} [schema]
+ * @param {number} [depth=0]
+ * @returns {string}
+ */
+function formatOutputSchemaType(schema, depth = 0) {
+    if (!schema || typeof schema !== 'object') return 'any';
+    if (Array.isArray(schema.enum) && schema.enum.length > 0 && depth <= 2) {
+        return schema.enum.map(v => JSON.stringify(v)).join(' | ');
+    }
+    const type = schema.type;
+    switch (type) {
+        case 'string':
+            return 'string';
+        case 'number':
+        case 'integer':
+            return 'number';
+        case 'boolean':
+            return 'boolean';
+        case 'array':
+            if (schema.items && typeof schema.items === 'object') {
+                return `Array<${formatOutputSchemaType(schema.items, depth)}>`;
+            }
+            return 'Array<any>';
+        case 'object': {
+            const props = schema.properties;
+            if (!props || typeof props !== 'object' || depth >= 3) {
+                return 'object';
+            }
+            const entries = Object.entries(props);
+            if (entries.length === 0) return 'object';
+            const reqSet = new Set(Array.isArray(schema.required) ? schema.required : []);
+            const fields = entries.map(([key, val]) => {
+                const safeKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+                const opt = reqSet.size > 0 && !reqSet.has(key) ? '?' : '';
+                return `${safeKey}${opt}: ${formatOutputSchemaType(val, depth + 1)}`;
+            });
+            return `{ ${fields.join(', ')} }`;
+        }
+        default:
+            return 'any';
+    }
+}
+
+/**
  * Formats a property name for JSDoc and JavaScript invocation.
  * @param {string} prop
  * @param {boolean} isRequired
@@ -80,7 +126,10 @@ export function generateToolStub(declaration) {
         lines.push(` * @param {${jsDocType}} ${nameFormatted}${propDesc}`);
     }
 
-    lines.push(' * @returns {Promise<any>}');
+    const returnType = declaration.outputSchema
+        ? formatOutputSchemaType(declaration.outputSchema)
+        : 'any';
+    lines.push(` * @returns {Promise<${returnType}>}`);
     lines.push(' */');
 
     // Emit function stub

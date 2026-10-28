@@ -8,7 +8,7 @@ import { defineTool, withValidation } from '../tools/define-tool.js';
  * @param {string} remoteUrl - The URL of the remote agent (e.g. http://localhost:4000)
  * @param {string} [toolName='remote_agent'] - The name of the tool to register.
  * @param {string} [description="Ask a remote agent for help."] - Description for the tool.
- * @param {object} [options={}] - Optional configuration (timeoutMs, pollIntervalMs, client, clientFactory).
+ * @param {object} [options={}] - Optional configuration (timeoutMs, pollIntervalMs, client, clientFactory, policy, fetch, lookup, allowLoopback).
  * @returns {Promise<object>} A fused tool definition built with defineTool.
  */
 export async function createRemoteAgentTool(

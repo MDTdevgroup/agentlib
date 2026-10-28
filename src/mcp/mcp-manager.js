@@ -1,10 +1,11 @@
 import MCPClient from "./mcp-client.js";
 
 export class MCPManager {
-    constructor({ eventEmitter = null } = {}) {
+    constructor({ eventEmitter = null, policy = null } = {}) {
         this.clients = new Map();
         this.serverConfigs = new Map();
         this.events = eventEmitter;
+        this.policy = policy;
     }
 
     async addServer(serverName, serverConfig) {
@@ -13,7 +14,11 @@ export class MCPManager {
         }
 
         try {
-            const client = new MCPClient({ eventEmitter: this.events });
+            const client = new MCPClient({
+                eventEmitter: this.events,
+                policy: this.policy,
+                serverName,
+            });
             const tools = await client.connectToServer(serverConfig);
             const protocolVersion = client.getNegotiatedProtocolVersion();
             const instructions = client.getInstructions();

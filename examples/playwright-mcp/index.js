@@ -4,8 +4,7 @@ import { fileURLToPath } from 'node:url';
 const server = {
   command: 'npx',
   type: 'stdio',
-  args: ['@playwright/mcp@latest'],
-  env: process.env
+  args: ['@playwright/mcp@latest']
 };
 
 // openai

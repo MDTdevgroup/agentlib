@@ -89,6 +89,13 @@ export class DenoSandbox {
         signal?.throwIfAborted?.();
         assertDenoInstalled();
 
+        const strippedCode = typeof code === 'string'
+            ? code.replace(/^(?:\s+|\/\/[^\n]*\n?|\/\*[\s\S]*?\*\/)+/, '').trim()
+            : '';
+        const normalizedCode = /^\(\s*async\b[\s\S]*\)\s*\(\s*\)\s*;?$/.test(strippedCode)
+            ? `return await ${strippedCode}`
+            : code;
+
         // Runner harness executed by Deno
         const runnerScript = `
 import { TextLineStream } from "jsr:@std/streams/text-line-stream";
@@ -143,7 +150,7 @@ ${stubs}
 // User Code:
 try {
     const userResult = await (async () => {
-        ${code}
+        ${normalizedCode}
     })();
     sendMsg({ type: 'script_done', result: userResult, logs: logs.join('\\n') });
 } catch (err) {

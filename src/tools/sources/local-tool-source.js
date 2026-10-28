@@ -1,3 +1,13 @@
+import { getMaxToolDescriptionChars } from '../../config.js';
+
+function capDescription(description, maxChars = getMaxToolDescriptionChars()) {
+    if (typeof description !== 'string') return description;
+    if (maxChars > 0 && description.length > maxChars) {
+        return description.slice(0, maxChars);
+    }
+    return description;
+}
+
 /**
  * ToolSource implementing in-process local tools.
  */
@@ -163,6 +173,7 @@ export class LocalToolSource {
                 declaration: {
                     type: 'function',
                     ...declaration,
+                    ...(declaration.description !== undefined ? { description: capDescription(declaration.description) } : {}),
                     source: { kind: 'local' },
                 },
                 implementation: func,
@@ -173,6 +184,7 @@ export class LocalToolSource {
         return {
             declaration: {
                 ...declaration,
+                ...(declaration.description !== undefined ? { description: capDescription(declaration.description) } : {}),
                 source: { kind: 'local' },
             },
             implementation: null,
