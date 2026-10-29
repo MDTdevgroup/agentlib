@@ -5,6 +5,15 @@ export { Agent } from './src/core/agent.js';
 export { PromptLoader, Prompt } from './src/loaders/prompt-loader.js';
 export { ToolLoader } from "./src/loaders/tool-loader.js";
 export { defineTool, withValidation } from "./src/tools/define-tool.js";
+export { assertToolSource, LocalToolSource, MCPToolSource, A2AToolSource, createA2ASource } from "./src/tools/sources/index.js";
+export {
+    exposeAll,
+    exposeProgressive,
+    exposeAuto,
+    resolveExposurePolicy,
+    estimateDeclarationTokens,
+} from "./src/tools/exposure.js";
+export { rankKeywords } from "./src/tools/keyword-search.js";
 export { DomainObservability, createTracer } from "./src/services/observability.js";
 export { initTelemetry } from "./src/services/telemetry.js";
 export { loadOptional } from "./src/util/optional-dep.js";
@@ -31,8 +40,36 @@ export {
     toolCallId,
     toolCallArgs,
     toolCallSignature,
+    toolResultSource,
     messageText,
     messageSpeaker,
     messageRole,
     deepFreeze,
 } from "./src/memory/message.js";
+export {
+    composePolicy,
+    strictPolicy,
+    createApprovalPolicy,
+    isSensitiveToolCall,
+    normalizeDecision,
+    buildStdioEnv,
+    detectCommandWarnings,
+    buildServerDescriptor,
+    createIpBlockList,
+    validateUrl,
+    checkUrl,
+    createUrlCheckMiddleware,
+    createSafeFetch,
+    validateAgentCardUrls,
+} from "./src/security/policy.js";
+export {
+    WorkerSandbox,
+    DenoSandbox,
+    assertSandbox,
+    createSandbox,
+    isDenoAvailable,
+} from "./src/tools/sandbox/index.js";
+export {
+    generateToolStub,
+    generateToolStubs,
+} from "./src/tools/stubs.js";

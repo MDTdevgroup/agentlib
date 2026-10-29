@@ -23,6 +23,7 @@ weather_agent = Agent(
     deps_type=Deps,
     retries=2,
     system_prompt='You are a helpful weather agent. Be concise.',
+    model_settings={'openai_reasoning_effort': 'none'},
 )
 
 class LatLng(BaseModel):
@@ -94,7 +95,7 @@ async def get_agent_card():
         "version": "1.0.0",
         "url": "http://localhost:8000/a2a/jsonrpc",
         "skills": [
-            {"name": "check_weather", "description": "Check the weather"}
+            {"id": "check_weather", "name": "check_weather", "description": "Check the weather", "tags": ["weather"]}
         ],
         "defaultInputModes": ["text"],
         "defaultOutputModes": ["text"],
@@ -114,7 +115,7 @@ async def handle_jsonrpc(request: JSONRPCRequest):
     params = request.params
     message_data = params.get("message", {})
     parts = message_data.get("parts", [])
-    user_query = " ".join([p.get("text", "") for p in parts if p.get("kind") == "text"])
+    user_query = " ".join([p.get("text", "") for p in parts if p.get("kind") == "text" or "text" in p])
 
     print(f"Received query: {user_query}")
 
@@ -146,7 +147,7 @@ async def handle_jsonrpc(request: JSONRPCRequest):
         "result": {
             "kind": "message",
             "messageId": str(uuid.uuid4()),
-            "role": "assistant",
+            "role": "agent",
             "parts": [{"kind": "text", "text": str(response_text)}],
             "created": datetime.now().isoformat()
         },

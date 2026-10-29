@@ -112,3 +112,4 @@ For detailed guides and API references, check the `docs/` folder:
 - [Agent-to-Agent (A2A) Integration](./docs/a2a.md)
 - [Observability & Tracing](./docs/observability.md)
 - [Migration Guide](./MIGRATION.md)
+- [Security & MCP Best Practices](./docs/security.md)

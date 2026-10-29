@@ -71,3 +71,10 @@ Multi-agent iterative research system with aspect planning, parallel web search,
 node --env-file=.env examples/research_agent/index.js
 ```
 
+### 7. Sandbox Tools (Programmatic Tool Calling & Security Policy)
+Demonstrates programmatic tool calling (`codeMode: true`) inside `WorkerSandbox` with JSDoc stub generation and per-call security policy confirmation (`createApprovalPolicy`):
+```bash
+node --env-file=.env examples/sandbox-tools/index.js
+```
+
+

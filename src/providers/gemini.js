@@ -423,7 +423,10 @@ export async function chat(client, input, { model = defaultModel, pruningOptions
 
         const formattedInput = _convertInput(input);
         const customTools = tools ? tools.filter(t => t.name) : [];
-        const nativeTools = tools ? tools.filter(t => !t.name) : [];
+        const nativeTools = tools ? tools.filter(t => !t.name).map(t => {
+            const { source: _source, ...rest } = t;
+            return rest;
+        }) : [];
 
         const toolsConfig = [
             ...(customTools.length > 0 ? [{

@@ -13,6 +13,7 @@ This directory contains version migration guides and changelog documentation for
   - Constant-time $O(1)$ dispatch and atomic batch registration.
   - Automatic connection rollback on MCP duplicate/invalid tools.
   - Cooperative cancellation semantics via `context.signal`.
+  - **MCP & A2A Tool Name Prefixing (`${serverName}_${toolName}`)**: By default, tools loaded from MCP servers and A2A peers are now scoped with their server/peer ID (`prefixToolNames: true`) and truncated to 64 characters (`<55-chars>_<sha256-8>`) when needed. Pass `{ prefixToolNames: false }` to preserve unprefixed raw names.
 
 - **[AgentLib 2.x to 4.0.0 Migration Guide](./migrations/v2-to-v4.0.md)**
   - Subpath exports and blocking deep imports into `src/`.

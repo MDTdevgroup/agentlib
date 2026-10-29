@@ -122,16 +122,22 @@ toolLoader.addTools([weatherTool, customerTool]);
 
 ### Adding MCP Servers
 
-When MCP is enabled (`new ToolLoader(true)`), you can connect external MCP servers:
+When MCP is enabled (`new ToolLoader(true)`), you can connect external MCP servers eagerly or register them lazily:
 
+#### Eager Connection (`addMCPServer`)
 ```javascript
 const toolLoader = new ToolLoader(true);
 
+// Eagerly connects and indexes tools.
+// By default, tool names are prefixed as `${serverName}_${toolName}` (e.g. `filesystem_read_file`).
 await toolLoader.addMCPServer('filesystem', {
     type: 'stdio',
     command: 'npx',
     args: ['-y', '@modelcontextprotocol/server-filesystem', '/tmp']
 });
+
+// To disable prefixing and preserve legacy raw names:
+await toolLoader.addMCPServer('filesystem', serverConfig, { prefixToolNames: false });
 
 // Inspect status
 const info = toolLoader.getMCPInfo();
@@ -144,6 +150,84 @@ await toolLoader.cleanup();
 ```
 
 If an MCP server returns tools that conflict with already registered local tools or existing MCP servers, `addMCPServer` automatically rolls back the server connection before throwing.
+
+#### Lazy Server Registration (`registerMCPServer`)
+For workflows where capabilities are optional and connecting at startup would pay unnecessary latency, register servers lazily:
+
+```javascript
+toolLoader.registerMCPServer('github', githubConfig, {
+    description: 'GitHub operations: pull requests, issues, commits',
+});
+```
+
+When lazy servers are registered, discovery meta-tools (`search_servers`, `enable_server`, `disable_server`) allow the model to discover and connect dormant servers on demand.
+
+### MCP & A2A Name Scoping
+
+When connecting multiple MCP servers or A2A peers, raw tool names frequently collide (for example, both a `github` server and a `jira` server exposing `search_issues` or `get_user`).
+
+By default (`prefixToolNames: true`), `MCPToolSource` and `A2AToolSource` scope every remote tool name with its server/peer identifier:
+
+1. **Default Qualification**: Tool names are formatted as `${serverName}_${rawToolName}` (e.g., `github_search_issues`, `filesystem_read_file`).
+2. **64-Character Provider Limit**: Major LLM providers (including OpenAI and Anthropic) enforce a strict 64-character ceiling on function tool names. If a qualified name exceeds 64 characters, `agentlib` deterministically truncates it to `<first_55_chars>_<8_char_sha256_hash>` (64 characters total).
+3. **Provenance Metadata (`declaration.source`)**: Every tool declaration carries a `source` descriptor so callers, search rankers, and telemetry can inspect its origin without parsing the name string:
+   ```javascript
+   {
+       name: 'filesystem_read_file',
+       description: 'Read a file from disk',
+       parameters: { ... },
+       source: {
+           kind: 'mcp',              // 'local' | 'mcp' | 'a2a'
+           serverName: 'filesystem', // Server or peer ID
+           remoteName: 'read_file'   // Original unprefixed name on the remote server
+       }
+   }
+   ```
+4. **Dual Resolution on `invoke()`**: `MCPToolSource.invoke()` and `A2AToolSource.invoke()` accept both the qualified (or hash-truncated) tool name and the raw unprefixed name.
+5. **Opting Out (`prefixToolNames: false`)**: For single-server setups or legacy compatibility where raw tool names must be preserved, pass `{ prefixToolNames: false }` to `addMCPServer`, `registerMCPServer`, `MCPToolSource`, or `createA2ASource`.
+
+---
+
+### The `ToolSource` Contract
+
+`ToolLoader` is built on a uniform, 6-method capability interface called `ToolSource`. Local tools, MCP servers, and remote A2A agents are all implementations of this contract:
+
+| Method | Signature | Description |
+|---|---|---|
+| `describe()` | `() => { id, kind, title, description, connected }` | Returns synchronous metadata identifying the source and its connection state. |
+| `list()` | `async () => Array<Declaration>` | Connects if necessary and returns serializable tool declarations (never executable `func` closures). |
+| `getDeclarations()` | `() => Array<Declaration>` | Synchronously returns cached tool declarations (or `[]` for unconnected lazy sources). |
+| `invoke(name, args, context)` | `async (name, args, context) => any` | Executes a named tool on the source, forwarding `context.signal` (`AbortSignal`) for cancellation. |
+| `connect()` | `async () => void` | Establishes the underlying transport session (no-op for in-process sources). |
+| `close()` | `async () => void` | Tears down connections, child processes, or in-memory state cleanly. |
+
+#### Built-in `ToolSource` Implementations
+
+- **`LocalToolSource`**: In-process JavaScript tools registered via `defineTool` or `addTool`. Always connected.
+- **`MCPToolSource`**: Wraps an MCP client session (`stdio` or `http`), translating MCP tool schemas into `agentlib` declarations with name scoping.
+- **`A2AToolSource` (`createA2ASource`)**: Connects to a remote A2A agent, derives tool declarations from the peer's Agent Card `skills`, and polls/streams remote tasks to completion.
+
+```javascript
+import {
+    ToolLoader,
+    createA2ASource,
+    assertToolSource,
+} from '@peebles-group/agentlib-js';
+
+const loader = new ToolLoader(true);
+
+// Register a remote A2A peer as a lazy ToolSource
+const researchPeer = createA2ASource('http://localhost:4000', {
+    id: 'research_peer',
+    lazy: true,
+    description: 'Academic paper search and citation analysis specialist',
+});
+
+assertToolSource(researchPeer); // Validates all 6 contract methods
+loader.addSource(researchPeer);
+```
+
+See [Tool Discovery & Code Mode (`docs/tool-discovery.md`)](tool-discovery.md) for how `ToolLoader` catalogs interact with progressive discovery, `facade` caching, and sandboxed script execution.
 
 ---
 
