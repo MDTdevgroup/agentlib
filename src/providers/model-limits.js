@@ -4,6 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 const DEFAULT_LIMITS = {
     openai: {
         'gpt-6-astra': { inputTokenLimit: 922000, outputTokenLimit: 128000 },
+        'gpt-6-luna': { inputTokenLimit: 922000, outputTokenLimit: 128000 },
         'gpt-5.6-sol': { inputTokenLimit: 922000, outputTokenLimit: 128000 },
         'gpt-5.6-terra': { inputTokenLimit: 922000, outputTokenLimit: 128000 },
         'gpt-5.6-luna': { inputTokenLimit: 922000, outputTokenLimit: 128000 },
@@ -39,6 +40,7 @@ const DEFAULT_LIMITS = {
         'gemini-2.5-pro': { inputTokenLimit: 1048576, outputTokenLimit: 65536 },
         'gemini-2.5-flash-lite': { inputTokenLimit: 1048576, outputTokenLimit: 65536 },
         'gemini-2.5-flash': { inputTokenLimit: 1048576, outputTokenLimit: 65536 },
+        'gemini-decision-1': { inputTokenLimit: 262144, outputTokenLimit: 0 },
         default: { inputTokenLimit: 1048576, outputTokenLimit: 65536 },
     },
     vllm: {

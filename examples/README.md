@@ -77,4 +77,14 @@ Demonstrates programmatic tool calling (`codeMode: true`) inside `WorkerSandbox`
 node --env-file=.env examples/sandbox-tools/index.js
 ```
 
+### 8. Decisions (Fast Typed Classification & Scoring)
+Routes and scores a support ticket using `llm.decide()` with `predicate`, `choice`, and `score` questions in a single request. Uses OpenAI syntax and works identically with OpenAI (`gpt-6-luna`) or Gemini (`gemini-decision-1`):
+```bash
+# OpenAI (default)
+node --env-file=.env examples/decisions/index.js
+
+# Gemini (translated automatically)
+PROVIDER=gemini node --env-file=.env examples/decisions/index.js
+```
+
 

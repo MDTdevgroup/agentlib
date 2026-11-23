@@ -75,6 +75,15 @@ export function getDefaultModel(providerName) {
     return 'default';
 }
 
+export function getDefaultDecisionModel(providerName) {
+    const key = validateProviderName(providerName);
+    const provider = ALLOWED_PROVIDERS[key];
+    if (provider?.namespace?.defaultDecisionModel) {
+        return provider.namespace.defaultDecisionModel;
+    }
+    return 'default';
+}
+
 export function getModelContextLimit(providerName, modelName) {
     if (!providerName) return 128000;
     try {
