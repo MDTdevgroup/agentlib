@@ -3,11 +3,19 @@ export function getDefaultProvider() {
 }
 
 export function getDefaultOpenaiModel() {
-    return 'gpt-5';
+    return 'gpt-6.2-sol';
 }
 
 export function getDefaultGeminiModel() {
-    return 'gemini-3.1-pro-preview';
+    return 'gemini-4-carbon';
+}
+
+export function getDefaultOpenaiDecisionModel() {
+    return 'gpt-6-luna';
+}
+
+export function getDefaultGeminiDecisionModel() {
+    return 'gemini-decision-1';
 }
 
 export function getDefaultModel(provider = getDefaultProvider()) {
@@ -15,6 +23,14 @@ export function getDefaultModel(provider = getDefaultProvider()) {
     const normalized = String(provider).trim().toLowerCase();
     if (normalized === 'gemini' || normalized === 'gemini-interactions' || normalized.startsWith('gemini')) return getDefaultGeminiModel();
     if (normalized === 'openai' || normalized === 'vllm') return getDefaultOpenaiModel();
+    return 'default';
+}
+
+export function getDefaultDecisionModel(provider = getDefaultProvider()) {
+    if (!provider) return 'default';
+    const normalized = String(provider).trim().toLowerCase();
+    if (normalized === 'gemini' || normalized === 'gemini-interactions' || normalized.startsWith('gemini')) return getDefaultGeminiDecisionModel();
+    if (normalized === 'openai') return getDefaultOpenaiDecisionModel();
     return 'default';
 }
 

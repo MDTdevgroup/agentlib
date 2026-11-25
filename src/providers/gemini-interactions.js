@@ -9,6 +9,12 @@ import {
 } from './model-limits.js';
 
 export const defaultModel = getDefaultGeminiModel();
+export {
+    defaultDecisionModel,
+    toDecisionProvider,
+    fromDecisionProvider,
+    decide,
+} from './gemini-decisions.js';
 
 export function createClient(auth) {
     return new GoogleGenAI({ apiKey: auth.apiKey });
